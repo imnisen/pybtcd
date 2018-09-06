@@ -1,0 +1,9 @@
+* Tags used
+# TOCHANGE
+# TOCHECK
+# TOCLEAN
+* chainhash
+** TODO python3 params doc
+** TODO python3 byte equal go byte?
+** TODO read and write unitest first
+** TODO write funs
