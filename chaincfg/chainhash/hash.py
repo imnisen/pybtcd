@@ -49,6 +49,13 @@ class Hash:
         # TOCHECK can we use '==' to check two bytes equailty
         return self._data == target._data
 
+    def __len__(self):
+        return len(self._data)
+
+    @property
+    def content(self):
+        return self._data
+
 
 # NewHash returns a new Hash from a byte slice.  An error is returned if
 # the number of bytes passed in is not HashSize.
