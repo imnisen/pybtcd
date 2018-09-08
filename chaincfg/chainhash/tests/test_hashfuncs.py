@@ -1,7 +1,6 @@
 import unittest
+# from ..hashfuncs import *
 from ..hashfuncs import *
-from ..hash import *
-
 
 class TestHashFuncs(unittest.TestCase):
     def setUp(self):
@@ -61,11 +60,11 @@ class TestHashFuncs(unittest.TestCase):
 
     def test_hash_b(self):
         for case in self.tests:
-            self.assertEqual(hash_b(case['in'].encode()), case['out'])
+            self.assertEqual(hash_b(case['in'].encode()).hex(), case['out'])
 
     def test_hash_h(self):
         for case in self.tests:
-            self.assertEqual(hash_h(case['in'].encode()).repr, case['out'])
+            self.assertEqual(repr(hash_h(case['in'].encode())), case['out'])
 
 
 class TestDoubleHashFuncs(unittest.TestCase):
@@ -127,8 +126,12 @@ class TestDoubleHashFuncs(unittest.TestCase):
 
     def test_double_hash_b(self):
         for case in self.tests:
-            self.assertEqual(double_hash_b(case['in'].encode()), case['out'])
+            self.assertEqual(double_hash_b(case['in'].encode()).hex(), case['out'])
 
     def test_double_hash_h(self):
         for case in self.tests:
-            self.assertEqual(double_hash_h(case['in'].encode()).repr, case['out'])
+            self.assertEqual(repr(double_hash_h(case['in'].encode())), case['out'])
+
+
+if __name__ == '__main__':
+    unittest.main()

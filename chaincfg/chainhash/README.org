@@ -1,0 +1,6 @@
+* Description
+This module provide ~Hash~ class and some hash functions.
+
+~Hash~ class is an converter for bytes and str representation.
+
+hash fuctions include : ~hash_b~ , ~hash_h~, ~double_hash_b~, ~double_hash_h~
