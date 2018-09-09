@@ -50,19 +50,20 @@ class Hash:
     @staticmethod
     def str_to_bytes(s):
         if len(s) > MaxHashStringSize:
-            raise HashStrSizeErr
+            raise HashStrSizeErr()
 
         if len(s) % 2 != 0:
             s = '0' + s
 
-        # TOCHECK check if the reversed_hash correct here. make sure it's len is HashSize
-        # TOCLEAN Please refer to origin
-        reversed_s = bytes.fromhex(s)
-        reversed_s = bytearray(reversed_s)
+        decoded_len = int(len(bytearray(s.encode()))/2)
+        start_index = HashSize - decoded_len
 
+        reversed_s = bytearray(start_index) + bytearray.fromhex(s)
+
+        result = bytearray(HashSize)
         for i in range(0, int(HashSize / 2)):
-            reversed_s[i], reversed_s[HashSize - 1 - i] = reversed_s[HashSize - 1 - i], reversed_s[i]
-        return reversed_s
+            result[i], result[HashSize - 1 - i] = reversed_s[HashSize - 1 - i], reversed_s[i]
+        return bytes(result)
 
     @staticmethod
     def bytes_to_str(b):

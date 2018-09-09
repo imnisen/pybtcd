@@ -1,6 +1,5 @@
 import unittest
-# from ..hashfuncs import *
-from ..hashfuncs import *
+from chainhash.hashfuncs import *
 
 class TestHashFuncs(unittest.TestCase):
     def setUp(self):

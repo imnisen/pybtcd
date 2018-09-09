@@ -8,7 +8,6 @@ def hash_b(b: bytes) -> bytes:
     # print('B is', b)
     sha256 = hashlib.sha256()
     sha256.update(b)
-    # print('sha256.hexdigest() is', sha256.hexdigest())
     return sha256.digest()
 
 

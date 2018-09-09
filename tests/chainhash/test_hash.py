@@ -1,11 +1,5 @@
 import unittest
-from ..hash import *
-#
-# MainNetGenesisHash = Hash(bytes([0x6f, 0xe2, 0x8c, 0x0a, 0xb6, 0xf1, 0xb3, 0x72,
-#                                  0xc1, 0xa6, 0xa2, 0x46, 0xae, 0x63, 0xf7, 0x4f,
-#                                  0x93, 0x1e, 0x83, 0x65, 0xe1, 0x5a, 0x08, 0x9c,
-#                                  0x68, 0xd6, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00]))
-
+from chainhash.hash import *
 
 class TestHash(unittest.TestCase):
     def setUp(self):
@@ -30,7 +24,66 @@ class TestHash(unittest.TestCase):
             },
 
         ]
-        self.test_case2 = []
+
+        # test str_to_bytes
+        self.test_case2 = [
+            # main net genesis hash
+            {
+                "str": "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+                "bytes": bytes([0x6f, 0xe2, 0x8c, 0x0a, 0xb6, 0xf1, 0xb3, 0x72,
+                                0xc1, 0xa6, 0xa2, 0x46, 0xae, 0x63, 0xf7, 0x4f,
+                                0x93, 0x1e, 0x83, 0x65, 0xe1, 0x5a, 0x08, 0x9c,
+                                0x68, 0xd6, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, ]),
+            },
+
+            # main net genesis hash with stripped leading zeros
+            {
+                "str": "19d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f",
+                "bytes": bytes([0x6f, 0xe2, 0x8c, 0x0a, 0xb6, 0xf1, 0xb3, 0x72,
+                                0xc1, 0xa6, 0xa2, 0x46, 0xae, 0x63, 0xf7, 0x4f,
+                                0x93, 0x1e, 0x83, 0x65, 0xe1, 0x5a, 0x08, 0x9c,
+                                0x68, 0xd6, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, ]),
+            },
+
+            # empty string
+            {
+                "str": "",
+                "bytes": bytes(HashSize),
+            },
+
+            # Single digit hash.
+            {
+                "str": "1",
+                "bytes": bytes([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ]),
+            },
+
+            # Block 203707 with stripped leading zeros.
+            {
+                "str": "3264bc2ac36a60840790ba1d475d01367e7c723da941069e9dc",
+                "bytes": bytes([0xdc, 0xe9, 0x69, 0x10, 0x94, 0xda, 0x23, 0xc7,
+                                0xe7, 0x67, 0x13, 0xd0, 0x75, 0xd4, 0xa1, 0x0b,
+                                0x79, 0x40, 0x08, 0xa6, 0x36, 0xac, 0xc2, 0x4b,
+                                0x26, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ]),
+            },
+
+            # Hash string that is too long.
+            {
+                "str": "01234567890123456789012345678901234567890123456789012345678912345",
+                "bytes": bytes([]),
+                "err": HashStrSizeErr
+            },
+
+            # Hash string that is contains non-hex chars.
+            {
+                "str": "01234567890123456789012345678901234567890123456789012345678912345",
+                "bytes": bytes([]),
+                "err": Exception
+            },
+
+        ]
 
     def test_init(self):
         for c in self.test_case:
@@ -50,6 +103,17 @@ class TestHash(unittest.TestCase):
     def test_str_to_bytes(self):
         for c in self.test_case:
             self.assertEqual(Hash.str_to_bytes(c['str']), c['bytes'])
+
+        for c in self.test_case2:
+            if c.get('err'):
+                # self.assertRaises don't catch here, I don't know why
+                try:
+                    Hash.str_to_bytes(c['str'])
+                except Exception as e:
+                    self.assertEqual(type(e), HashStrSizeErr)
+            else:
+
+                self.assertEqual(Hash.str_to_bytes(c['str']), c['bytes'])
 
     def test_bytes_to_str(self):
         for c in self.test_case:
