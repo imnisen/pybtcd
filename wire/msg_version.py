@@ -1,7 +1,15 @@
 from .message import *
 from .netaddress import *
 
+# MaxUserAgentLen is the maximum allowed length for the user agent field in a
+# version message (MsgVersion).
+MaxUserAgentLen = 256
+
+
+# DefaultUserAgent for wire in the stack
 DefaultUserAgent = "/btcwire:0.5.0/"
+
+
 TimeNow = int(time.time())
 
 class MsgVersion(Message):
@@ -42,6 +50,7 @@ class MsgVersion(Message):
         raise NotImplementedError
 
     def btc_encode(self):
+        # TODO write common.py first
         # TOADD
         raise NotImplementedError
 
