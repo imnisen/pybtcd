@@ -27,6 +27,9 @@ class MessageErr(Exception):
 class NonCanonicalVarIntErr(MessageErr):
     pass
 
+class MessageLengthTooLongErr(MessageErr):
+    pass
+
 
 # var_int refer to https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
 
@@ -81,3 +84,26 @@ def var_int_serialize_size(val: int) -> int:
     else:
         size = 9
     return size
+
+# message.py
+# MaxMessagePayload is the maximum bytes a message can be regardless of other
+# individual limits imposed by messages themselves.
+MaxMessagePayload = (1024 * 1024 * 32) # 32MB
+
+# when deal with length of string, always count on string bytes length
+def read_var_string(s, pver):
+    count = read_var_int(s, pver)
+
+    if count > MaxMessagePayload:
+        raise MessageLengthTooLongErr()
+
+    buf = s.read(count)  # TOCHECK if here we can read count of bytes
+    return buf.decode()
+
+def write_var_string(s, pver, string):
+    string_byte = string.encode()
+    write_var_int(s, pver, len(string_byte))
+    s.write(string_byte)
+    return
+
+
