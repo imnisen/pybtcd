@@ -1,10 +1,34 @@
+MaxInt8 = 1 << 7 - 1
+MinInt8 = -1 << 7
+MaxInt16 = 1 << 15 - 1
+MinInt16 = -1 << 15
+MaxInt32 = 1 << 31 - 1
+MinInt32 = -1 << 31
+MaxInt64 = 1 << 63 - 1
+MinInt64 = -1 << 63
+MaxUint8 = 1 << 8 - 1
+MaxUint16 = 1 << 16 - 1
+MaxUint32 = 1 << 32 - 1
+MaxUint64 = 1 << 64 - 1
+
+
 def read_variable_bytes_as_integer(s, v):
     return int.from_bytes(s.read(v), byteorder="little")
 
+
+def write_variable_bytes_from_integer(s, v, val):
+    return s.write(val.to_bytes(v, byteorder="little"))  # TOCHECK
+
+
 class MessageErr(Exception):
     pass
+
+
 class NonCanonicalVarIntErr(MessageErr):
     pass
+
+
+# var_int refer to https://en.bitcoin.it/wiki/Protocol_documentation#Variable_length_integer
 
 def read_var_int(s, pver: int) -> int:
     # read first byte from stream
@@ -31,3 +55,29 @@ def read_var_int(s, pver: int) -> int:
 
     return rv
 
+
+def write_var_int(s, pver, val):
+    if val < 0xfd:
+        write_variable_bytes_from_integer(s, 1, val)
+    elif val <= MaxInt16:
+        write_variable_bytes_from_integer(s, 1, 0xfd)
+        write_variable_bytes_from_integer(s, 2, val)
+    elif val <= MaxInt32:
+        write_variable_bytes_from_integer(s, 1, 0xf)
+        write_variable_bytes_from_integer(s, 4, val)
+    else:
+        write_variable_bytes_from_integer(s, 1, 0xf)
+        write_variable_bytes_from_integer(s, 8, val)
+    return
+
+
+def var_int_serialize_size(val: int) -> int:
+    if val < 0xfd:
+        size = 1
+    elif val <= MaxInt16:
+        size = 3
+    elif val <= MaxInt32:
+        size = 5
+    else:
+        size = 9
+    return size
