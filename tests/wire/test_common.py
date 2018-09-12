@@ -170,11 +170,136 @@ class TestVarIntWire(unittest.TestCase):
             self.assertEqual(s.read(), c['buf'])
 
 
-#
-# class TestVarIntWireErrors(unittest.TestCase):
-#     pass
-#
-#
+# For TestVarIntWireErrors test, same as golang newFixedWriter, newFixedReader
+class FixedBytesErr(Exception):
+    pass
+
+
+class FixedBytesInitErr(FixedBytesErr):
+    pass
+
+class FixedBytesUnexpectedEOFErr(FixedBytesErr):
+    pass
+
+class FixedBytesShortWriteErr(FixedBytesErr):
+    pass
+
+
+class FixedBytesReader():
+    def __init__(self, max, buf):
+        if max < 0:
+            raise FixedBytesInitErr
+
+        self.max = max
+        self._data = io.BytesIO(buf)
+
+    def read(self, size:int) -> bytes:
+        # Limit the case, maybe we can let size<=0, and decide what to do
+        if size <= 0:
+            raise FixedBytesErr('size must greater than 0')
+
+        result = bytearray()
+        while True:
+            if size == 0:
+                break
+
+            if self.max == 0:
+                raise FixedBytesUnexpectedEOFErr
+
+            result += self._data.read(1)
+            self.max -= 1
+            size -= 1
+
+        return bytes(result)
+
+
+
+class FixedBytesWriter():
+    def __init__(self, max):
+        if max < 0:
+            raise FixedBytesInitErr
+        self.max = max
+        self._data = io.BytesIO()
+
+    def write(self, val: bytes):
+
+        val_len = len(val)
+        i = 0
+        while True:
+            if i > val_len - 1:
+                break
+            if self.max == 0:
+                raise FixedBytesShortWriteErr
+
+            self._data.write(val[i].to_bytes(1, byteorder="little"))
+            i += 1
+            self.max -= 1
+        return
+
+
+class TestVarIntWireErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.tests = [
+            # Force errors on discriminant.
+            {
+                "in": 0,
+                "buf": bytes([0x00]),
+                "pver": self.pver,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force errors on 2-byte read/write.
+            {
+                "in": 0xfd,
+                "buf": bytes([0xfd]),
+                "pver": self.pver,
+                "max": 2,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force errors on 4-byte read/write.
+            {
+                "in": 0x10000,
+                "buf": bytes([0xfe]),
+                "pver": self.pver,
+                "max": 2,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force errors on 8-byte read/write.
+            {
+                "in": 0x100000000,
+                "buf": bytes([0xff]),
+                "pver": self.pver,
+                "max": 2,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+        ]
+
+    def test_read_var_int(self):
+        for c in self.tests:
+            reader = FixedBytesReader(c["max"], c["buf"])
+            try:
+                read_var_int(reader, c['pver'])
+            except Exception as e:
+                self.assertEqual(type(e), FixedBytesUnexpectedEOFErr)
+
+    def test_write_var_int(self):
+        for c in self.tests:
+            writer = FixedBytesWriter(c["max"])
+            try:
+                write_var_int(writer, c['pver'], c["in"])
+            except Exception as e:
+                self.assertEqual(type(e), FixedBytesShortWriteErr)
+
+
 # class TestVarIntNonCanonicat(unittest.TestCase):
 #     pass
 #
