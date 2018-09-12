@@ -350,10 +350,66 @@ class TestVarIntNonCanonicat(unittest.TestCase):
                 self.assertEqual(type(e), NonCanonicalVarIntErr)
 
 
-# class TestVarIntSerializeSize(unittest.TestCase):
-#     pass
-#
-#
+class TestVarIntSerializeSize(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.tests = [
+            # Single byte
+            {
+                "val": 0,
+                "size":1
+            },
+
+            # Max single byte
+            {
+                "val": 0xfc,
+                "size": 1
+            },
+
+            # Min 2-byte
+            {
+                "val": 0xfd,
+                "size": 3
+            },
+
+            # Max 2-byte
+            {
+                "val": 0xffff,
+                "size": 3
+            },
+
+            # Min 4-byte
+            {
+                "val": 0x10000,
+                "size": 5
+            },
+
+            # Max 4-byte
+            {
+                "val": 0xffffffff,
+                "size": 5
+            },
+
+            # Min 8-byte
+            {
+                "val": 0x100000000,
+                "size": 9
+            },
+
+            # Max 8-byte
+            {
+                "val": 0xffffffffffffffff,
+                "size": 9
+            },
+
+
+        ]
+
+    def test_var_int_serialize_size(self):
+        for c in self.tests:
+            self.assertEqual(var_int_serialize_size(c['val']), c['size'])
+
+
 # class TestVarStringWire(unittest.TestCase):
 #     pass
 #

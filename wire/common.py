@@ -115,9 +115,9 @@ def write_var_int(s, pver, val):
 def var_int_serialize_size(val: int) -> int:
     if val < 0xfd:
         size = 1
-    elif val <= MaxInt16:
+    elif val <= MaxUint16:
         size = 3
-    elif val <= MaxInt32:
+    elif val <= MaxUint32:
         size = 5
     else:
         size = 9
