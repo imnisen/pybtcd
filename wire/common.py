@@ -87,7 +87,7 @@ def read_var_int(s, pver):
         if rv < min:
             raise NonCanonicalVarIntErr()
     elif discriminant == 0xfd:
-        rv = read_variable_bytes_as_integer(s, 4)
+        rv = read_variable_bytes_as_integer(s, 2)
         min = 0xfd
         if rv < min:
             raise NonCanonicalVarIntErr()
@@ -128,6 +128,7 @@ def read_var_string(s, pver):
     count = read_var_int(s, pver)
 
     if count > MaxMessagePayload:
+        print(count)
         raise MessageLengthTooLongErr()
 
     buf = s.read(count)  # TOCHECK if here we can read count of bytes

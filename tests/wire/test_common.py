@@ -410,10 +410,50 @@ class TestVarIntSerializeSize(unittest.TestCase):
             self.assertEqual(var_int_serialize_size(c['val']), c['size'])
 
 
-# class TestVarStringWire(unittest.TestCase):
-#     pass
-#
-#
+class TestVarStringWire(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.str256 = "test" * 64
+        self.tests = [
+
+            # Empty string
+            {
+                "in": "",
+                "out": "",
+                "buf": bytes([0x00]),
+                "pver": self.pver
+            },
+
+            # Single byte varint + string
+            {
+                "in": "Test",
+                "out": "Test",
+                "buf": bytes([0x04]) + bytes("Test".encode()),
+                "pver": self.pver
+            },
+
+            # 2-byte varint + string
+            {
+                "in": self.str256,
+                "out": self.str256,
+                "buf": bytes([0xfd, 0x00, 0x01]) + bytes(self.str256.encode()),
+                "pver": self.pver
+            },
+        ]
+
+    def test_read_var_string(self):
+        for c in self.tests:
+            self.assertEqual(read_var_string(io.BytesIO(c['buf']), c['pver']), c['out'])
+
+    def test_write_var_string(self):
+        for c in self.tests:
+            s = io.BytesIO()
+            write_var_string(s, c['pver'], c['in'])
+            s.seek(0)
+            self.assertEqual(s.read(), c['buf'])
+
+
+
 # class TestVarStringWireErrors(unittest.TestCase):
 #     pass
 #
