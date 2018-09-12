@@ -1,6 +1,10 @@
 from .protocol import BitcoinNet
 from enum import Enum
 
+# CommandSize is the fixed size of all commands in the common bitcoin message
+# header.  Shorter commands must be zero padded.
+CommandSize = 12
+
 class Commands(Enum):
     CmdVersion = "version"
     CmdVerAck = "verack"
