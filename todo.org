@@ -3,8 +3,4 @@
 # TOCHECK
 # TOCLEAN
 # TOADD
-* chainhash
-** TODO python3 params doc
-** TODO python3 byte equal go byte?
-** TODO read and write unitest first
-** TODO write funs
+
