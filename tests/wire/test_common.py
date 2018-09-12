@@ -300,10 +300,56 @@ class TestVarIntWireErrors(unittest.TestCase):
                 self.assertEqual(type(e), FixedBytesShortWriteErr)
 
 
-# class TestVarIntNonCanonicat(unittest.TestCase):
-#     pass
-#
-#
+class TestVarIntNonCanonicat(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.tests = [
+            {
+                "name": "0 encoded with 3 bytes",
+                "in": bytes([0xfd, 0x00, 0x00]),
+                "pver": self.pver,
+            },
+
+            {
+                "name": "max single-byte value encoded with 3 bytes",
+                "in": bytes([0xfd, 0xfc, 0x00]),
+                "pver": self.pver,
+            },
+
+            {
+                "name": "0 encoded with 5 bytes",
+                "in": bytes([0xfe, 0x00, 0x00, 0x00, 0x00]),
+                "pver": self.pver,
+            },
+
+            {
+                "name": "max three-byte value encoded with 5 bytes",
+                "in": bytes([0xfe, 0xff, 0xff, 0x00, 0x00]),
+                "pver": self.pver,
+            },
+
+            {
+                "name": "0 encoded with 9 bytes",
+                "in": bytes([0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+                "pver": self.pver,
+            },
+
+            {
+                "name": "max five-byte value encoded with 9 bytes",
+                "in": bytes([0xff, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x00]),
+                "pver": self.pver,
+            },
+        ]
+
+    def test_read_var_int(self):
+        for c in self.tests:
+            reader = io.BytesIO(c['in'])
+            try:
+                read_var_int(reader, c['pver'])
+            except Exception as e:
+                self.assertEqual(type(e), NonCanonicalVarIntErr)
+
+
 # class TestVarIntSerializeSize(unittest.TestCase):
 #     pass
 #
