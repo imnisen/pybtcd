@@ -1,5 +1,6 @@
 from .message import *
 from .netaddress import *
+from .common import *
 
 # MaxUserAgentLen is the maximum allowed length for the user agent field in a
 # version message (MsgVersion).
@@ -49,10 +50,19 @@ class MsgVersion(Message):
         # TOADD
         raise NotImplementedError
 
-    def btc_encode(self):
-        # TODO write common.py first
-        # TOADD
-        raise NotImplementedError
+
+    # BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
+    # This is part of the Message interface implementation.
+    def btc_encode(self, s, pver, message_encoding):
+        self.valid_user_agent(self.user_agent)
+
+        write_elements(s, self.protocol_version, self.services, self.timestamp)
+
+        # TODO fish readNetAddress and writeNetAddress first
+
+
+
+
 
     def max_payload_length(self) -> int:
         raise NotImplementedError
@@ -60,5 +70,6 @@ class MsgVersion(Message):
     def add_user_agent(self):
         pass
 
-    def valid_user_agent(self):
+    def valid_user_agent(self, user_agent):
+        # TODO
         pass

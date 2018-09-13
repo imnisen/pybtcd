@@ -1,5 +1,8 @@
 from chainhash import *
 import random
+from .message import *
+from chainhash import HashSize
+from .protocol import *
 
 # MaxVarIntPayload is the maximum payload size for a variable length integer.
 MaxVarIntPayload = 9
@@ -31,12 +34,16 @@ MaxUint32 = (1 << 32) - 1
 MaxUint64 = (1 << 64) - 1
 
 
-def read_variable_bytes_as_integer(s, v):
-    return int.from_bytes(s.read(v), byteorder="little")
+def read_variable_bytes(s, bytes_len):
+    return s.read(bytes_len)
 
 
-def write_variable_bytes_from_integer(s, v, val):
-    return s.write(val.to_bytes(v, byteorder="little"))  # TOCHECK
+def read_variable_bytes_as_integer(s, bytes_len, byteorder=LittleEndian):
+    return int.from_bytes(s.read(bytes_len), byteorder=byteorder)
+
+
+def write_variable_bytes_from_integer(s, bytes_len, val, byteorder=LittleEndian):
+    s.write(val.to_bytes(bytes_len, byteorder=byteorder))  # TOCHECK
 
 
 class MessageErr(Exception):
@@ -55,20 +62,118 @@ class BytesTooLargeErr(MessageErr):
     pass
 
 
-def read_element(s, element):
-    pass
+def read_element(s, element_type):
+    # The origin method accepts element,and dispatch how to read by the type of element,
+    # after that, it change the value of element passed as params
+    # However, as in python, I can't pass address and change value it point to
+    # so, this methd will return value it reads.
+
+    # On the other hand, since I cannot distinguish uint32 or int32 value in python,
+    # SO I can only pass it's type with string formar and do dispatch on string
+
+    # Notice, the return value is not exactly the same as element_type required,
+    # since python is weak typed
+    # So, the next operation after read_element may also need it's element_type
+
+    if element_type == "int32":
+        return read_variable_bytes_as_integer(s, 4, LittleEndian)
+    elif element_type == "uint32":
+        return read_variable_bytes_as_integer(s, 4, LittleEndian)
+    elif element_type == "int64":
+        return read_variable_bytes_as_integer(s, 8, LittleEndian)
+    elif element_type == "uint64":
+        return read_variable_bytes_as_integer(s, 8, LittleEndian)
+    elif element_type == "bool":
+        rv = read_variable_bytes_as_integer(s, 1)
+        if rv == 0x00:
+            return False
+        else:
+            return True
+    elif element_type == "uint32Time":
+        # Notice, here don't like origin, I just return the int, not the type timestamp
+        return read_variable_bytes_as_integer(s, 4, LittleEndian)
+    elif element_type == "int64Time":
+        # Notice, here don't like origin, I just return the int, not the type timestamp
+        return read_variable_bytes_as_integer(s, 8, LittleEndian)
+    elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
+        return read_variable_bytes(s, 4)
+    elif element_type == "[CommandSize]uint":  # TOCHANGE, this is a golang mark, maybe more common?
+        return read_variable_bytes(s, CommandSize)
+    elif element_type == "[16]byte":
+        return read_variable_bytes(s, 16)
+    elif element_type == "chainhash.Hash":
+        return read_variable_bytes(s, HashSize)
+    elif element_type == "ServiceFlag":
+        return ServiceFlag(read_variable_bytes_as_integer(s, 8, LittleEndian))
+    # elif element_type == "InvType":
+    #     # TOCHANGE Initial of InvType
+    #     pass
+    elif element_type == "BitcoinNet":
+        return BitcoinNet(ServiceFlag(read_variable_bytes_as_integer(s, 4, LittleEndian)))
+
+    # elif element_type == "BloomUpdateType":
+    #     pass
+
+    # elif element_type == "RejectCode":
+    #     pass
+
+    print("Notice, I don't know what to do here.")
+    return s.read()
 
 
-def read_elements(s, elements):
-    pass
+# def read_elements(s, elements):
+#     pass
 
 
-def write_element(s, element):
-    pass
+def write_element(s, element_type, element):
+    if element_type == "int32":
+        write_variable_bytes_from_integer(s, 4, element, LittleEndian)
+    elif element_type == "uint32":
+        write_variable_bytes_from_integer(s, 4, element, LittleEndian)
+    elif element_type == "int64":
+        write_variable_bytes_from_integer(s, 8, element, LittleEndian)
+    elif element_type == "uint64":
+        write_variable_bytes_from_integer(s, 8, element, LittleEndian)
+    elif element_type == "bool":
+        if element:
+            write_variable_bytes_from_integer(s, 1, 0x01)
+        else:
+            write_variable_bytes_from_integer(s, 1, 0x00)
+    # elif element_type == "uint32Time":
+    #     # Notice, here don't like origin, I just return the int, not the type timestamp
+    #     return read_variable_bytes_as_integer(s, 4, LittleEndian)
+    # elif element_type == "int64Time":
+    #     # Notice, here don't like origin, I just return the int, not the type timestamp
+    #     return read_variable_bytes_as_integer(s, 8, LittleEndian)
+
+    elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
+        s.write(element)
+    elif element_type == "[CommandSize]uint":  # TOCHANGE, this is a golang mark, maybe more common?
+        s.write(element)
+    elif element_type == "[16]byte":
+        s.write(element)
+    elif element_type == "chainhash.Hash":
+        s.write(element.to_bytes())
+    elif element_type == "ServiceFlag":
+        write_variable_bytes_from_integer(s, 8, element, LittleEndian)
+    # elif element_type == "InvType":
+    #     # TOCHANGE Initial of InvType
+    #     pass
+    elif element_type == "BitcoinNet":
+        write_variable_bytes_from_integer(s, 4, element, LittleEndian)
+
+    # elif element_type == "BloomUpdateType":
+    #     pass
+
+    # elif element_type == "RejectCode":
+    #     pass
+
+    print("Notice, I don't know what to do here.")
+    return s.write(element)
 
 
-def write_elements(s, elements):
-    pass
+# def write_elements(s, *elements):
+#     pass
 
 
 def read_var_int(s, pver):

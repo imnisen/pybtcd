@@ -45,7 +45,7 @@ class Message:
     def btc_decode(self):
         raise NotImplementedError
 
-    def btc_encode(self):
+    def btc_encode(self, s, pver, message_encoding):
         raise NotImplementedError
 
     def command(self) -> str:
