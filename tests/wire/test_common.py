@@ -95,7 +95,7 @@ class TestVarIntWire(unittest.TestCase):
             # Single byte
             {
                 "in": 0,
-                "out":0,
+                "out": 0,
                 "buf": bytes([0x00]),
                 "pver": self.pver
             },
@@ -157,17 +157,16 @@ class TestVarIntWire(unittest.TestCase):
             }
         ]
 
-
     def test_read_var_int(self):
         for c in self.tests:
             self.assertEqual(read_var_int(io.BytesIO(c['buf']), c['pver']), c['out'])
 
     def test_write_var_int(self):
         for c in self.tests:
-            s = io.BytesIO()
-            write_var_int(s, c['pver'], c['in'])
-            s.seek(0)
-            self.assertEqual(s.read(), c['buf'])
+            writer = io.BytesIO()
+            write_var_int(writer, c['pver'], c['in'])
+            writer.seek(0)
+            self.assertEqual(writer.read(), c['buf'])
 
 
 # For TestVarIntWireErrors test, same as golang newFixedWriter, newFixedReader
@@ -178,8 +177,10 @@ class FixedBytesErr(Exception):
 class FixedBytesInitErr(FixedBytesErr):
     pass
 
+
 class FixedBytesUnexpectedEOFErr(FixedBytesErr):
     pass
+
 
 class FixedBytesShortWriteErr(FixedBytesErr):
     pass
@@ -193,7 +194,7 @@ class FixedBytesReader():
         self.max = max
         self._data = io.BytesIO(buf)
 
-    def read(self, size:int) -> bytes:
+    def read(self, size: int) -> bytes:
         # Limit the case, maybe we can let size<=0, and decide what to do
         if size <= 0:
             raise FixedBytesErr('size must greater than 0')
@@ -211,7 +212,6 @@ class FixedBytesReader():
             size -= 1
 
         return bytes(result)
-
 
 
 class FixedBytesWriter():
@@ -357,7 +357,7 @@ class TestVarIntSerializeSize(unittest.TestCase):
             # Single byte
             {
                 "val": 0,
-                "size":1
+                "size": 1
             },
 
             # Max single byte
@@ -401,7 +401,6 @@ class TestVarIntSerializeSize(unittest.TestCase):
                 "val": 0xffffffffffffffff,
                 "size": 9
             },
-
 
         ]
 
@@ -447,11 +446,10 @@ class TestVarStringWire(unittest.TestCase):
 
     def test_write_var_string(self):
         for c in self.tests:
-            s = io.BytesIO()
-            write_var_string(s, c['pver'], c['in'])
-            s.seek(0)
-            self.assertEqual(s.read(), c['buf'])
-
+            writer = io.BytesIO()
+            write_var_string(writer, c['pver'], c['in'])
+            writer.seek(0)
+            self.assertEqual(writer.read(), c['buf'])
 
 
 class TestVarStringWireErrors(unittest.TestCase):
@@ -507,22 +505,148 @@ class TestVarStringWireErrors(unittest.TestCase):
                 self.assertEqual(type(e), c['write_err'])
 
 
-# class TestVarStringOverflowErrors(unittest.TestCase):
-#     pass
-#
-#
-# class TestVarBytesWire(unittest.TestCase):
-#     pass
-#
-#
-# class TestVarBytesWireErrors(unittest.TestCase):
-#     pass
-#
-#
-# class TestVarBytesOverflowErrors(unittest.TestCase):
-#     pass
-#
-#
+class TestVarStringOverflowErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.tests = [
+            {
+                "buf": bytes([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
+                "pver": self.pver,
+                "err": MessageLengthTooLongErr
+            },
+            {
+                "buf": bytes([0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+                "pver": self.pver,
+                "err": MessageLengthTooLongErr
+            }
+        ]
+
+    def test_read_var_string(self):
+        for c in self.tests:
+            reader = io.BytesIO(c["buf"])
+            try:
+                read_var_string(reader, c['pver'])
+            except Exception as e:
+                self.assertEqual(type(e), c['err'])
+
+
+class TestVarBytesWire(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.bytes256 = bytes([0x01]) * 256
+        self.tests = [
+            {
+                "in": bytes([]),
+                "buf": bytes([0x00]),
+                "pver": self.pver,
+            },
+            {
+                "in": bytes([0x01]),
+                "buf": bytes([0x01, 0x01]),
+                "pver": self.pver,
+            },
+            {
+                "in": self.bytes256,
+                "buf": bytes([0xfd, 0x00, 0x01]) + self.bytes256,
+                "pver": self.pver,
+            },
+        ]
+
+    def test_read_var_bytes(self):
+        for c in self.tests:
+            reader = io.BytesIO(c['buf'])
+            self.assertEqual(read_var_bytes(reader, c['pver'], MaxMessagePayload, "test payload"),
+                             c['in'])
+
+    def test_write_var_bytes(self):
+        for c in self.tests:
+            writer = io.BytesIO()
+            write_var_bytes(writer, c['pver'], c['in'])
+            writer.seek(0)
+            self.assertEqual(writer.read(), c['buf'])
+
+
+class TestVarBytesWireErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.bytes256 = bytes([0x01]) * 256
+        self.tests = [
+
+            # Force errors on empty byte array.
+            {
+                "in": bytes([]),
+                "buf": bytes([0x00]),
+                "pver": self.pver,
+                "max": 0,
+                "read_err": FixedBytesUnexpectedEOFErr,
+                "write_err": FixedBytesShortWriteErr,
+            },
+
+            # Force error on single byte varint + byte array.
+            {
+                "in": bytes([0x01, 0x02, 0x03]),
+                "buf": bytes([0x04]),
+                "pver": self.pver,
+                "max": 2,
+                "read_err": FixedBytesUnexpectedEOFErr,
+                "write_err": FixedBytesShortWriteErr,
+            },
+
+            # Force errors on 2-byte varint + byte array.
+            {
+                "in": self.bytes256,
+                "buf": bytes([0xfd]),
+                "pver": self.pver,
+                "max": 2,
+                "read_err": FixedBytesUnexpectedEOFErr,
+                "write_err": FixedBytesShortWriteErr,
+            },
+        ]
+
+    def test_read_var_bytes(self):
+        for c in self.tests:
+            reader = FixedBytesReader(c['max'], c["buf"])
+            try:
+                read_var_bytes(reader, c['pver'], MaxMessagePayload, "test payload")
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])
+
+    def test_write_var_bytes(self):
+        for c in self.tests:
+            writer = FixedBytesWriter(c["max"])
+            try:
+                write_var_bytes(writer, c['pver'], c['in'])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])
+
+
+class TestVarBytesOverflowErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.bytes256 = bytes([0x01]) * 256
+        self.tests = [
+            {
+                "buf": bytes([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]),
+                "pver": self.pver,
+                "err": BytesTooLargeErr,
+            },
+
+            {
+                "buf": bytes([0xff, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01]),
+                "pver": self.pver,
+                "err": BytesTooLargeErr,
+            },
+        ]
+
+    def test_read_var_bytes(self):
+        for c in self.tests:
+            reader = io.BytesIO(c["buf"])
+            try:
+                read_var_bytes(reader, c['pver'], MaxMessagePayload, "test payload")
+            except Exception as e:
+                self.assertEqual(type(e), c['err'])
+
+
 # class TestRandomUint64(unittest.TestCase):
 #     pass
 #

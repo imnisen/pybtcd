@@ -128,8 +128,7 @@ def read_var_string(s, pver):
     count = read_var_int(s, pver)
 
     if count > MaxMessagePayload:
-        print(count)
-        raise MessageLengthTooLongErr()
+        raise MessageLengthTooLongErr
 
     buf = s.read(count)  # TOCHECK if here we can read count of bytes
     return buf.decode()
@@ -143,7 +142,7 @@ def write_var_string(s, pver, string):
 def read_var_bytes(s, pver, max_allowed, filed_name):
     count = read_var_int(s, pver)
     if count > max_allowed:
-        raise BytesTooLargeErr()
+        raise BytesTooLargeErr("{} is larger than the max allowed size [count {}, max {}".format(filed_name, count, max_allowed))
     buf = s.read(count)
     return buf
 
