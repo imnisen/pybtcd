@@ -1,5 +1,5 @@
 from chainhash import *
-
+import random
 
 # MaxVarIntPayload is the maximum payload size for a variable length integer.
 MaxVarIntPayload = 9
@@ -14,8 +14,7 @@ LittleEndian = "little"
 # message.py
 # MaxMessagePayload is the maximum bytes a message can be regardless of other
 # individual limits imposed by messages themselves.
-MaxMessagePayload = (1024 * 1024 * 32) # 32MB
-
+MaxMessagePayload = (1024 * 1024 * 32)  # 32MB
 
 # some math constant
 MaxInt8 = (1 << 7) - 1
@@ -30,7 +29,6 @@ MaxUint8 = (1 << 8) - 1
 MaxUint16 = (1 << 16) - 1
 MaxUint32 = (1 << 32) - 1
 MaxUint64 = (1 << 64) - 1
-
 
 
 def read_variable_bytes_as_integer(s, v):
@@ -48,8 +46,10 @@ class MessageErr(Exception):
 class NonCanonicalVarIntErr(MessageErr):
     pass
 
+
 class MessageLengthTooLongErr(MessageErr):
     pass
+
 
 class BytesTooLargeErr(MessageErr):
     pass
@@ -123,6 +123,7 @@ def var_int_serialize_size(val: int) -> int:
         size = 9
     return size
 
+
 # when deal with length of string, always count on string bytes length
 def read_var_string(s, pver):
     count = read_var_int(s, pver)
@@ -133,18 +134,22 @@ def read_var_string(s, pver):
     buf = s.read(count)  # TOCHECK if here we can read count of bytes
     return buf.decode()
 
+
 def write_var_string(s, pver, string):
     string_byte = string.encode()
     write_var_int(s, pver, len(string_byte))
     s.write(string_byte)
     return
 
+
 def read_var_bytes(s, pver, max_allowed, filed_name):
     count = read_var_int(s, pver)
     if count > max_allowed:
-        raise BytesTooLargeErr("{} is larger than the max allowed size [count {}, max {}".format(filed_name, count, max_allowed))
+        raise BytesTooLargeErr(
+            "{} is larger than the max allowed size [count {}, max {}".format(filed_name, count, max_allowed))
     buf = s.read(count)
     return buf
+
 
 def write_var_bytes(s, pver, some_bytes):
     write_var_int(s, pver, len(some_bytes))
@@ -152,9 +157,6 @@ def write_var_bytes(s, pver, some_bytes):
     return
 
 
-def _random_uint64():
-    pass
-
-
 def random_uint64():
-    pass
+    # TOCHECK, since int has no type in python, leave a note here and decide what to do next
+    return random.getrandbits(64)

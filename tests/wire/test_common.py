@@ -647,12 +647,24 @@ class TestVarBytesOverflowErrors(unittest.TestCase):
                 self.assertEqual(type(e), c['err'])
 
 
-# class TestRandomUint64(unittest.TestCase):
-#     pass
-#
-#
-# class TestRandomUint64Errors(unittest.TestCase):
-#     pass
+class TestRandomUint64(unittest.TestCase):
+    def setUp(self):
+        self.tries = 1 << 8
+        self.watermark = 1 << 56
+        self.maxHits = 5
+        self.badRNG = "The random number generator on this system is clearly " + \
+                      "terrible since we got {} values less than %d in {} runs " + \
+                      "when only {} was expected"
+
+    def test_random_uint64(self):
+        num_hits = 0
+        for i in range(self.tries):
+            nonce = random_uint64()
+            if nonce < self.watermark:
+                num_hits += 1
+            if num_hits > self.maxHits:
+                s = self.badRNG.format(num_hits, self.watermark, self.tries, self.maxHits)
+                raise Exception('Random Uint64 iteration {} failed - {} {}'.format(i, s, num_hits))
 
 
 if __name__ == '__main__':
