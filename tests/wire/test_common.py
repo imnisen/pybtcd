@@ -289,7 +289,7 @@ class TestVarIntWireErrors(unittest.TestCase):
             try:
                 read_var_int(reader, c['pver'])
             except Exception as e:
-                self.assertEqual(type(e), FixedBytesUnexpectedEOFErr)
+                self.assertEqual(type(e), c['read_err'])
 
     def test_write_var_int(self):
         for c in self.tests:
@@ -297,7 +297,7 @@ class TestVarIntWireErrors(unittest.TestCase):
             try:
                 write_var_int(writer, c['pver'], c["in"])
             except Exception as e:
-                self.assertEqual(type(e), FixedBytesShortWriteErr)
+                self.assertEqual(type(e), c['write_err'])
 
 
 class TestVarIntNonCanonicat(unittest.TestCase):
@@ -454,10 +454,59 @@ class TestVarStringWire(unittest.TestCase):
 
 
 
-# class TestVarStringWireErrors(unittest.TestCase):
-#     pass
-#
-#
+class TestVarStringWireErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.str256 = "test" * 64
+        self.tests = [
+            # Force errors on empty string.
+            {
+                "in": "",
+                "buf": bytes([0x00]),
+                "pver": self.pver,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error on single byte varint + string.
+            {
+                "in": "Test",
+                "buf": bytes([0x04]),
+                "pver": self.pver,
+                "max": 2,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on 2-byte varint + string.
+            {
+                "in": self.str256,
+                "buf": bytes([0xfd]),
+                "pver": self.pver,
+                "max": 2,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+        ]
+
+    def test_read_var_string(self):
+        for c in self.tests:
+            reader = FixedBytesReader(c["max"], c["buf"])
+            try:
+                read_var_string(reader, c['pver'])
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])
+
+    def test_write_var_string(self):
+        for c in self.tests:
+            writer = FixedBytesWriter(c["max"])
+            try:
+                write_var_string(writer, c['pver'], c["in"])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])
+
+
 # class TestVarStringOverflowErrors(unittest.TestCase):
 #     pass
 #
