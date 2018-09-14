@@ -15,7 +15,6 @@ TimeNow = int(time.time())
 
 class MsgVersion(Message):
     def __init__(self,
-
                  addr_you: NetAddress,
                  addr_me: NetAddress,
                  nonce: int,
@@ -46,23 +45,43 @@ class MsgVersion(Message):
     def command(self):
         return Commands.CmdVersion
 
-    def btc_decode(self):
-        # TOADD
-        raise NotImplementedError
+    # BtcDecode decodes r using the bitcoin protocol encoding into the receiver.
+    # The version message is special in that the protocol version hasn't been
+    # negotiated yet.  As a result, the pver field is ignored and any fields which
+    # are added in new versions are optional.  This also mean that r must be a
+    # *bytes.Buffer so the number of remaining bytes can be ascertained.
+    #
+    # This is part of the Message interface implementation.
+    def btc_decode(self, s , pver, message_encoding):
+        read_element()
+        # TODO
+
+
+
 
 
     # BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
     # This is part of the Message interface implementation.
+    # me -> you: from -> recv
     def btc_encode(self, s, pver, message_encoding):
         self.valid_user_agent(self.user_agent)
 
-        write_elements(s, self.protocol_version, self.services, self.timestamp)
+        write_element(s, "int32", self.protocol_version)
+        write_element(s, "ServiceFlag", self.services)
+        write_element(s, "int64", self.timestamp)
+        write_netaddress(s, pver, self.addr_you, False)
 
-        # TODO fish readNetAddress and writeNetAddress first
+        # TOCHECK as protocol say: Fields below require version ≥ 106
+        # So why origin don't check it?
 
+        write_netaddress(s, pver, self.addr_me, False)
+        write_element(s, "uint64", self.nonce)
+        write_var_string(s, pver, self.user_agent)
+        write_element(s, "int32", self.last_block)
 
-
-
+        if pver >= BIP0037Version:
+            write_element(s, "bool", not self.disable_relay_tx)
+        return
 
     def max_payload_length(self) -> int:
         raise NotImplementedError

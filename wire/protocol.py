@@ -7,6 +7,13 @@ NetAddressTimeVersion = 31402
 ProtocolVersion = 70013
 
 
+
+# BIP0037Version is the protocol version which added new connection
+# bloom filtering related messages and extended the version message
+# with a relay flag (pver >= BIP0037Version).
+BIP0037Version = 70001
+
+
 # BitcoinNet represents which bitcoin network a message belongs to.
 class BitcoinNet(Enum):
     # MainNet represents the main bitcoin network.
