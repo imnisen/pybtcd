@@ -21,7 +21,7 @@ class NetAddress:
         # IP address of the peer.
         # alway convert to ipv6
         if type(ip) is ipaddress.IPv4Address:
-            self.ip = ipv4_to_ipv6(ip)
+            self.ip = ipv4_mapped_ipv6(ip)
         elif type(ip) is ipaddress.IPv6Address:
             self.ip = ip
         else:
@@ -41,19 +41,34 @@ class NetAddress:
 
     def __eq__(self, other):
         return self.timestamp == other.timestamp \
-            and self.services == other.timestamp \
+            and self.services == other.services \
             and self.ip == other.ip \
             and self.port == other.port
 
 
-def ipv4_to_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
-    # convert ip4 to rfc 3056 IPv6 6to4 address
-    # http://tools.ietf.org/html/rfc3056#section-2
-    prefix6to4 = int(ipaddress.IPv6Address("2002::"))
-    return ipaddress.IPv6Address(prefix6to4 | (int(ipv4) << 80))
+########################################
+# WTF rfc4038 ipv4-mapped-ipv6 or ipv4-compatible-ipv6[deprecated], or rfc3056 6to4 address !
+# https://forums.he.net/index.php?topic=635.0
+# https://forums.he.net/index.php?topic=635.0
+# https://tools.ietf.org/html/rfc3056#section-2
+# https://tools.ietf.org/html/rfc4291#section-2.5.5
+# https://tools.ietf.org/html/rfc4038
+def ipv4_mapped_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
+    return ipaddress.IPv6Address(bytes(10)+ bytes([0xff]*2) + ipv4.packed)
 
-def ipv6_to_ipv4(ipv6: ipaddress.IPv6Address) -> ipaddress.IPv4Address:
-    return ipv6.sixtofour
+# def ipv4_compatible_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
+#     # convert ip4 to rfc 3056 IPv6 6to4 address
+#     # http://tools.ietf.org/html/rfc3056#section-2
+#     prefix6to4 = int(ipaddress.IPv6Address("2002::"))
+#     return ipaddress.IPv6Address(prefix6to4 | (int(ipv4) << 80))
+#
+# def ipv6_to_ipv4_mapped(ipv6: ipaddress.IPv6Address) -> ipaddress.IPv4Address:
+#     return ipv6.ipv4_mapped
+#
+# def ipv6_to_ipv4(ipv6: ipaddress.IPv6Address) -> ipaddress.IPv4Address:
+#     return ipv6.sixtofour
+########################################
+
 
 # maxNetAddressPayload returns the max payload size for a bitcoin NetAddress
 # based on the protocol version.
@@ -77,7 +92,7 @@ def read_netaddress(s, pver, ts):
         timestamp = 0
 
     services = read_element(s, "ServiceFlag")
-    ip = read_element(s, "[16]byte")
+    ip = read_element(s, "ipv6")
 
     port = read_variable_bytes_as_integer(s, 8, BigEndian)
     return NetAddress(services=services,
@@ -91,7 +106,10 @@ def read_netaddress(s, pver, ts):
 # like version do not include the timestamp.
 def write_netaddress(s, pver, na, ts):
     if ts and pver >= NetAddressTimeVersion:
+        # print('write ts')
         write_element(s, "uint32", na.timestamp)
+
+    write_element(s, "ServiceFlag", na.services)
 
     # Ensure to always write 16 bytes even if the ip is nil.
     ip = bytearray(16)
@@ -100,6 +118,6 @@ def write_netaddress(s, pver, na, ts):
         ip = na.ip.packed
     write_element(s, "[16]byte", ip)
 
-    write_variable_bytes_from_integer(s, 1, na.port, BigEndian)
+    write_variable_bytes_from_integer(s, 2, na.port, BigEndian)
     return
 

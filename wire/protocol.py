@@ -79,8 +79,12 @@ class ServiceFlag(Enum):
     def __eq__(self, other):
         return self.b == other.b
 
-
-
+    @classmethod
+    def from_int(cls, i):
+        for flagService in cls:
+            if flagService.value[0] == i:
+                return flagService
+        raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
 
 # class ServiceFlagContainer():
 #     def __init__(self, data_):

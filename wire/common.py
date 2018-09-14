@@ -3,6 +3,7 @@ import random
 from .message import *
 from chainhash import HashSize
 from .protocol import *
+import ipaddress
 
 # MaxVarIntPayload is the maximum payload size for a variable length integer.
 MaxVarIntPayload = 9
@@ -101,10 +102,16 @@ def read_element(s, element_type):
         return read_variable_bytes(s, CommandSize)
     elif element_type == "[16]byte":
         return read_variable_bytes(s, 16)
+    elif element_type == "ipv6":
+        b = read_variable_bytes(s, 16)
+        # convert to ipaddress.ipv6
+        return ipaddress.ip_address(b)
+
+
     elif element_type == "chainhash.Hash":
         return read_variable_bytes(s, HashSize)
     elif element_type == "ServiceFlag":
-        return ServiceFlag(read_variable_bytes_as_integer(s, 8, LittleEndian))
+        return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
     # elif element_type == "InvType":
     #     # TOCHANGE Initial of InvType
     #     pass
@@ -116,9 +123,9 @@ def read_element(s, element_type):
 
     # elif element_type == "RejectCode":
     #     pass
-
-    print("Notice, I don't know what to do here.")
-    return s.read()
+    else:
+        print("Notice,in read_element, I don't know what to do here.")
+        return s.read()
 
 
 # def read_elements(s, elements):
@@ -152,10 +159,13 @@ def write_element(s, element_type, element):
         s.write(element)
     elif element_type == "[16]byte":
         s.write(element)
+    elif element_type == "ipv6":
+        # convert ipv6 -> 16 bytes
+        s.write(element.packed)
     elif element_type == "chainhash.Hash":
         s.write(element.to_bytes())
     elif element_type == "ServiceFlag":
-        write_variable_bytes_from_integer(s, 8, element, LittleEndian)
+        write_variable_bytes_from_integer(s, 8, element.b, LittleEndian)
     # elif element_type == "InvType":
     #     # TOCHANGE Initial of InvType
     #     pass
@@ -167,9 +177,9 @@ def write_element(s, element_type, element):
 
     # elif element_type == "RejectCode":
     #     pass
-
-    print("Notice, I don't know what to do here.")
-    return s.write(element)
+    else:
+        print("Notice, in write_element I don't know what to do here.")
+        return s.write(element)
 
 
 # def write_elements(s, *elements):
