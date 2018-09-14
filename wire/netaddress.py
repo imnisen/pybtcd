@@ -2,6 +2,7 @@
 import time
 from .protocol import *
 from .common import *
+import ipaddress
 
 
 # import ipaddress
@@ -18,7 +19,13 @@ class NetAddress:
         self.services = services
 
         # IP address of the peer.
-        self.ip = ip  # IPv4 or IPv6
+        # alway convert to ipv6
+        if type(ip) is ipaddress.IPv4Address:
+            self.ip = ipv4_to_ipv6(ip)
+        elif type(ip) is ipaddress.IPv6Address:
+            self.ip = ip
+        else:
+            raise Exception('pass a ipaddress.IPv4Address or ipaddress.IPv6Address class ip')
 
         # Port the peer is using.  This is encoded in big endian on the wire
         # which differs from most everything else.
@@ -27,15 +34,26 @@ class NetAddress:
     def has_service(self, service: ServiceFlag) -> bool:
         # TOCHECK  I don't know what the source code `na.Services&service == service` mean?
         # So here is my understand
-        return self.services & service == service
+        return (self.services.b & service.b) == service.b
 
     def add_service(self, service: ServiceFlag):
-        self.services |= service
+        self.services.b |= service.b
 
     def __eq__(self, other):
-        # TODO
-        pass
+        return self.timestamp == other.timestamp \
+            and self.services == other.timestamp \
+            and self.ip == other.ip \
+            and self.port == other.port
 
+
+def ipv4_to_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
+    # convert ip4 to rfc 3056 IPv6 6to4 address
+    # http://tools.ietf.org/html/rfc3056#section-2
+    prefix6to4 = int(ipaddress.IPv6Address("2002::"))
+    return ipaddress.IPv6Address(prefix6to4 | (int(ipv4) << 80))
+
+def ipv6_to_ipv4(ipv6: ipaddress.IPv6Address) -> ipaddress.IPv4Address:
+    return ipv6.sixtofour
 
 # maxNetAddressPayload returns the max payload size for a bitcoin NetAddress
 # based on the protocol version.
@@ -72,4 +90,16 @@ def read_netaddress(s, pver, ts):
 # version and whether or not the timestamp is included per ts.  Some messages
 # like version do not include the timestamp.
 def write_netaddress(s, pver, na, ts):
-    pass
+    if ts and pver >= NetAddressTimeVersion:
+        write_element(s, "uint32", na.timestamp)
+
+    # Ensure to always write 16 bytes even if the ip is nil.
+    ip = bytearray(16)
+    # refer to https://stackoverflow.com/questions/19750929/converting-ipv4-address-to-a-hex-ipv6-address-in-python
+    if na.ip:
+        ip = na.ip.packed
+    write_element(s, "[16]byte", ip)
+
+    write_variable_bytes_from_integer(s, 1, na.port, BigEndian)
+    return
+

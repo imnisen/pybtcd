@@ -6,6 +6,7 @@ NetAddressTimeVersion = 31402
 # ProtocolVersion is the latest protocol version this package supports.
 ProtocolVersion = 70013
 
+
 # BitcoinNet represents which bitcoin network a message belongs to.
 class BitcoinNet(Enum):
     # MainNet represents the main bitcoin network.
@@ -65,9 +66,21 @@ class ServiceFlag(Enum):
     # software.
     SFNode2X = (1 << 8, "SFNode2X")
 
+    def __init__(self, b, s):
+        # Since I cannot find a better method to change the fist store value of ServiceFlag
+        # Here use a `b` slot to save the value it may change
 
+        self.b = b
+        self.s = s
 
     def __str__(self):
-        # TOADD
-        pass
+        return self.value[1]
 
+    def __eq__(self, other):
+        return self.b == other.b
+
+
+
+
+# class ServiceFlagContainer():
+#     def __init__(self, data_):
