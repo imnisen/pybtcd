@@ -2,6 +2,7 @@ import unittest
 import io
 import ipaddress
 from wire.netaddress import *
+from tests.utils import *
 
 
 class TestNetAddress(unittest.TestCase):
@@ -129,3 +130,153 @@ class TestNetAddressWire(unittest.TestCase):
             reader = io.BytesIO(c['buf'])
             na = read_netaddress(reader, c['pver'], c['ts'])
             self.assertEqual(na, c['out'])
+
+class TestNetAddressWireErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = ProtocolVersion
+        self.pverNAT = NetAddressTimeVersion -1
+
+        self.baseNetAddr = NetAddress(services=ServiceFlag.SFNodeNetwork,
+                                      ip=ipaddress.ip_address("127.0.0.1"),
+                                      port=8333,
+                                      timestamp=0x495fab29)  # 2009-01-03 12:15:05 -0600 CST
+
+        self.tests = [
+            # Latest protocol version with timestamp and intentional
+		    # read/write errors.
+            # Force errors on timestamp.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on services.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 4,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on ip.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 12,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on port.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 28,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Latest protocol version with timestamp and intentional
+            # read/write errors.
+            # Force errors on services.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on ip.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 8,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on port.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pver,
+                "ts": True,
+                "max": 24,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Protocol version before NetAddressTimeVersion with timestamp
+            # flag set (should not have timestamp due to old protocol
+            # version) and  intentional read/write errors.
+            # Force errors on services.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pverNAT,
+                "ts": True,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on ip.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pverNAT,
+                "ts": True,
+                "max": 8,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force errors on port.
+            {
+                "in": self.baseNetAddr,
+                "buf": bytes(),
+                "pver": self.pverNAT,
+                "ts": True,
+                "max": 24,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+        ]
+
+
+    def test_write_netaddress(self):
+        for c in self.tests:
+            writer = FixedBytesWriter(c['max'])
+            try:
+                write_netaddress(writer, c['pver'], c['in'], c['ts'])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])
+
+
+
+
+    def test_read_netaddress(self):
+        for c in self.tests:
+            reader = FixedBytesReader(c['max'], c['buf'])
+            try:
+                read_netaddress(reader, c['pver'], c['ts'])
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])

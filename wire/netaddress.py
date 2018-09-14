@@ -24,8 +24,11 @@ class NetAddress:
             self.ip = ipv4_mapped_ipv6(ip)
         elif type(ip) is ipaddress.IPv6Address:
             self.ip = ip
+        elif not ip:
+            self.ip = None
         else:
             raise Exception('pass a ipaddress.IPv4Address or ipaddress.IPv6Address class ip')
+
 
         # Port the peer is using.  This is encoded in big endian on the wire
         # which differs from most everything else.
@@ -92,7 +95,9 @@ def read_netaddress(s, pver, ts):
         timestamp = 0
 
     services = read_element(s, "ServiceFlag")
-    ip = read_element(s, "ipv6")
+    ip = read_element(s, "[16]byte")
+    if ip:
+        ip = ipaddress.ip_address(ip)
 
     port = read_variable_bytes_as_integer(s, 8, BigEndian)
     return NetAddress(services=services,

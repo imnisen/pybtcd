@@ -102,10 +102,10 @@ def read_element(s, element_type):
         return read_variable_bytes(s, CommandSize)
     elif element_type == "[16]byte":
         return read_variable_bytes(s, 16)
-    elif element_type == "ipv6":
-        b = read_variable_bytes(s, 16)
-        # convert to ipaddress.ipv6
-        return ipaddress.ip_address(b)
+    # elif element_type == "ipv6":
+    #     b = read_variable_bytes(s, 16)
+    #     # convert to ipaddress.ipv6
+    #     return ipaddress.ip_address(b)
 
 
     elif element_type == "chainhash.Hash":
@@ -159,9 +159,9 @@ def write_element(s, element_type, element):
         s.write(element)
     elif element_type == "[16]byte":
         s.write(element)
-    elif element_type == "ipv6":
-        # convert ipv6 -> 16 bytes
-        s.write(element.packed)
+    # elif element_type == "ipv6":
+    #     # convert ipv6 -> 16 bytes
+    #     s.write(element.packed)
     elif element_type == "chainhash.Hash":
         s.write(element.to_bytes())
     elif element_type == "ServiceFlag":
