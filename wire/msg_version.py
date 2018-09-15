@@ -12,7 +12,7 @@ DefaultUserAgent = "/btcwire:0.5.0/"
 TimeNow = int(time.time())
 
 
-class MessageLengthTooLong(MessageErr):
+class MessageVersionLengthTooLong(MessageErr):
     pass
 
 
@@ -128,8 +128,12 @@ class MsgVersion(Message):
     # AddUserAgent adds a user agent to the user agent string for the version
     # message.  The version string is not defined to any strict format, although
     # it is recommended to use the form "major.minor.revision" e.g. "2.6.41".
-    def add_user_agent(self, name: str, version: str, *comments):
-        new_user_agent = "{}:{}({})".format(name, version, "; ".join(comments))
+    def add_user_agent(self, name: str, version: str, comments: list=list()):
+        comments_str = "{}".format("; ".join(comments))
+        if comments_str:
+            new_user_agent = "{}:{}({})".format(name, version, comments_str)
+        else:
+            new_user_agent = "{}:{}".format(name, version)
         new_user_agent = "{}{}/".format(self.user_agent, new_user_agent)
         self.valid_user_agent(new_user_agent)
         self.user_agent = new_user_agent
@@ -137,5 +141,5 @@ class MsgVersion(Message):
     # validateUserAgent checks userAgent length against MaxUserAgentLen
     def valid_user_agent(self, user_agent: str):
         if len(user_agent) > MaxUserAgentLen:
-            raise MessageLengthTooLong
+            raise MessageVersionLengthTooLong
         return
