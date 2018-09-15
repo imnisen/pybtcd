@@ -47,3 +47,25 @@ class TestVersion(unittest.TestCase):
                                version="")
         except Exception as e:
             self.assertEqual(type(e), MessageVersionLengthTooLong)
+
+    def test_has_service(self):
+        msg = MsgVersion(addr_me=self.me,
+                         addr_you=self.you,
+                         nonce=self.nonce,
+                         last_block=self.last_block)
+        self.assertEqual(msg.services.b, 0)
+
+        self.assertFalse(msg.has_service(ServiceFlag.SFNodeNetwork))
+
+        # TODO
+    def test_command(self):
+        msg = MsgVersion(addr_me=self.me,
+                         addr_you=self.you,
+                         nonce=self.nonce,
+                         last_block=self.last_block)
+
+        self.assertEqual(str(msg.command()), "version")
+
+
+
+

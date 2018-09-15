@@ -25,7 +25,7 @@ class MsgVersion(Message):
                  timestamp: int = TimeNow,
                  protocol_version: int = ProtocolVersion,
                  user_agent: str = DefaultUserAgent,
-                 services: ServiceFlag = 0,
+                 services: ServiceFlag = ServiceFlag.EMPTY,
                  disable_relay_tx: bool = False):
         self.protocol_version = protocol_version
         self.timestamp = timestamp

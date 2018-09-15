@@ -37,6 +37,8 @@ class Commands(Enum):
     CmdCFHeaders = "cfheaders"
     CmdCFCheckpt = "cfcheckpt"
 
+    def __str__(self):
+        return self.value
 
 # Message is an interface that describes a bitcoin message.  A type that
 # implements Message has complete control over the representation of its data
