@@ -6,12 +6,15 @@ from .common import *
 # version message (MsgVersion).
 MaxUserAgentLen = 256
 
-
 # DefaultUserAgent for wire in the stack
 DefaultUserAgent = "/btcwire:0.5.0/"
 
-
 TimeNow = int(time.time())
+
+
+class MessageLengthTooLong(MessageErr):
+    pass
+
 
 class MsgVersion(Message):
     def __init__(self,
@@ -37,10 +40,10 @@ class MsgVersion(Message):
         super(MsgVersion, self).__init__()
 
     def has_service(self, service: ServiceFlag) -> bool:
-        return self.services & service == service
+        return (self.services.b & service.b) == service.b
 
     def add_service(self, service: ServiceFlag):
-        self.services |= service
+        self.services.b |= service.b
 
     def command(self):
         return Commands.CmdVersion
@@ -52,13 +55,41 @@ class MsgVersion(Message):
     # *bytes.Buffer so the number of remaining bytes can be ascertained.
     #
     # This is part of the Message interface implementation.
-    def btc_decode(self, s , pver, message_encoding):
-        read_element()
-        # TODO
+    def btc_decode(self, s, pver, message_encoding):
+        s.seek(0, 2)
+        eof_index = s.tell()
+        s.seek(0, 0)
 
+        self.protocol_version = read_element(s, "int32")
+        self.services = read_element(s, "ServiceFlag")
+        self.timestamp = read_element(s, "int64")
+        self.addr_you = read_netaddress(s, pver, False)
 
+        # Protocol versions >= 106 added a from address, nonce, and user agent
+        # field and they are only considered present if there are bytes
+        # remaining in the message.
+        if s.tell() < eof_index:
+            self.addr_me = read_netaddress(s, pver, False)
+        if s.tell() < eof_index:
+            self.nonce = read_element(s, "uint64")
+        if s.tell() < eof_index:
+            user_agent = read_var_string(s, pver)
+            self.valid_user_agent(user_agent)
+            self.user_agent = user_agent
 
+        # Protocol versions >= 209 added a last known block field.  It is only
+        # considered present if there are bytes remaining in the message.
+        # TOCHECK don't see this in https://en.bitcoin.it/wiki/Protocol_documentation#version
+        if s.tell() < eof_index:
+            self.last_block = read_element(s, "int32")
 
+        # There was no relay transactions field before BIP0037Version, but
+        # the default behavior prior to the addition of the field was to always
+        # relay transactions.
+        if s.tell() < eof_index:
+            self.disable_relay_tx = not read_element(s, "bool")
+
+        return
 
     # BtcEncode encodes the receiver to w using the bitcoin protocol encoding.
     # This is part of the Message interface implementation.
@@ -83,12 +114,28 @@ class MsgVersion(Message):
             write_element(s, "bool", not self.disable_relay_tx)
         return
 
-    def max_payload_length(self) -> int:
-        raise NotImplementedError
+    def max_payload_length(self, pver: int) -> int:
 
-    def add_user_agent(self):
-        pass
+        # XXX: <= 106 different
 
-    def valid_user_agent(self, user_agent):
-        # TODO
-        pass
+        # Protocol version 4 bytes + services 8 bytes + timestamp 8 bytes +
+        # remote and local net addresses + nonce 8 bytes + length of user
+        # agent (varInt) + max allowed useragent length + last block 4 bytes +
+        # relay transactions flag 1 byte.
+
+        return 33 + (max_netaddress_payload(pver) * 2) + MaxVarIntPayload + MaxUserAgentLen
+
+    # AddUserAgent adds a user agent to the user agent string for the version
+    # message.  The version string is not defined to any strict format, although
+    # it is recommended to use the form "major.minor.revision" e.g. "2.6.41".
+    def add_user_agent(self, name: str, version: str, *comments):
+        new_user_agent = "{}:{}({})".format(name, version, "; ".join(comments))
+        new_user_agent = "{}{}/".format(self.user_agent, new_user_agent)
+        self.valid_user_agent(new_user_agent)
+        self.user_agent = new_user_agent
+
+    # validateUserAgent checks userAgent length against MaxUserAgentLen
+    def valid_user_agent(self, user_agent: str):
+        if len(user_agent) > MaxUserAgentLen:
+            raise MessageLengthTooLong
+        return

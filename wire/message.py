@@ -5,6 +5,7 @@ from enum import Enum
 # header.  Shorter commands must be zero padded.
 CommandSize = 12
 
+
 class Commands(Enum):
     CmdVersion = "version"
     CmdVerAck = "verack"
@@ -42,7 +43,7 @@ class Commands(Enum):
 # and may therefore contain additional or fewer fields than those which
 # are used directly in the protocol encoded message.
 class Message:
-    def btc_decode(self):
+    def btc_decode(self, s, pver, message_encoding):
         raise NotImplementedError
 
     def btc_encode(self, s, pver, message_encoding):
@@ -51,12 +52,12 @@ class Message:
     def command(self) -> str:
         raise NotImplementedError
 
-    def max_payload_length(self) -> int:
+    def max_payload_length(self, pver: int) -> int:
         raise NotImplementedError
 
-    # def __init__(self, command: str) -> 'Message':
-    #     # TODADD dispatch
-    #     pass
+        # def __init__(self, command: str) -> 'Message':
+        #     # TODADD dispatch
+        #     pass
 
 
 class MessageHeader:
@@ -65,4 +66,3 @@ class MessageHeader:
         self.command = command
         self.length = length
         self.checksum = checksum
-
