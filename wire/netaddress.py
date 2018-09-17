@@ -8,7 +8,7 @@ import ipaddress
 # import ipaddress
 
 class NetAddress:
-    def __init__(self, services: ServiceFlag = None, ip=None, port: int = None, timestamp: int = int(time.time()), ):
+    def __init__(self, services: Services = Services(), ip=None, port: int = None, timestamp: int = int(time.time()), ):
         # Last time the address was seen.  This is, unfortunately, encoded as a
         # uint32 on the wire and therefore is limited to 2106.  This field is
         # not present in the bitcoin version message (MsgVersion) nor was it
@@ -37,10 +37,10 @@ class NetAddress:
     def has_service(self, service: ServiceFlag) -> bool:
         # TOCHECK  I don't know what the source code `na.Services&service == service` mean?
         # So here is my understand
-        return (self.services.b & service.b) == service.b
+        return self.services.has_service(service)
 
     def add_service(self, service: ServiceFlag):
-        self.services.b |= service.b
+        self.services.add_service(service)
 
     def __eq__(self, other):
         return self.timestamp == other.timestamp \
@@ -93,8 +93,7 @@ def read_netaddress(s, pver, ts):
         timestamp = read_element(s, "uint32Time")
     else:
         timestamp = 0
-
-    services = read_element(s, "ServiceFlag")
+    services = read_element(s, "services")
     ip = read_element(s, "[16]byte")
     if ip:
         ip = ipaddress.ip_address(ip)
@@ -111,10 +110,9 @@ def read_netaddress(s, pver, ts):
 # like version do not include the timestamp.
 def write_netaddress(s, pver, na, ts):
     if ts and pver >= NetAddressTimeVersion:
-        # print('write ts')
         write_element(s, "uint32", na.timestamp)
 
-    write_element(s, "ServiceFlag", na.services)
+    write_element(s, "services", na.services)
 
     # Ensure to always write 16 bytes even if the ip is nil.
     ip = bytearray(16)

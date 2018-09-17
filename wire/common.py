@@ -4,6 +4,8 @@ from .message import *
 from chainhash import HashSize
 from .protocol import *
 import ipaddress
+import logging
+_logger = logging.Logger(__name__)
 
 # MaxVarIntPayload is the maximum payload size for a variable length integer.
 MaxVarIntPayload = 9
@@ -106,12 +108,12 @@ def read_element(s, element_type):
     #     b = read_variable_bytes(s, 16)
     #     # convert to ipaddress.ipv6
     #     return ipaddress.ip_address(b)
-
-
     elif element_type == "chainhash.Hash":
         return read_variable_bytes(s, HashSize)
-    elif element_type == "ServiceFlag":
-        return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
+    # elif element_type == "ServiceFlag":
+    #     return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
+    elif element_type == "services":
+        return Services(ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian)))
     # elif element_type == "InvType":
     #     # TOCHANGE Initial of InvType
     #     pass
@@ -124,7 +126,7 @@ def read_element(s, element_type):
     # elif element_type == "RejectCode":
     #     pass
     else:
-        print("Notice,in read_element, I don't know what to do here.")
+        _logger("Notice,in read_element, I don't know what to do here.")
         return s.read()
 
 
@@ -164,8 +166,10 @@ def write_element(s, element_type, element):
     #     s.write(element.packed)
     elif element_type == "chainhash.Hash":
         s.write(element.to_bytes())
-    elif element_type == "ServiceFlag":
-        write_variable_bytes_from_integer(s, 8, element.b, LittleEndian)
+    # elif element_type == "ServiceFlag":
+    #     write_variable_bytes_from_integer(s, 8, element.value, LittleEndian)
+    elif element_type == "services":
+        write_variable_bytes_from_integer(s, 8, element.value, LittleEndian)
     # elif element_type == "InvType":
     #     # TOCHANGE Initial of InvType
     #     pass
@@ -178,7 +182,7 @@ def write_element(s, element_type, element):
     # elif element_type == "RejectCode":
     #     pass
     else:
-        print("Notice, in write_element I don't know what to do here.")
+        _logger("Notice, in write_element I don't know what to do here.")
         return s.write(element)
 
 

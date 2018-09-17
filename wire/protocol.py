@@ -40,6 +40,7 @@ class BitcoinNet(Enum):
 
 
 # Enumerations support iteration, in definition order
+# TODO Change this
 class ServiceFlag(Enum):
     EMPTY = (0, "")
 
@@ -73,25 +74,51 @@ class ServiceFlag(Enum):
     # software.
     SFNode2X = (1 << 8, "SFNode2X")
 
-    def __init__(self, b, s):
-        # Since I cannot find a better method to change the fist store value of ServiceFlag
-        # Here use a `b` slot to save the value it may change
-
-        self.b = b
-        self.s = s
-
+    # def __init__(self, b, s):
+    #     # Since I cannot find a better method to change the fist store value of ServiceFlag
+    #     # Here use a `b` slot to save the value it may change
+    #
+    #     self.b = b
+    #     self.s = s
+    #
     def __str__(self):
         return self.value[1]
-
-    def __eq__(self, other):
-        return self.b == other.b
+    #
+    # def __eq__(self, other):
+    #     return self.b == other.b
 
     @classmethod
     def from_int(cls, i):
         for flagService in cls:
             if flagService.value[0] == i:
                 return flagService
-        raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
+        raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
 
-# class ServiceFlagContainer():
-#     def __init__(self, data_):
+
+
+class Services:
+    def __init__(self, service=None):
+        if service:
+            self._data = service.value[0]
+        else:
+            self._data = 0
+
+    def add_service(self, service: ServiceFlag):
+        self._data |= service.value[0]
+
+    def has_service(self, service: ServiceFlag):
+        return (self._data & service.value[0]) == service.value[0]
+
+    def __eq__(self, other):
+        if type(other) is int:
+            return self._data == other
+        elif type(other) is ServiceFlag:
+            return self._data == other.value[0]
+        elif type(other) is Services:
+            return self._data == other.value
+        else:
+            raise Exception('Error compare')
+
+    @property
+    def value(self):
+        return self._data

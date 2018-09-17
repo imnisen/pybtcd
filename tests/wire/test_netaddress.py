@@ -11,7 +11,7 @@ class TestNetAddress(unittest.TestCase):
         self.port = 8333
 
     def test_has_and_add_service(self):
-        na = NetAddress(ServiceFlag.EMPTY, self.ip, self.port)
+        na = NetAddress(ip=self.ip, port=self.port)
 
         self.assertFalse(na.has_service(ServiceFlag.SFNodeNetwork))
 
@@ -33,11 +33,11 @@ class TestNetAddress(unittest.TestCase):
 
 class TestNetAddressWire(unittest.TestCase):
     def setUp(self):
-        self.baseNetAddr = NetAddress(services=ServiceFlag.SFNodeNetwork,
+        self.baseNetAddr = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
                                       ip=ipaddress.ip_address("127.0.0.1"),
                                       port=8333,
                                       timestamp=0x495fab29)  # 2009-01-03 12:15:05 -0600 CST
-        self.baseNetAddrNoTS = NetAddress(services=ServiceFlag.SFNodeNetwork,
+        self.baseNetAddrNoTS = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
                                           ip=ipaddress.ip_address("127.0.0.1"),
                                           port=8333,
                                           timestamp=0)
@@ -136,7 +136,7 @@ class TestNetAddressWireErrors(unittest.TestCase):
         self.pver = ProtocolVersion
         self.pverNAT = NetAddressTimeVersion -1
 
-        self.baseNetAddr = NetAddress(services=ServiceFlag.SFNodeNetwork,
+        self.baseNetAddr = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
                                       ip=ipaddress.ip_address("127.0.0.1"),
                                       port=8333,
                                       timestamp=0x495fab29)  # 2009-01-03 12:15:05 -0600 CST

@@ -25,7 +25,7 @@ class MsgVersion(Message):
                  timestamp: int = TimeNow,
                  protocol_version: int = ProtocolVersion,
                  user_agent: str = DefaultUserAgent,
-                 services: ServiceFlag = ServiceFlag.EMPTY,
+                 services: Services = Services(),
                  disable_relay_tx: bool = False):
         self.protocol_version = protocol_version
         self.timestamp = timestamp
@@ -39,11 +39,15 @@ class MsgVersion(Message):
 
         super(MsgVersion, self).__init__()
 
+
+
+
+
     def has_service(self, service: ServiceFlag) -> bool:
-        return (self.services.b & service.b) == service.b
+        return self.services.has_service(service)
 
     def add_service(self, service: ServiceFlag):
-        self.services.b |= service.b
+        self.services.add_service(service)
 
     def command(self):
         return Commands.CmdVersion
@@ -61,7 +65,7 @@ class MsgVersion(Message):
         s.seek(0, 0)
 
         self.protocol_version = read_element(s, "int32")
-        self.services = read_element(s, "ServiceFlag")
+        self.services = read_element(s, "services")
         self.timestamp = read_element(s, "int64")
         self.addr_you = read_netaddress(s, pver, False)
 
@@ -98,7 +102,7 @@ class MsgVersion(Message):
         self.valid_user_agent(self.user_agent)
 
         write_element(s, "int32", self.protocol_version)
-        write_element(s, "ServiceFlag", self.services)
+        write_element(s, "services", self.services)
         write_element(s, "int64", self.timestamp)
         write_netaddress(s, pver, self.addr_you, False)
 

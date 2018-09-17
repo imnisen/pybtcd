@@ -5,7 +5,6 @@ from .hash import Hash
 # HashB calculates hash(b) and returns the resulting bytes.
 # TOCLEAN equal to  golang :sha256.Sum256([]byte("hello world\n"))
 def hash_b(b: bytes) -> bytes:
-    # print('B is', b)
     sha256 = hashlib.sha256()
     sha256.update(b)
     return sha256.digest()

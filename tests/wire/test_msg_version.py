@@ -48,16 +48,21 @@ class TestVersion(unittest.TestCase):
         except Exception as e:
             self.assertEqual(type(e), MessageVersionLengthTooLong)
 
-    def test_has_service(self):
+    def test_has_service_add_service1(self):
         msg = MsgVersion(addr_me=self.me,
                          addr_you=self.you,
                          nonce=self.nonce,
                          last_block=self.last_block)
-        self.assertEqual(msg.services.b, 0)
+        self.assertEqual(msg.services, 0)
 
         self.assertFalse(msg.has_service(ServiceFlag.SFNodeNetwork))
 
-        # TODO
+        msg.add_service(ServiceFlag.SFNodeNetwork)
+        # self.assertEqual(msg.services.b, ServiceFlag.SFNodeNetwork.b)
+
+        # self.assertTrue(msg.has_service(ServiceFlag.SFNodeNetwork))
+
+
     def test_command(self):
         msg = MsgVersion(addr_me=self.me,
                          addr_you=self.you,
@@ -65,6 +70,13 @@ class TestVersion(unittest.TestCase):
                          last_block=self.last_block)
 
         self.assertEqual(str(msg.command()), "version")
+
+    def test_max_payload_length(self):
+        msg = MsgVersion(addr_me=self.me,
+                         addr_you=self.you,
+                         nonce=self.nonce,
+                         last_block=self.last_block)
+        self.assertEqual(msg.max_payload_length(self.pver), 358)
 
 
 
