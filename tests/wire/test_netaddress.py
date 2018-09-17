@@ -33,11 +33,11 @@ class TestNetAddress(unittest.TestCase):
 
 class TestNetAddressWire(unittest.TestCase):
     def setUp(self):
-        self.baseNetAddr = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
+        self.baseNetAddr = NetAddress(services=ServiceFlag.SFNodeNetwork,
                                       ip=ipaddress.ip_address("127.0.0.1"),
                                       port=8333,
                                       timestamp=0x495fab29)  # 2009-01-03 12:15:05 -0600 CST
-        self.baseNetAddrNoTS = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
+        self.baseNetAddrNoTS = NetAddress(services=ServiceFlag.SFNodeNetwork,
                                           ip=ipaddress.ip_address("127.0.0.1"),
                                           port=8333,
                                           timestamp=0)
@@ -124,26 +124,28 @@ class TestNetAddressWire(unittest.TestCase):
             writer.seek(0)
             self.assertEqual(writer.read(), c['buf'])
 
-
     def test_read_netaddress(self):
+        i = 0
         for c in self.tests:
             reader = io.BytesIO(c['buf'])
             na = read_netaddress(reader, c['pver'], c['ts'])
             self.assertEqual(na, c['out'])
+            i += i
+
 
 class TestNetAddressWireErrors(unittest.TestCase):
     def setUp(self):
         self.pver = ProtocolVersion
-        self.pverNAT = NetAddressTimeVersion -1
+        self.pverNAT = NetAddressTimeVersion - 1
 
-        self.baseNetAddr = NetAddress(services=Services(ServiceFlag.SFNodeNetwork),
+        self.baseNetAddr = NetAddress(services=ServiceFlag.SFNodeNetwork,
                                       ip=ipaddress.ip_address("127.0.0.1"),
                                       port=8333,
                                       timestamp=0x495fab29)  # 2009-01-03 12:15:05 -0600 CST
 
         self.tests = [
             # Latest protocol version with timestamp and intentional
-		    # read/write errors.
+            # read/write errors.
             # Force errors on timestamp.
             {
                 "in": self.baseNetAddr,
@@ -261,7 +263,6 @@ class TestNetAddressWireErrors(unittest.TestCase):
 
         ]
 
-
     def test_write_netaddress(self):
         for c in self.tests:
             writer = FixedBytesWriter(c['max'])
@@ -269,9 +270,6 @@ class TestNetAddressWireErrors(unittest.TestCase):
                 write_netaddress(writer, c['pver'], c['in'], c['ts'])
             except Exception as e:
                 self.assertEqual(type(e), c['write_err'])
-
-
-
 
     def test_read_netaddress(self):
         for c in self.tests:

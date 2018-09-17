@@ -8,7 +8,7 @@ import ipaddress
 # import ipaddress
 
 class NetAddress:
-    def __init__(self, services: Services = Services(), ip=None, port: int = None, timestamp: int = int(time.time()), ):
+    def __init__(self, services=None, ip=None, port: int = None, timestamp: int = int(time.time()), ):
         # Last time the address was seen.  This is, unfortunately, encoded as a
         # uint32 on the wire and therefore is limited to 2106.  This field is
         # not present in the bitcoin version message (MsgVersion) nor was it
@@ -16,7 +16,7 @@ class NetAddress:
         self.timestamp = timestamp
 
         # Bitfield which identifies the services supported by the address.
-        self.services = services
+        self.services = Services(services)
 
         # IP address of the peer.
         # alway convert to ipv6
@@ -28,7 +28,6 @@ class NetAddress:
             self.ip = None
         else:
             raise Exception('pass a ipaddress.IPv4Address or ipaddress.IPv6Address class ip')
-
 
         # Port the peer is using.  This is encoded in big endian on the wire
         # which differs from most everything else.
@@ -44,9 +43,9 @@ class NetAddress:
 
     def __eq__(self, other):
         return self.timestamp == other.timestamp \
-            and self.services == other.services \
-            and self.ip == other.ip \
-            and self.port == other.port
+               and self.services == other.services \
+               and self.ip == other.ip \
+               and self.port == other.port
 
 
 ########################################
@@ -57,7 +56,8 @@ class NetAddress:
 # https://tools.ietf.org/html/rfc4291#section-2.5.5
 # https://tools.ietf.org/html/rfc4038
 def ipv4_mapped_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
-    return ipaddress.IPv6Address(bytes(10)+ bytes([0xff]*2) + ipv4.packed)
+    return ipaddress.IPv6Address(bytes(10) + bytes([0xff] * 2) + ipv4.packed)
+
 
 # def ipv4_compatible_ipv6(ipv4: ipaddress.IPv4Address) -> ipaddress.IPv6Address:
 #     # convert ip4 to rfc 3056 IPv6 6to4 address
@@ -123,4 +123,3 @@ def write_netaddress(s, pver, na, ts):
 
     write_variable_bytes_from_integer(s, 2, na.port, BigEndian)
     return
-

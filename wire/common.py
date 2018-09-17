@@ -113,7 +113,8 @@ def read_element(s, element_type):
     # elif element_type == "ServiceFlag":
     #     return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
     elif element_type == "services":
-        return Services(ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian)))
+        x = read_variable_bytes_as_integer(s, 8, LittleEndian)
+        return Services(ServiceFlag.from_int(x))
     # elif element_type == "InvType":
     #     # TOCHANGE Initial of InvType
     #     pass
@@ -126,7 +127,7 @@ def read_element(s, element_type):
     # elif element_type == "RejectCode":
     #     pass
     else:
-        _logger("Notice,in read_element, I don't know what to do here.")
+        _logger.info("Notice,in read_element, I don't know what to do here.")
         return s.read()
 
 
@@ -182,7 +183,7 @@ def write_element(s, element_type, element):
     # elif element_type == "RejectCode":
     #     pass
     else:
-        _logger("Notice, in write_element I don't know what to do here.")
+        _logger.info("Notice, in write_element I don't know what to do here.")
         return s.write(element)
 
 

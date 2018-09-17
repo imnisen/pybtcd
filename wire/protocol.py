@@ -6,8 +6,6 @@ NetAddressTimeVersion = 31402
 # ProtocolVersion is the latest protocol version this package supports.
 ProtocolVersion = 70013
 
-
-
 # BIP0037Version is the protocol version which added new connection
 # bloom filtering related messages and extended the version message
 # with a relay flag (pver >= BIP0037Version).
@@ -74,18 +72,9 @@ class ServiceFlag(Enum):
     # software.
     SFNode2X = (1 << 8, "SFNode2X")
 
-    # def __init__(self, b, s):
-    #     # Since I cannot find a better method to change the fist store value of ServiceFlag
-    #     # Here use a `b` slot to save the value it may change
-    #
-    #     self.b = b
-    #     self.s = s
-    #
     def __str__(self):
         return self.value[1]
-    #
-    # def __eq__(self, other):
-    #     return self.b == other.b
+
 
     @classmethod
     def from_int(cls, i):
@@ -95,11 +84,15 @@ class ServiceFlag(Enum):
         raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
 
 
-
 class Services:
     def __init__(self, service=None):
-        if service:
+        """Try to make caller simple"""
+        if type(service) is ServiceFlag:
             self._data = service.value[0]
+        elif type(service) is int:
+            self._data = service
+        elif type(service) is Services:
+            self._data = service.value
         else:
             self._data = 0
 
