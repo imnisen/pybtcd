@@ -5,6 +5,15 @@ from enum import Enum
 # header.  Shorter commands must be zero padded.
 CommandSize = 12
 
+# BaseEncoding encodes all messages in the default format specified
+# for the Bitcoin wire protocol.
+BaseEncoding = 1 << 0
+
+# WitnessEncoding encodes all messages other than transaction messages
+# using the default Bitcoin wire protocol specification. For transaction
+# messages, the new encoding format detailed in BIP0144 will be used.
+WitnessEncoding = 1 << 1
+
 
 class Commands(Enum):
     CmdVersion = "version"
@@ -39,6 +48,7 @@ class Commands(Enum):
 
     def __str__(self):
         return self.value
+
 
 # Message is an interface that describes a bitcoin message.  A type that
 # implements Message has complete control over the representation of its data

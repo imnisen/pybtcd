@@ -1,10 +1,23 @@
 from enum import Enum
 
+# ProtocolVersion is the latest protocol version this package supports.
+ProtocolVersion = 70013
+
+# MultipleAddressVersion is the protocol version which added multiple
+# addresses per message (pver >= MultipleAddressVersion).
+MultipleAddressVersion = 209
+
 # NetAddressTimeVersion is the protocol version which added the
 # timestamp field (pver >= NetAddressTimeVersion).
 NetAddressTimeVersion = 31402
-# ProtocolVersion is the latest protocol version this package supports.
-ProtocolVersion = 70013
+
+# BIP0031Version is the protocol version AFTER which a pong message
+# and nonce field in ping were added (pver > BIP0031Version).
+BIP0031Version = 60000
+
+# BIP0035Version is the protocol version which added the mempool
+# message (pver >= BIP0035Version).
+BIP0035Version = 60002
 
 # BIP0037Version is the protocol version which added new connection
 # bloom filtering related messages and extended the version message
@@ -74,7 +87,6 @@ class ServiceFlag(Enum):
 
     def __str__(self):
         return self.value[1]
-
 
     @classmethod
     def from_int(cls, i):

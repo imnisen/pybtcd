@@ -125,12 +125,10 @@ class TestNetAddressWire(unittest.TestCase):
             self.assertEqual(writer.read(), c['buf'])
 
     def test_read_netaddress(self):
-        i = 0
         for c in self.tests:
             reader = io.BytesIO(c['buf'])
             na = read_netaddress(reader, c['pver'], c['ts'])
             self.assertEqual(na, c['out'])
-            i += i
 
 
 class TestNetAddressWireErrors(unittest.TestCase):

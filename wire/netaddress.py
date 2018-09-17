@@ -98,7 +98,8 @@ def read_netaddress(s, pver, ts):
     if ip:
         ip = ipaddress.ip_address(ip)
 
-    port = read_variable_bytes_as_integer(s, 8, BigEndian)
+    # port = read_variable_bytes_as_integer(s, 8, BigEndian)
+    port = read_variable_bytes_as_integer(s, 2, BigEndian)
     return NetAddress(services=services,
                       ip=ip,
                       port=port,

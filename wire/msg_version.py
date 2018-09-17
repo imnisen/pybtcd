@@ -18,18 +18,18 @@ class MessageVersionLengthTooLong(MessageErr):
 
 class MsgVersion(Message):
     def __init__(self,
-                 addr_you: NetAddress,
-                 addr_me: NetAddress,
-                 nonce: int,
-                 last_block: int,
+                 addr_you,
+                 addr_me,
+                 nonce,
+                 last_block,
+                 services=None,
                  timestamp: int = TimeNow,
                  protocol_version: int = ProtocolVersion,
                  user_agent: str = DefaultUserAgent,
-                 services: Services = Services(),
                  disable_relay_tx: bool = False):
         self.protocol_version = protocol_version
         self.timestamp = timestamp
-        self.services = services
+        self.services = Services(services)
         self.addr_you = addr_you
         self.addr_me = addr_me
         self.nonce = nonce
@@ -39,9 +39,16 @@ class MsgVersion(Message):
 
         super(MsgVersion, self).__init__()
 
-
-
-
+    def __eq__(self, other):
+        return self.addr_you == other.addr_you \
+               and self.addr_me == other.addr_me \
+               and self.nonce == other.nonce \
+               and self.last_block == other.last_block \
+               and self.services == other.services \
+               and self.timestamp == other.timestamp \
+               and self.protocol_version == other.protocol_version \
+               and self.user_agent == other.user_agent \
+               and self.disable_relay_tx == other.disable_relay_tx
 
     def has_service(self, service: ServiceFlag) -> bool:
         return self.services.has_service(service)
@@ -132,7 +139,7 @@ class MsgVersion(Message):
     # AddUserAgent adds a user agent to the user agent string for the version
     # message.  The version string is not defined to any strict format, although
     # it is recommended to use the form "major.minor.revision" e.g. "2.6.41".
-    def add_user_agent(self, name: str, version: str, comments: list=list()):
+    def add_user_agent(self, name: str, version: str, comments: list = list()):
         comments_str = "{}".format("; ".join(comments))
         if comments_str:
             new_user_agent = "{}:{}({})".format(name, version, comments_str)
