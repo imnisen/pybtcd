@@ -85,6 +85,11 @@ baseVersionBIP0037Encoded = bytes([
     0x01,  # Relay tx
 ])
 
+def new_empty_msg_version():
+    return MsgVersion(addr_you=None,
+               addr_me=None,
+               nonce=None,
+               last_block=None)
 
 class TestVersion(unittest.TestCase):
     def setUp(self):
@@ -280,32 +285,196 @@ class TestVersionWire(unittest.TestCase):
     def test_btc_decode(self):
         for c in self.tests:
             s = io.BytesIO(c["buf"])
-            msg_version = MsgVersion(addr_you=None,
-                                     addr_me=None,
-                                     nonce=None,
-                                     last_block=None)
+            msg_version = new_empty_msg_version()
             msg_version.btc_decode(s, c["pver"], c["enc"])
             self.assertEqual(msg_version, c['out'])
 
 
-# class TestVersionWireErrors(unittest.TestCase):
-#     def setUp(self):
-#         self.pver = 60002
-#         self.enc = BaseEncoding
-#         self.wire_err = MessageErr
-#
-#         newUAVer = "/" + "t" * (MaxUserAgentLen - 8 + 1) + ":0.0.1/"
-#
-#
-#     def test_btc_encode(self):
-#
-#         # Test for fix buf
-#         fixed_reader = FixedBytesReader(0, bytes())
-#         msg_version = MsgVersion(addr_you=None,
-#                                  addr_me=None,
-#                                  nonce=None,
-#                                  last_block=None)
-#         try:
-#             msg_version.btc_decode(fixed_reader, self.pver, self.enc)
-#         except Exception as e:
-#             self.assertEqual(type(e), FixedBytesUnexpectedEOFErr)
+class TestVersionWireErrors(unittest.TestCase):
+    def setUp(self):
+        self.pver = 60002
+        self.enc = BaseEncoding
+        self.wire_err = MessageErr
+
+        new_user_agent = "/" + "t" * (MaxUserAgentLen - 8 + 1) + ":0.0.1/"
+
+        self.exceedUAVer = MsgVersion(addr_you=NetAddress(services=ServiceFlag.SFNodeNetwork,
+                                                          ip=ipaddress.ip_address("192.168.0.1"),
+                                                          port=8333,
+                                                          timestamp=0),  # Zero value -- no timestamp in version
+                                      addr_me=NetAddress(services=ServiceFlag.SFNodeNetwork,
+                                                         ip=ipaddress.ip_address("127.0.0.1"),
+                                                         port=8333,
+                                                         timestamp=0),  # Zero value -- no timestamp in version
+                                      protocol_version=60002,
+                                      services=ServiceFlag.SFNodeNetwork,
+                                      timestamp=0x495fab29,  # 2009-01-03 12:15:05 -0600 CST)
+                                      nonce=123123,  # 0x1e0f3
+                                      user_agent=new_user_agent,  # Change new user agent here
+                                      last_block=234234  # 0x392fa
+                                      )
+        var_int_buf = io.BytesIO()
+        write_var_int(var_int_buf, self.pver, len(new_user_agent.encode()))
+
+        var_int_buf_value = var_int_buf.getvalue()
+        newLen = len(baseVersionEncoded) - len(baseVersion.user_agent.encode()) + len(var_int_buf_value) - 1 + len(new_user_agent.encode())
+
+        # BaseVersionEncoded everything before and include nonce
+        # + user_agent'var_int + user_agent
+        # + baseVersionEncoded's last block
+        self.exceedUAVerEncoded = baseVersionEncoded[
+                                  0:80] + var_int_buf_value + new_user_agent.encode() + baseVersionEncoded[97:101]
+
+        assert newLen == len(self.exceedUAVerEncoded)
+
+        self.tests = [
+            # Force error in protocol version.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in services.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 4,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in timestamp.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 12,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in remote address.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 20,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in local address.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 47,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in nonce.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 73,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in user agent length.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 81,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in user agent.
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 82,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in last block..
+            {
+                "in": baseVersion,
+                "buf": baseVersionEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": 92,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr
+            },
+
+            # Force error in relay tx - no read error should happen since it's optional.
+            {
+                "in": baseVersionBIP0037,
+                "buf": baseVersionBIP0037Encoded,
+                "pver": BIP0037Version,
+                "enc": BaseEncoding,
+                "max": 101,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": None
+            },
+
+            # Force error due to user agent too big
+            {
+                "in": self.exceedUAVer,
+                "buf": self.exceedUAVerEncoded,
+                "pver": self.pver,
+                "enc": BaseEncoding,
+                "max": newLen,
+                "write_err": MessageVersionLengthTooLong,
+                "read_err": MessageVersionLengthTooLong
+            },
+
+
+
+        ]
+
+    def test_btc_decode(self):
+
+        # Test for fix buf
+        fixed_reader = FixedBytesReader(0, bytes())
+        msg_version = new_empty_msg_version()
+        try:
+            msg_version.btc_decode(fixed_reader, self.pver, self.enc)
+        except Exception as e:
+            self.assertEqual(type(e), FixedBytesUnexpectedEOFErr)
+
+        for c in self.tests:
+            s = FixedBytesReader(c['max'], c['buf'])
+            try:
+                msg_version = new_empty_msg_version()
+                msg_version.btc_decode(s, c['pver'], c['enc'])
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])
+
+    def test_btc_encode(self):
+        for c in self.tests:
+            s = FixedBytesWriter(c['max'])
+            try:
+                c['in'].btc_encode(s, c['pver'], c['enc'])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])

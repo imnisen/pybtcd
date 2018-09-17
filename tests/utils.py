@@ -1,5 +1,6 @@
 import io
 
+
 # For TestVarIntWireErrors test, same as golang newFixedWriter, newFixedReader
 class FixedBytesErr(Exception):
     pass
@@ -17,6 +18,10 @@ class FixedBytesShortWriteErr(FixedBytesErr):
     pass
 
 
+class FixedBytesNotSupportedErr(FixedBytesErr):
+    pass
+
+
 class FixedBytesReader:
     def __init__(self, max, buf):
         if max < 0:
@@ -24,6 +29,7 @@ class FixedBytesReader:
 
         self.max = max
         self._data = io.BytesIO(buf)
+        self._buf_len = len(buf)
 
     def read(self, size: int) -> bytes:
         # Limit the case, maybe we can let size<=0, and decide what to do
@@ -43,6 +49,18 @@ class FixedBytesReader:
             size -= 1
 
         return bytes(result)
+
+    def seek(self, offset=0, whence=0):
+        if offset != 0:
+            raise FixedBytesNotSupportedErr
+
+        if whence == 2 and self.max < self._buf_len:
+            self._data.seek(self.max, 0)
+        else:
+            self._data.seek(offset, whence)
+
+    def tell(self):
+        return self._data.tell()
 
 
 class FixedBytesWriter:
