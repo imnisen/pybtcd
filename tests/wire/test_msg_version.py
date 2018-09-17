@@ -1,6 +1,7 @@
 import unittest
 from wire.msg_version import *
 import io
+from tests.utils import *
 
 # baseVersion is used in the various tests as a baseline MsgVersion.
 baseVersion = MsgVersion(addr_you=NetAddress(services=ServiceFlag.SFNodeNetwork,
@@ -285,3 +286,26 @@ class TestVersionWire(unittest.TestCase):
                                      last_block=None)
             msg_version.btc_decode(s, c["pver"], c["enc"])
             self.assertEqual(msg_version, c['out'])
+
+
+# class TestVersionWireErrors(unittest.TestCase):
+#     def setUp(self):
+#         self.pver = 60002
+#         self.enc = BaseEncoding
+#         self.wire_err = MessageErr
+#
+#         newUAVer = "/" + "t" * (MaxUserAgentLen - 8 + 1) + ":0.0.1/"
+#
+#
+#     def test_btc_encode(self):
+#
+#         # Test for fix buf
+#         fixed_reader = FixedBytesReader(0, bytes())
+#         msg_version = MsgVersion(addr_you=None,
+#                                  addr_me=None,
+#                                  nonce=None,
+#                                  last_block=None)
+#         try:
+#             msg_version.btc_decode(fixed_reader, self.pver, self.enc)
+#         except Exception as e:
+#             self.assertEqual(type(e), FixedBytesUnexpectedEOFErr)

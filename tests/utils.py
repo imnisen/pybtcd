@@ -17,7 +17,7 @@ class FixedBytesShortWriteErr(FixedBytesErr):
     pass
 
 
-class FixedBytesReader():
+class FixedBytesReader:
     def __init__(self, max, buf):
         if max < 0:
             raise FixedBytesInitErr
@@ -45,7 +45,7 @@ class FixedBytesReader():
         return bytes(result)
 
 
-class FixedBytesWriter():
+class FixedBytesWriter:
     def __init__(self, max):
         if max < 0:
             raise FixedBytesInitErr
