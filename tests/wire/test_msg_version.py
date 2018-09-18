@@ -85,11 +85,13 @@ baseVersionBIP0037Encoded = bytes([
     0x01,  # Relay tx
 ])
 
+
 def new_empty_msg_version():
     return MsgVersion(addr_you=None,
-               addr_me=None,
-               nonce=None,
-               last_block=None)
+                      addr_me=None,
+                      nonce=0,
+                      last_block=0)
+
 
 class TestVersion(unittest.TestCase):
     def setUp(self):
@@ -317,7 +319,8 @@ class TestVersionWireErrors(unittest.TestCase):
         write_var_int(var_int_buf, self.pver, len(new_user_agent.encode()))
 
         var_int_buf_value = var_int_buf.getvalue()
-        newLen = len(baseVersionEncoded) - len(baseVersion.user_agent.encode()) + len(var_int_buf_value) - 1 + len(new_user_agent.encode())
+        newLen = len(baseVersionEncoded) - len(baseVersion.user_agent.encode()) + len(var_int_buf_value) - 1 + len(
+            new_user_agent.encode())
 
         # BaseVersionEncoded everything before and include nonce
         # + user_agent'var_int + user_agent
@@ -449,8 +452,6 @@ class TestVersionWireErrors(unittest.TestCase):
                 "read_err": MessageVersionLengthTooLong
             },
 
-
-
         ]
 
     def test_btc_decode(self):
@@ -478,3 +479,134 @@ class TestVersionWireErrors(unittest.TestCase):
                 c['in'].btc_encode(s, c['pver'], c['enc'])
             except Exception as e:
                 self.assertEqual(type(e), c['write_err'])
+
+
+class TestVersionOptionalFields(unittest.TestCase):
+    def setUp(self):
+        # onlyRequiredVersion is a version message that only contains the
+        # required versions and all other values set to their default values.
+        onlyRequiredVersion = MsgVersion(protocol_version=60002,
+                                         services=ServiceFlag.SFNodeNetwork,
+                                         timestamp=0x495fab29,
+                                         addr_you=NetAddress(timestamp=0,
+                                                             services=ServiceFlag.SFNodeNetwork,
+                                                             ip=ipaddress.ip_address("192.168.0.1"),
+                                                             port=8333))
+        onlyRequiredVersionEncoded = baseVersionEncoded[:-55]
+
+        # addrMeVersion is a version message that contains all fields through
+        # the AddrMe field.
+        addrMeVersion = MsgVersion(protocol_version=60002,
+                                   services=ServiceFlag.SFNodeNetwork,
+                                   timestamp=0x495fab29,
+                                   addr_you=NetAddress(timestamp=0,
+                                                       services=ServiceFlag.SFNodeNetwork,
+                                                       ip=ipaddress.ip_address("192.168.0.1"),
+                                                       port=8333),
+                                   addr_me=NetAddress(
+                                       timestamp=0,
+                                       services=ServiceFlag.SFNodeNetwork,
+                                       ip=ipaddress.ip_address("127.0.0.1"),
+                                       port=8333))
+        addrMeVersionEncoded = baseVersionEncoded[:-29]
+
+        # onceVersion is a version message that contains all fields through
+        # the Nonce field.
+        nonceVersion = MsgVersion(protocol_version=60002,
+                                  services=ServiceFlag.SFNodeNetwork,
+                                  timestamp=0x495fab29,
+                                  addr_you=NetAddress(timestamp=0,
+                                                      services=ServiceFlag.SFNodeNetwork,
+                                                      ip=ipaddress.ip_address("192.168.0.1"),
+                                                      port=8333),
+                                  addr_me=NetAddress(
+                                      timestamp=0,
+                                      services=ServiceFlag.SFNodeNetwork,
+                                      ip=ipaddress.ip_address("127.0.0.1"),
+                                      port=8333),
+                                  nonce=123123)
+
+        nonceVersionEncoded = baseVersionEncoded[:-21]
+
+        # uaVersion is a version message that contains all fields through
+        # the UserAgent field.
+        uaVersion = MsgVersion(protocol_version=60002,
+                               services=ServiceFlag.SFNodeNetwork,
+                               timestamp=0x495fab29,
+                               addr_you=NetAddress(timestamp=0,
+                                                   services=ServiceFlag.SFNodeNetwork,
+                                                   ip=ipaddress.ip_address("192.168.0.1"),
+                                                   port=8333),
+                               addr_me=NetAddress(
+                                   timestamp=0,
+                                   services=ServiceFlag.SFNodeNetwork,
+                                   ip=ipaddress.ip_address("127.0.0.1"),
+                                   port=8333),
+                               nonce=123123,
+                               user_agent="/btcdtest:0.0.1/")
+
+        uaVersionEncoded = baseVersionEncoded[:-4]
+
+        # lastBlockVersion is a version message that contains all fields
+        # through the LastBlock field.
+        lastBlockVersion = MsgVersion(protocol_version=60002,
+                                      services=ServiceFlag.SFNodeNetwork,
+                                      timestamp=0x495fab29,
+                                      addr_you=NetAddress(timestamp=0,
+                                                          services=ServiceFlag.SFNodeNetwork,
+                                                          ip=ipaddress.ip_address("192.168.0.1"),
+                                                          port=8333),
+                                      addr_me=NetAddress(
+                                          timestamp=0,
+                                          services=ServiceFlag.SFNodeNetwork,
+                                          ip=ipaddress.ip_address("127.0.0.1"),
+                                          port=8333),
+                                      nonce=123123,
+                                      user_agent="/btcdtest:0.0.1/",
+                                      last_block=234234)
+
+        lastBlockVersionEncoded = baseVersionEncoded[:]
+
+        self.tests = [
+            {
+                "msg": onlyRequiredVersion,
+                "buf": onlyRequiredVersionEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding
+            },
+
+            {
+                "msg": addrMeVersion,
+                "buf": addrMeVersionEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding
+            },
+
+            {
+                "msg": nonceVersion,
+                "buf": nonceVersionEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding
+            },
+
+            {
+                "msg": uaVersion,
+                "buf": uaVersionEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding
+            },
+
+            {
+                "msg": lastBlockVersion,
+                "buf": lastBlockVersionEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding
+            },
+        ]
+
+    def test_btc_decode(self):
+        for c in self.tests:
+            msg_version = new_empty_msg_version()
+            s = io.BytesIO(c['buf'])
+            msg_version.btc_decode(s, c['pver'], c['enc'])
+            self.assertEqual(msg_version, c['msg'])

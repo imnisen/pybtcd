@@ -19,9 +19,9 @@ class MessageVersionLengthTooLong(MessageErr):
 class MsgVersion(Message):
     def __init__(self,
                  addr_you,
-                 addr_me,
-                 nonce,
-                 last_block,
+                 addr_me=None,
+                 nonce=0,
+                 last_block=0,
                  services=None,
                  timestamp: int = TimeNow,
                  protocol_version: int = ProtocolVersion,
