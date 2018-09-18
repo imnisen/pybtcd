@@ -109,15 +109,14 @@ def read_element(s, element_type):
     #     # convert to ipaddress.ipv6
     #     return ipaddress.ip_address(b)
     elif element_type == "chainhash.Hash":
-        return read_variable_bytes(s, HashSize)
+        return Hash(read_variable_bytes(s, HashSize))
     # elif element_type == "ServiceFlag":
     #     return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
     elif element_type == "services":
         x = read_variable_bytes_as_integer(s, 8, LittleEndian)
         return Services(ServiceFlag.from_int(x))
     # elif element_type == "InvType":
-    #     # TOCHANGE Initial of InvType
-    #     pass
+    #     return read_variable_bytes_as_integer(s, 4, LittleEndian)
     elif element_type == "BitcoinNet":
         return BitcoinNet(ServiceFlag(read_variable_bytes_as_integer(s, 4, LittleEndian)))
 

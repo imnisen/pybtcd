@@ -14,8 +14,8 @@ class Err(Exception):
         self.msg = msg
 
 
-class HashInitErr(Err):
-    pass
+# class HashInitErr(Err):
+#     pass
 
 
 class HashStrSizeErr(Err):
@@ -30,13 +30,13 @@ class HashStrSizeErr(Err):
 #       -------->    <-------
 
 class Hash:
-    def __init__(self, data):
+    def __init__(self, data=None):
         if type(data) is bytes:
             self._data = data
         elif type(data) is str:
             self._data = self.str_to_bytes(data)
         else:
-            raise HashInitErr()
+            self._data = bytes(HashSize)
 
     def to_bytes(self):
         return self._data
