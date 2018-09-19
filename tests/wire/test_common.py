@@ -12,6 +12,7 @@ mainNetGenesisHash = Hash(bytes([
 ]))
 
 
+# TOADD add test case for services type
 class TestElementWire(unittest.TestCase):
     def setUp(self):
         self.tests = [
@@ -53,7 +54,7 @@ class TestElementWire(unittest.TestCase):
             {
                 "in": bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, ]),
                 "buf": bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, ]),
-                "type": "[CommandSize]byte"
+                "type": "[CommandSize]uint8"
 
             },
             {
@@ -99,21 +100,126 @@ class TestElementWire(unittest.TestCase):
 
         ]
 
-    # def test_write_element(self):
-    #     for c in self.tests:
-    #         s = io.BytesIO()
-    #         write_element(s, c['type'], c['in'])
-    #         self.assertEqual(s.getvalue(), c['buf'])
-    #
-    # def test_read_element(self):
-    #     for c in self.tests:
-    #         s = io.BytesIO(c['buf'])
-    #         read_element(s, c['in'])
-    #         self.assertEqual(s.getvalue(), c['buf'])
+    def test_write_element(self):
+        for c in self.tests:
+            s = io.BytesIO()
+            write_element(s, c['type'], c['in'])
+            self.assertEqual(s.getvalue(), c['buf'])
+
+    def test_read_element(self):
+        for c in self.tests:
+            s = io.BytesIO(c['buf'])
+            read_element(s, c['type'])
+            self.assertEqual(s.getvalue(), c['buf'])
 
 
 class TestElementWireErrors(unittest.TestCase):
-    pass
+    def setUp(self):
+        self.tests = [
+            {
+                "in": 1,
+                "type": "int32",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            {
+                "in": 256,
+                "type": "uint32",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            {
+                "in": 65536,
+                "type": "int64",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            {
+                "in": True,
+                "type": "bool",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            {
+                "in": bytes([0x01, 0x02, 0x03, 0x04]),
+                "type": "[4]byte",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+            {
+                "in": bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                             0x09, 0x0a, 0x0b, 0x0c, ]),
+                "type": "[CommandSize]uint8",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+            {
+                "in": bytes([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                             0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, ]),
+                "type": "[16]byte",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+            {
+                "in": Hash([0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+                            0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
+                            0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
+                            0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20, ]),
+                "type": "chainhash.Hash",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            {
+                "in": ServiceFlag.SFNodeNetwork,
+                "type": "ServiceFlag",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+            {
+                "in": InvType.InvTypeTx,
+                "type": "InvType",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+            {
+                "in": BitcoinNet.MainNet,
+                "type": "BitcoinNet",
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+        ]
+
+    def test_read_element(self):
+        for c in self.tests:
+            s = FixedBytesReader(c['max'], bytes())
+            try:
+                read_element(s, c['type'])
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])
+
+    def test_write_element(self):
+        for c in self.tests:
+            s = FixedBytesWriter(c['max'])
+            try:
+                write_element(s, c['type'], c['in'])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])
 
 
 class TestVarIntWire(unittest.TestCase):
@@ -240,7 +346,6 @@ class TestVarIntWireErrors(unittest.TestCase):
                 "write_err": FixedBytesShortWriteErr,
                 "read_err": FixedBytesUnexpectedEOFErr,
             },
-
         ]
 
     def test_read_var_int(self):

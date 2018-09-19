@@ -40,7 +40,8 @@ def read_variable_bytes(s, bytes_len):
 
 
 def read_variable_bytes_as_integer(s, bytes_len, byteorder=LittleEndian):
-    return int.from_bytes(s.read(bytes_len), byteorder=byteorder)
+    x = int.from_bytes(s.read(bytes_len), byteorder=byteorder)
+    return x
 
 
 def write_variable_bytes_from_integer(s, bytes_len, val, byteorder=LittleEndian):
@@ -61,7 +62,8 @@ def read_element(s, element_type):
     # So, the next operation after read_element may also need it's element_type
 
     if element_type == "int32":
-        return read_variable_bytes_as_integer(s, 4, LittleEndian)
+        x = read_variable_bytes_as_integer(s, 4, LittleEndian)
+        return x
     elif element_type == "uint32":
         return read_variable_bytes_as_integer(s, 4, LittleEndian)
     elif element_type == "int64":
@@ -82,7 +84,7 @@ def read_element(s, element_type):
         return read_variable_bytes_as_integer(s, 8, LittleEndian)
     elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
         return read_variable_bytes(s, 4)
-    elif element_type == "[CommandSize]uint":  # TOCHANGE, this is a golang mark, maybe more common?
+    elif element_type == "[CommandSize]uint8":  # TOCHANGE, this is a golang mark, maybe more common?
         return read_variable_bytes(s, CommandSize)
     elif element_type == "[16]byte":
         return read_variable_bytes(s, 16)
@@ -138,7 +140,7 @@ def write_element(s, element_type, element):
 
     elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
         s.write(element)
-    elif element_type == "[CommandSize]uint":  # TOCHANGE, this is a golang mark, maybe more common?
+    elif element_type == "[CommandSize]uint8":  # TOCHANGE, this is a golang mark, maybe more common?
         s.write(element)
     elif element_type == "[16]byte":
         s.write(element)
