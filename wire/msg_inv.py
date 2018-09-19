@@ -3,8 +3,8 @@ from .invvect import *
 
 
 class MsgInv(Message):
-    def __init__(self, inv_list: list):
-        self.inv_list = inv_list
+    def __init__(self, inv_list=None):
+        self.inv_list = inv_list or []
 
     def btc_decode(self, s, pver, message_encoding):
         count = read_var_int(s, pver)
