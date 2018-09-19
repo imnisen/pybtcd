@@ -1,0 +1,318 @@
+import unittest
+import io
+from wire.msg_getblocks import *
+from tests.utils import *
+from .test_common import mainNetGenesisHash
+
+
+class TestGetBlocks(unittest.TestCase):
+    def test_command(self):
+        msg = MsgGetBlocks()
+        self.assertEqual(str(msg.command()), "getblocks")
+
+    def test_max_payload_length(self):
+        msg = MsgGetBlocks()
+        want_payload = 16045
+        self.assertEqual(msg.max_payload_length(ProtocolVersion), want_payload)
+
+    def test_block_locator_hash(self):
+        # Block 99500 hash.
+        hashStr = "000000000002e7ad7b9eef9479e4aabc65cb831269cc20d2632c13684406dee0"
+        locatorHash = Hash(hashStr)
+
+        # Block 100000 hash.
+        hashStr = "3ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506"
+        hashStop = Hash(hashStr)
+
+        msg = MsgGetBlocks(hash_stop=hashStop)
+
+        msg.add_block_locator_hash(locatorHash)
+        self.assertEqual(msg.block_locator_hashes[0], locatorHash)
+
+        try:
+            for _ in range(MaxBlockLocatorsPerMsg):
+                msg.add_block_locator_hash(locatorHash)
+        except Exception as e:
+            self.assertEqual(type(e), MaxBlockLocatorsPerMsgErr)
+
+
+class TestGetBlocksWire(unittest.TestCase):
+    def setUp(self):
+        # Set protocol inside getblocks message.
+        pver = 60002
+
+        # Block 99499 hash.
+        hashStr = "2710f40c87ec93d010a6fd95f42c59a2cbacc60b18cf6b7957535"
+        hashLocator = Hash(hashStr)
+
+        # Block 99500 hash.
+        hashStr = "2e7ad7b9eef9479e4aabc65cb831269cc20d2632c13684406dee0"
+        hashLocator2 = Hash(hashStr)
+
+        # Block 100000 hash.
+        hashStr = "3ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506"
+        hashStop = Hash(hashStr)
+
+        noLocators = MsgGetBlocks(hash_stop=Hash(), protocol_version=pver)
+        noLocatorsEncoded = bytes([
+            0x62, 0xea, 0x00, 0x00,  # Protocol version 60002
+            0x00,  # Varint for number of block locator hashes
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  # Hash stop
+        ])
+
+        # MsgGetBlocks message with multiple block locators and a stop hash.
+        multiLocators = MsgGetBlocks(hash_stop=hashStop, protocol_version=pver)
+        multiLocators.add_block_locator_hash(hashLocator2)
+        multiLocators.add_block_locator_hash(hashLocator)
+        multiLocatorsEncoded = bytes([
+            0x62, 0xea, 0x00, 0x00,  # Protocol version 60002
+            0x02,  # Varint for number of block locator hashes
+            0xe0, 0xde, 0x06, 0x44, 0x68, 0x13, 0x2c, 0x63,
+            0xd2, 0x20, 0xcc, 0x69, 0x12, 0x83, 0xcb, 0x65,
+            0xbc, 0xaa, 0xe4, 0x79, 0x94, 0xef, 0x9e, 0x7b,
+            0xad, 0xe7, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,  # Block 99500 hash
+            0x35, 0x75, 0x95, 0xb7, 0xf6, 0x8c, 0xb1, 0x60,
+            0xcc, 0xba, 0x2c, 0x9a, 0xc5, 0x42, 0x5f, 0xd9,
+            0x6f, 0x0a, 0x01, 0x3d, 0xc9, 0x7e, 0xc8, 0x40,
+            0x0f, 0x71, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,  # Block 99499 hash
+            0x06, 0xe5, 0x33, 0xfd, 0x1a, 0xda, 0x86, 0x39,
+            0x1f, 0x3f, 0x6c, 0x34, 0x32, 0x04, 0xb0, 0xd2,
+            0x78, 0xd4, 0xaa, 0xec, 0x1c, 0x0b, 0x20, 0xaa,
+            0x27, 0xba, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,  # Hash stop
+
+        ])
+
+        self.tests = [
+            # Latest protocol version with no block locators.
+            {
+                "in": noLocators,
+                "out": noLocators,
+                "buf": noLocatorsEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding,
+            },
+
+            # Latest protocol version with multiple block locators.
+            {
+                "in": multiLocators,
+                "out": multiLocators,
+                "buf": multiLocatorsEncoded,
+                "pver": ProtocolVersion,
+                "enc": BaseEncoding,
+            },
+
+            # Protocol version BIP0035Version with no block locators.
+            {
+                "in": noLocators,
+                "out": noLocators,
+                "buf": noLocatorsEncoded,
+                "pver": BIP0035Version,
+                "enc": BaseEncoding,
+            },
+
+            #  Protocol version BIP0035Version with multiple block locators.
+            {
+                "in": multiLocators,
+                "out": multiLocators,
+                "buf": multiLocatorsEncoded,
+                "pver": BIP0035Version,
+                "enc": BaseEncoding,
+            },
+
+            # Protocol version BIP0031Version with no block locators.
+            {
+                "in": noLocators,
+                "out": noLocators,
+                "buf": noLocatorsEncoded,
+                "pver": BIP0031Version,
+                "enc": BaseEncoding,
+            },
+
+            #  Protocol version BIP0031Version with multiple block locators.
+            {
+                "in": multiLocators,
+                "out": multiLocators,
+                "buf": multiLocatorsEncoded,
+                "pver": BIP0031Version,
+                "enc": BaseEncoding,
+            },
+
+            # Protocol version NetAddressTimeVersion with no block locators.
+            {
+                "in": noLocators,
+                "out": noLocators,
+                "buf": noLocatorsEncoded,
+                "pver": NetAddressTimeVersion,
+                "enc": BaseEncoding,
+            },
+
+            #  Protocol version NetAddressTimeVersion with multiple block locators.
+            {
+                "in": multiLocators,
+                "out": multiLocators,
+                "buf": multiLocatorsEncoded,
+                "pver": NetAddressTimeVersion,
+                "enc": BaseEncoding,
+            },
+
+            # Protocol version MultipleAddressVersion with no block locators.
+            {
+                "in": noLocators,
+                "out": noLocators,
+                "buf": noLocatorsEncoded,
+                "pver": MultipleAddressVersion,
+                "enc": BaseEncoding,
+            },
+
+            #  Protocol version MultipleAddressVersion with multiple block locators.
+            {
+                "in": multiLocators,
+                "out": multiLocators,
+                "buf": multiLocatorsEncoded,
+                "pver": MultipleAddressVersion,
+                "enc": BaseEncoding,
+            },
+
+        ]
+
+    def test_btc_encode(self):
+        for c in self.tests:
+            s = io.BytesIO()
+            c['in'].btc_encode(s, c['pver'], c['enc'])
+            self.assertEqual(s.getvalue(), c['buf'])
+
+    def test_btc_decode(self):
+        for c in self.tests:
+            s = io.BytesIO(c['buf'])
+            msg = MsgGetBlocks()
+            msg.btc_decode(s, c['pver'], c['enc'])
+            self.assertEqual(msg, c['out'])
+
+
+class TestGetBlocksWireErrors(unittest.TestCase):
+    def setUp(self):
+        # Set protocol inside getblocks message.
+        pver = 60002
+
+        # Block 99499 hash.
+        hashStr = "2710f40c87ec93d010a6fd95f42c59a2cbacc60b18cf6b7957535"
+        hashLocator = Hash(hashStr)
+
+        # Block 99500 hash.
+        hashStr = "2e7ad7b9eef9479e4aabc65cb831269cc20d2632c13684406dee0"
+        hashLocator2 = Hash(hashStr)
+
+        # Block 100000 hash.
+        hashStr = "3ba27aa200b1cecaad478d2b00432346c3f1f3986da1afd33e506"
+        hashStop = Hash(hashStr)
+
+        # MsgGetBlocks message with multiple block locators and a stop hash.
+        baseGetBlocks = MsgGetBlocks(hash_stop=hashStop, protocol_version=pver)
+        baseGetBlocks.add_block_locator_hash(hashLocator2)
+        baseGetBlocks.add_block_locator_hash(hashLocator)
+        baseGetBlocksEncoded = bytes([
+            0x62, 0xea, 0x00, 0x00,  # Protocol version 60002
+            0x02,  # Varint for number of block locator hashes
+            0xe0, 0xde, 0x06, 0x44, 0x68, 0x13, 0x2c, 0x63,
+            0xd2, 0x20, 0xcc, 0x69, 0x12, 0x83, 0xcb, 0x65,
+            0xbc, 0xaa, 0xe4, 0x79, 0x94, 0xef, 0x9e, 0x7b,
+            0xad, 0xe7, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,  # Block 99500 hash
+            0x35, 0x75, 0x95, 0xb7, 0xf6, 0x8c, 0xb1, 0x60,
+            0xcc, 0xba, 0x2c, 0x9a, 0xc5, 0x42, 0x5f, 0xd9,
+            0x6f, 0x0a, 0x01, 0x3d, 0xc9, 0x7e, 0xc8, 0x40,
+            0x0f, 0x71, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,  # Block 99499 hash
+            0x06, 0xe5, 0x33, 0xfd, 0x1a, 0xda, 0x86, 0x39,
+            0x1f, 0x3f, 0x6c, 0x34, 0x32, 0x04, 0xb0, 0xd2,
+            0x78, 0xd4, 0xaa, 0xec, 0x1c, 0x0b, 0x20, 0xaa,
+            0x27, 0xba, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,  # Hash stop
+        ])
+
+        maxGetBlocks = MsgGetBlocks(hash_stop=hashStop)
+        for _ in range(MaxBlockLocatorsPerMsg):
+            maxGetBlocks.add_block_locator_hash(mainNetGenesisHash)
+
+        maxGetBlocks.block_locator_hashes.append(mainNetGenesisHash)
+
+        maxGetBlocksEncoded = bytes([
+            0x62, 0xea, 0x00, 0x00,  # Protocol version 60002
+            0xfd, 0xf5, 0x01,  # Varint for number of block loc hashes (501)
+        ])
+
+        self.tests = [
+            # Force error in protocol version.
+            {
+                "in": baseGetBlocks,
+                "buf": baseGetBlocksEncoded,
+                "pver": pver,
+                "enc": BaseEncoding,
+                "max": 0,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force error in block locator hash count.
+            {
+                "in": baseGetBlocks,
+                "buf": baseGetBlocksEncoded,
+                "pver": pver,
+                "enc": BaseEncoding,
+                "max": 4,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force error in block locator hashes.
+            {
+                "in": baseGetBlocks,
+                "buf": baseGetBlocksEncoded,
+                "pver": pver,
+                "enc": BaseEncoding,
+                "max": 5,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            #  Force error in stop hash.
+            {
+                "in": baseGetBlocks,
+                "buf": baseGetBlocksEncoded,
+                "pver": pver,
+                "enc": BaseEncoding,
+                "max": 69,
+                "write_err": FixedBytesShortWriteErr,
+                "read_err": FixedBytesUnexpectedEOFErr,
+            },
+
+            # Force error with greater than max block locator hashes.
+            {
+                "in": maxGetBlocks,
+                "buf": maxGetBlocksEncoded,
+                "pver": pver,
+                "enc": BaseEncoding,
+                "max": 7,
+                "write_err": MaxBlockLocatorsPerMsgErr,
+                "read_err": MaxBlockLocatorsPerMsgErr,
+            }
+        ]
+
+
+    def test_btc_encode(self):
+        for c in self.tests:
+            s = FixedBytesWriter(c['max'])
+            try:
+                c['in'].btc_encode(s, c['pver'], c['enc'])
+            except Exception as e:
+                self.assertEqual(type(e), c['write_err'])
+
+
+    def test_btc_decode(self):
+        for c in self.tests:
+            s = FixedBytesReader(c['max'], c['buf'])
+            try:
+                msg = MsgGetBlocks()
+                msg.btc_decode(s, c['pver'], c['enc'])
+            except Exception as e:
+                self.assertEqual(type(e), c['read_err'])

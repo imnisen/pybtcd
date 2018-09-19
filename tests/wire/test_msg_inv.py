@@ -253,6 +253,7 @@ class TestInvWireErrors(unittest.TestCase):
         for c in self.tests:
             s = FixedBytesReader(c['max'], c['buf'])
             try:
-                c['in'].btc_decode(s, c['pver'], c['enc'])
+                msg = MsgInv()
+                msg.btc_decode(s, c['pver'], c['enc'])
             except Exception as e:
                 self.assertEqual(type(e), c['read_err'])
