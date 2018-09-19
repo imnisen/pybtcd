@@ -1,13 +1,11 @@
 from .common import *
-from .message import *
 
 # MaxBlockLocatorsPerMsg is the maximum number of block locator hashes allowed
 # per message.
 MaxBlockLocatorsPerMsg = 500
 
 
-class MaxBlockLocatorsPerMsgErr(MessageErr):
-    pass
+
 
 
 class MsgGetBlocks(Message):

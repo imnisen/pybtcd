@@ -1,8 +1,6 @@
 import unittest
+from tests.utils import *
 from wire.msg_verack import *
-from wire.protocol import *
-import io
-
 
 class TestVerAck(unittest.TestCase):
     def test_command(self):

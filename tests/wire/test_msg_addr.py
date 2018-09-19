@@ -1,9 +1,6 @@
 import unittest
-from wire.msg_addr import *
-from wire.protocol import *
-import io
 from tests.utils import *
-
+from wire.msg_addr import *
 
 class TestAddr(unittest.TestCase):
     def setUp(self):

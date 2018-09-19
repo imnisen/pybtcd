@@ -1,6 +1,4 @@
-from .message import *
 from .netaddress import *
-from .common import *
 
 # MaxUserAgentLen is the maximum allowed length for the user agent field in a
 # version message (MsgVersion).
@@ -12,8 +10,6 @@ DefaultUserAgent = "/btcwire:0.5.0/"
 TimeNow = int(time.time())
 
 
-class MessageVersionLengthTooLong(MessageErr):
-    pass
 
 
 class MsgVersion(Message):

@@ -1,8 +1,7 @@
 # Refer to https://en.bitcoin.it/wiki/Protocol_documentation#Network_address
 import time
-from .protocol import *
-from .common import *
 import ipaddress
+from .common import *
 
 
 # import ipaddress

@@ -1,13 +1,9 @@
-from .message import *
 from .netaddress import *
 
 # MaxAddrPerMsg is the maximum number of addresses that can be in a single
 # bitcoin addr message (MsgAddr).
 MaxAddrPerMsg = 1000
 
-
-class MsgAddrTooManyErr(MessageErr):
-    pass
 
 
 class MsgAddr(Message):

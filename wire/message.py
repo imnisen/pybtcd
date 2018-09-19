@@ -1,5 +1,4 @@
-from .protocol import BitcoinNet
-from enum import Enum
+from .protocol import *
 
 # CommandSize is the fixed size of all commands in the common bitcoin message
 # header.  Shorter commands must be zero padded.

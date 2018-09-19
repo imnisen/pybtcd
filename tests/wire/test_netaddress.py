@@ -1,8 +1,6 @@
 import unittest
-import io
-import ipaddress
-from wire.netaddress import *
 from tests.utils import *
+from wire.netaddress import *
 
 
 class TestNetAddress(unittest.TestCase):

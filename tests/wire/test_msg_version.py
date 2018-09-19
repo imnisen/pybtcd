@@ -1,7 +1,6 @@
 import unittest
-from wire.msg_version import *
-import io
 from tests.utils import *
+from wire.msg_version import *
 
 # baseVersion is used in the various tests as a baseline MsgVersion.
 baseVersion = MsgVersion(addr_you=NetAddress(services=ServiceFlag.SFNodeNetwork,

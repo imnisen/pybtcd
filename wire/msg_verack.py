@@ -1,4 +1,4 @@
-from .message import *
+from .common import *
 
 
 class MsgVerAck(Message):

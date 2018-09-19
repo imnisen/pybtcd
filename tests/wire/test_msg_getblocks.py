@@ -1,7 +1,6 @@
 import unittest
-import io
-from wire.msg_getblocks import *
 from tests.utils import *
+from wire.msg_getblocks import *
 from .test_common import mainNetGenesisHash
 
 

@@ -1,4 +1,5 @@
 from enum import Enum
+from chainhash.hash import *
 
 # ProtocolVersion is the latest protocol version this package supports.
 ProtocolVersion = 70013
@@ -48,6 +49,13 @@ class BitcoinNet(Enum):
             if bitcoin_net.value[1] == s:
                 return bitcoin_net
         raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
+
+    @classmethod
+    def from_int(cls, i):
+        for flagService in cls:
+            if flagService.value[0] == i:
+                return flagService
+        raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
 
 
 # Enumerations support iteration, in definition order
@@ -127,3 +135,53 @@ class Services:
     @property
     def value(self):
         return self._data
+
+
+# MaxInvPerMsg is the maximum number of inventory vectors that can be in a
+# single bitcoin inv message.
+MaxInvPerMsg = 50000
+
+# Maximum payload size for an inventory vector.
+maxInvVectPayload = 4 + HashSize
+
+
+# InvWitnessFlag denotes that the inventory vector type is requesting,
+# or sending a version which includes witness data.
+InvWitnessFlag = 1 << 30
+
+class InvType(Enum):
+    InvTypeError = (0, "ERROR")
+    InvTypeTx = (1, "MSG_TX")
+    InvTypeBlock = (2, "MSG_BLOCK")
+    InvTypeFilteredBlock = (3, "MSG_FILTERED_BLOCK")
+    InvTypeWitnessBlock = (2 | InvWitnessFlag, "MSG_WITNESS_BLOCK")
+    InvTypeWitnessTx = (1 | InvWitnessFlag, "MSG_WITNESS_TX")
+    InvTypeFilteredWitnessBlock = (3 | InvWitnessFlag, "MSG_FILTERED_WITNESS_BLOCK")
+
+    def __str__(self):
+        return self.value[1]
+
+    @classmethod
+    def from_string(cls, s):
+        for bitcoin_net in cls:
+            if bitcoin_net.value[1] == s:
+                return bitcoin_net
+        raise ValueError(cls.__name__ + ' has no value matching "' + s + '"')
+
+    @classmethod
+    def from_int(cls, i):
+        for flagService in cls:
+            if flagService.value[0] == i:
+                return flagService
+        raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
+
+    def __eq__(self, other):
+        if type(other) is InvType:
+            return self.value[0] == other.value[0]
+        elif type(other) is int:
+            return self.value[0] == other
+        elif type(other) is str:
+            return self.value[1] == other
+        else:
+            return False
+

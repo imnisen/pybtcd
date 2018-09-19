@@ -1,7 +1,6 @@
 import unittest
-import io
-from wire.msg_notfound import *
 from tests.utils import *
+from wire.msg_notfound import *
 
 
 class TestInv(unittest.TestCase):

@@ -1,10 +1,8 @@
-from chainhash import *
+import logging
 import random
 from .message import *
-from chainhash import HashSize
-from .protocol import *
-import ipaddress
-import logging
+from .error import *
+
 _logger = logging.Logger(__name__)
 
 # MaxVarIntPayload is the maximum payload size for a variable length integer.
@@ -47,22 +45,6 @@ def read_variable_bytes_as_integer(s, bytes_len, byteorder=LittleEndian):
 
 def write_variable_bytes_from_integer(s, bytes_len, val, byteorder=LittleEndian):
     s.write(val.to_bytes(bytes_len, byteorder=byteorder))  # TOCHECK
-
-
-class MessageErr(Exception):
-    pass
-
-
-class NonCanonicalVarIntErr(MessageErr):
-    pass
-
-
-class MessageLengthTooLongErr(MessageErr):
-    pass
-
-
-class BytesTooLargeErr(MessageErr):
-    pass
 
 
 def read_element(s, element_type):
@@ -110,15 +92,14 @@ def read_element(s, element_type):
     #     return ipaddress.ip_address(b)
     elif element_type == "chainhash.Hash":
         return Hash(read_variable_bytes(s, HashSize))
-    # elif element_type == "ServiceFlag":
-    #     return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
+    elif element_type == "ServiceFlag":
+        return ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian))
     elif element_type == "services":
-        x = read_variable_bytes_as_integer(s, 8, LittleEndian)
-        return Services(ServiceFlag.from_int(x))
-    # elif element_type == "InvType":
-    #     return read_variable_bytes_as_integer(s, 4, LittleEndian)
+        return Services(ServiceFlag.from_int(read_variable_bytes_as_integer(s, 8, LittleEndian)))
+    elif element_type == "InvType":
+        return InvType.from_int(read_variable_bytes_as_integer(s, 4, LittleEndian))
     elif element_type == "BitcoinNet":
-        return BitcoinNet(ServiceFlag(read_variable_bytes_as_integer(s, 4, LittleEndian)))
+        return BitcoinNet.from_int(read_variable_bytes_as_integer(s, 4, LittleEndian))
 
     # elif element_type == "BloomUpdateType":
     #     pass
@@ -166,15 +147,14 @@ def write_element(s, element_type, element):
     #     s.write(element.packed)
     elif element_type == "chainhash.Hash":
         s.write(element.to_bytes())
-    # elif element_type == "ServiceFlag":
-    #     write_variable_bytes_from_integer(s, 8, element.value, LittleEndian)
+    elif element_type == "ServiceFlag":
+        write_variable_bytes_from_integer(s, 8, element.value[0], LittleEndian)
     elif element_type == "services":
         write_variable_bytes_from_integer(s, 8, element.value, LittleEndian)
-    # elif element_type == "InvType":
-    #     # TOCHANGE Initial of InvType
-    #     pass
+    elif element_type == "InvType":
+        write_variable_bytes_from_integer(s, 4, element.value[0], LittleEndian)
     elif element_type == "BitcoinNet":
-        write_variable_bytes_from_integer(s, 4, element, LittleEndian)
+        write_variable_bytes_from_integer(s, 4, element.value[0], LittleEndian)
 
     # elif element_type == "BloomUpdateType":
     #     pass

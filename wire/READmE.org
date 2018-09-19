@@ -1,0 +1,18 @@
+* Modules depends relations
+protocol -> chainhash
+message -> protocol
+
+
+common -> protocol, message, error
+
+invect -> common
+netaddress -> common
+
+msg_addr -> netaddress
+msg_getblock->common
+msg_getdata ->invect
+msg_inv -> invect
+msg_notfound -> invect
+msg_verack -> common
+msg_version -> netaddress
+
