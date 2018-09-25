@@ -45,6 +45,11 @@ maxWitnessItemsPerInput = 500000
 maxWitnessItemSize = 11000
 
 
+# TOCHANGE move to msgblock
+# MaxBlockPayload is the maximum bytes a block message can be in bytes.
+# After Segregated Witness, the max block payload has been raised to 4MB.
+MaxBlockPayload = 4000000
+
 class OutPoint:
     def __init__(self, hash: Hash, index: int):
         """
@@ -235,10 +240,10 @@ class MsgTx(Message):
         return
 
     def command(self) -> str:
-        raise NotImplementedError
+        return Commands.CmdTx
 
     def max_payload_length(self, pver: int) -> int:
-        raise NotImplementedError
+        return MaxBlockPayload
 
     def add_tx_in(self, ti):
         self.tx_ins.append(ti)
