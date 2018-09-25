@@ -28,3 +28,18 @@ class MaxBlockLocatorsPerMsgErr(MessageErr):
 
 class MessageVersionLengthTooLong(MessageErr):
     pass
+
+class WitnessTxFlagByteMsgErr(MessageErr):
+    pass
+
+class MaxTxInPerMessageMsgErr(MessageErr):
+    pass
+
+class ReadScriptTooLongMsgErr(MessageErr):
+    pass
+
+class MaxTxOutPerMessageMsgErr(MessageErr):
+    pass
+
+class MaxWitnessItemsPerInputMsgErr(MessageErr):
+    pass
