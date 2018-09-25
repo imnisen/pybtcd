@@ -1,4 +1,6 @@
+import io
 from .common import *
+from chainhash.hashfuncs import *
 
 # MaxTxInSequenceNum is the maximum sequence number the sequence field
 # of a transaction input can be.
@@ -44,11 +46,11 @@ maxWitnessItemsPerInput = 500000
 # than 10k bytes.
 maxWitnessItemSize = 11000
 
-
 # TOCHANGE move to msgblock
 # MaxBlockPayload is the maximum bytes a block message can be in bytes.
 # After Segregated Witness, the max block payload has been raised to 4MB.
 MaxBlockPayload = 4000000
+
 
 class OutPoint:
     def __init__(self, hash: Hash, index: int):
@@ -78,7 +80,7 @@ class TxIn:
         """
         self.previous_out_point = previous_out_point
         self.signature_script = signature_script
-        self.witness = witness or TxWitness()  # TOCHECK , I can't find this in bitcoin protocol wiki
+        self.witness = witness  # TOCHECK , I can't find this in bitcoin protocol wiki
         self.sequence = sequence
 
     def serialize_size(self):
@@ -251,12 +253,18 @@ class MsgTx(Message):
     def add_tx_out(self, to):
         self.tx_outs.append(to)
 
+    # TxHash generates the Hash for the transaction.
     def tx_hash(self):
-        # TODO
-        pass
+        s = io.BytesIO()
+        self.serialize_no_witness(s)
+        return double_hash_h(s.getvalue())  # TOCHECK why hint str here
 
     def witness_hash(self):
-        pass
+        if self.hash_witness():
+            s = io.BytesIO()
+            self.serialize(s)
+            return double_hash_h(s.getvalue())  # TOCHECK why hint str here
+        return self.tx_hash()
 
     def copy(self):
 
@@ -273,32 +281,131 @@ class MsgTx(Message):
         return MsgTx(version=self.version, lock_time=self.lock_time,
                      tx_ins=new_tx_ins, tx_outs=new_tx_outs)
 
-    def deserialize(self, r):
-        pass
+    # Deserialize decodes a transaction from r into the receiver using a format
+    # that is suitable for long-term storage such as a database while respecting
+    # the Version field in the transaction.  This function differs from BtcDecode
+    # in that BtcDecode decodes from the bitcoin wire protocol as it was sent
+    # across the network.  The wire encoding can technically differ depending on
+    # the protocol version and doesn't even really need to match the format of a
+    # stored transaction at all.  As of the time this comment was written, the
+    # encoded transaction is the same in both instances, but there is a distinct
+    # difference and separating the two allows the API to be flexible enough to
+    # deal with changes.
+    def deserialize(self, s):
+        # At the current time, there is no difference between the wire encoding
+        # at protocol version 0 and the stable long-term storage format.  As
+        # a result, make use of BtcDecode.
+        return self.btc_decode(s, pver=0, message_encoding=WitnessEncoding)
 
-    def deserialize_no_witness(self):
-        pass
+    # DeserializeNoWitness decodes a transaction from r into the receiver, where
+    # the transaction encoding format within r MUST NOT utilize the new
+    # serialization format created to encode transaction bearing witness data
+    # within inputs.
+    def deserialize_no_witness(self, s):
+        return self.btc_decode(s, pver=0, message_encoding=BaseEncoding)
 
+    # HasWitness returns false if none of the inputs within the transaction
+    # contain witness data, true false otherwise.
     def hash_witness(self):
-        pass
+        for tx_in in self.tx_ins:
+            if len(tx_in) != 0:
+                return True
+        return False
 
-    def serialize(self):
-        pass
+    # Serialize encodes the transaction to w using a format that suitable for
+    # long-term storage such as a database while respecting the Version field in
+    # the transaction.  This function differs from BtcEncode in that BtcEncode
+    # encodes the transaction to the bitcoin wire protocol in order to be sent
+    # across the network.  The wire encoding can technically differ depending on
+    # the protocol version and doesn't even really need to match the format of a
+    # stored transaction at all.  As of the time this comment was written, the
+    # encoded transaction is the same in both instances, but there is a distinct
+    # difference and separating the two allows the API to be flexible enough to
+    # deal with changes.
+    def serialize(self, s):
+        # At the current time, there is no difference between the wire encoding
+        # at protocol version 0 and the stable long-term storage format.  As
+        # a result, make use of BtcEncode.
+        #
+        # Passing a encoding type of WitnessEncoding to BtcEncode for MsgTx
+        # indicates that the transaction's witnesses (if any) should be
+        # serialized according to the new serialization structure defined in
+        # BIP0144.
 
-    def serialize_no_witness(self):
-        pass
+        return self.btc_encode(s, pver=0, message_encoding=WitnessEncoding)
 
+    # SerializeNoWitness encodes the transaction to w in an identical manner to
+    # Serialize, however even if the source transaction has inputs with witness
+    # data, the old serialization format will still be used.
+    def serialize_no_witness(self, s):
+        return self.btc_encode(s, pver=0, message_encoding=BaseEncoding)
+
+    # baseSize returns the serialized size of the transaction without accounting
+    # for any witness data.
     def base_size(self):
-        pass
+        # Version 4 bytes + LockTime 4 bytes + Serialized varint size for the
+        # number of transaction inputs and outputs.
 
+        n = 8 + var_int_serialize_size(len(self.tx_ins)) + var_int_serialize_size(len(self.tx_outs))
+
+        for tx_in in self.tx_ins:
+            n += tx_in.serialize_size()
+
+        for tx_out in self.tx_outs:
+            n += tx_out.serialize_size()
+        return n
+
+    # SerializeSize returns the number of bytes it would take to serialize the
+    # the transaction.
     def serialize_size(self):
-        pass
+        n = self.base_size()
 
+        if self.hash_witness():
+
+            # count marker + flag
+            n += 2
+
+            for tx_in in self.tx_ins:
+                n += tx_in.witness.serialize_size
+        return n
+
+    # SerializeSizeStripped returns the number of bytes it would take to serialize
+    # the transaction, excluding any included witness data.
     def serialize_size_stripped(self):
-        pass
+        return self.base_size()
 
+    # PkScriptLocs returns a slice containing the start of each public key script
+    # within the raw serialized transaction.  The caller can easily obtain the
+    # length of each script by using len on the script available via the
+    # appropriate transaction output entry.
     def pk_script_locs(self):
-        pass
+        if len(self.tx_outs) == 0:
+            return None
+
+        # The starting offset in the serialized transaction of the first
+        # transaction output is:
+        #
+        # Version 4 bytes + serialized varint size for the number of
+        # transaction inputs and outputs + serialized size of each transaction
+        # input.
+        n = 4 + var_int_serialize_size(len(self.tx_ins)) + var_int_serialize_size(len(self.tx_outs))
+
+        if len(self.tx_ins) + 0 and self.tx_ins[0].witness is not None:
+            n += 2
+
+        for tx_in in self.tx_ins:
+            n += tx_in.serialize_size()
+
+        pk_script_locs = []
+        for tx_out in self.tx_outs:
+            # The offset of the script in the transaction output is:
+            #
+            # Value 8 bytes + serialized varint size for the length of
+            # PkScript.
+            n += 8 + var_int_serialize_size(len(tx_out.pk_script))
+            pk_script_locs.append(n)
+            n += len(tx_out.pk_script)
+        return pk_script_locs
 
 
 def read_out_point(s, pver, version):

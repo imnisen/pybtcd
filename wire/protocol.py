@@ -1,6 +1,7 @@
 from enum import Enum
 from chainhash.hash import *
 
+
 # ProtocolVersion is the latest protocol version this package supports.
 ProtocolVersion = 70013
 
