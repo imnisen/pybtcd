@@ -63,14 +63,17 @@ class OutPoint:
         self.index = index
 
     def __str__(self):
-        return self.hash.to_str() + str(self.index)
+        return self.hash.to_str() + ":" + str(self.index)
 
     def copy(self):
         return OutPoint(hash=self.hash, index=self.index)
 
+    def __eq__(self, other):
+        return self.hash == other.hash and self.index == other.index
+
 
 class TxIn:
-    def __init__(self, previous_out_point, signature_script, witness=None, sequence=MaxTxInSequenceNum):
+    def __init__(self, previous_out_point, signature_script=None, witness=None, sequence=MaxTxInSequenceNum):
         """
 
         :param OutPoint previous_out_point:
@@ -79,8 +82,8 @@ class TxIn:
         :param uint32 sequence:
         """
         self.previous_out_point = previous_out_point
-        self.signature_script = signature_script
-        self.witness = witness  # TOCHECK , I can't find this in bitcoin protocol wiki
+        self.signature_script = signature_script or bytes()
+        self.witness = witness or TxWitness()  # TOCHECK , I can't find this in bitcoin protocol wiki
         self.sequence = sequence
 
     def serialize_size(self):
@@ -96,6 +99,13 @@ class TxIn:
                     signature_script=self.signature_script[:],
                     witness=self.witness.copy(),
                     sequence=self.sequence)
+
+    def __eq__(self, other):
+        return self.previous_out_point == other.previous_out_point and \
+               self.previous_out_point == other.previous_out_point and \
+               self.signature_script == other.signature_script and \
+               self.witness == other.witness and \
+               self.sequence == other.sequence
 
 
 # TxWitness : a txwitness is a list of witness for one tx input
@@ -124,7 +134,10 @@ class TxWitness:
         return len(self._data)
 
     def __iter__(self):
-        return self._data
+        return iter(self._data)
+
+    def __eq__(self, other):
+        return self._data == other._data
 
 
 class TxOut:
@@ -146,9 +159,13 @@ class TxOut:
         return TxOut(value=self.value,
                      pk_script=self.pk_script[:])
 
+    def __eq__(self, other):
+        return self.value == other.value and \
+               self.pk_script == other.pk_script
+
 
 class MsgTx(Message):
-    def __init__(self, version, tx_ins=None, tx_outs=None, lock_time=None):
+    def __init__(self, version=None, tx_ins=None, tx_outs=None, lock_time=None):
         """
 
         :param uint32 version:
@@ -156,10 +173,10 @@ class MsgTx(Message):
         :param Txout[] tx_outs:
         :param uint32 lock_time:w
         """
-        self.version = version
+        self.version = version or 0
         self.tx_ins = tx_ins or []
         self.tx_outs = tx_outs or []
-        self.lock_time = lock_time
+        self.lock_time = lock_time or 0
 
     def btc_decode(self, s, pver, message_encoding):
         # read version
@@ -183,7 +200,7 @@ class MsgTx(Message):
         # read tx_inputs
         self.tx_ins = []
         for i in range(count):
-            self.tx_ins[i] = read_tx_in(s, pver, self.version)
+            self.tx_ins.append(read_tx_in(s, pver, self.version))
 
         # check tx_outputs count
         count = read_var_int(s, pver)
@@ -193,7 +210,7 @@ class MsgTx(Message):
         # read tx_outputs
         self.tx_outs = []
         for i in range(count):
-            self.tx_outs[i] = read_tx_out(s, pver, self.version)
+            self.tx_outs.append(read_tx_out(s, pver, self.version))
 
         # read tx_witness
         if flag != b'' and message_encoding == WitnessEncoding:
@@ -210,7 +227,7 @@ class MsgTx(Message):
         # write version
         write_element(s, "uint32", self.version)
 
-        do_witness = message_encoding == WitnessEncoding and self.hash_witness()
+        do_witness = message_encoding == WitnessEncoding and self.has_witness()
 
         # if witness mode, write bytes 0x00, 0x01
         if do_witness:
@@ -260,7 +277,7 @@ class MsgTx(Message):
         return double_hash_h(s.getvalue())  # TOCHECK why hint str here
 
     def witness_hash(self):
-        if self.hash_witness():
+        if self.has_witness():
             s = io.BytesIO()
             self.serialize(s)
             return double_hash_h(s.getvalue())  # TOCHECK why hint str here
@@ -276,7 +293,7 @@ class MsgTx(Message):
         # copy tx_outs
         new_tx_outs = []
         for old_tx_out in self.tx_outs:
-            new_tx_ins.append(old_tx_out.copy())
+            new_tx_outs.append(old_tx_out.copy())
 
         return MsgTx(version=self.version, lock_time=self.lock_time,
                      tx_ins=new_tx_ins, tx_outs=new_tx_outs)
@@ -306,9 +323,9 @@ class MsgTx(Message):
 
     # HasWitness returns false if none of the inputs within the transaction
     # contain witness data, true false otherwise.
-    def hash_witness(self):
+    def has_witness(self):
         for tx_in in self.tx_ins:
-            if len(tx_in) != 0:
+            if len(tx_in.witness) != 0:
                 return True
         return False
 
@@ -360,13 +377,13 @@ class MsgTx(Message):
     def serialize_size(self):
         n = self.base_size()
 
-        if self.hash_witness():
+        if self.has_witness():
 
             # count marker + flag
             n += 2
 
             for tx_in in self.tx_ins:
-                n += tx_in.witness.serialize_size
+                n += tx_in.witness.serialize_size()
         return n
 
     # SerializeSizeStripped returns the number of bytes it would take to serialize
@@ -380,7 +397,7 @@ class MsgTx(Message):
     # appropriate transaction output entry.
     def pk_script_locs(self):
         if len(self.tx_outs) == 0:
-            return None
+            return []
 
         # The starting offset in the serialized transaction of the first
         # transaction output is:
@@ -390,7 +407,7 @@ class MsgTx(Message):
         # input.
         n = 4 + var_int_serialize_size(len(self.tx_ins)) + var_int_serialize_size(len(self.tx_outs))
 
-        if len(self.tx_ins) + 0 and self.tx_ins[0].witness is not None:
+        if len(self.tx_ins) > 0 and len(self.tx_ins[0].witness) > 0:
             n += 2
 
         for tx_in in self.tx_ins:
@@ -406,6 +423,21 @@ class MsgTx(Message):
             pk_script_locs.append(n)
             n += len(tx_out.pk_script)
         return pk_script_locs
+
+    def __eq__(self, other):
+        if self.version == other.version and self.lock_time == other.lock_time and \
+                        len(self.tx_ins) == len(other.tx_ins) and len(self.tx_outs) == len(other.tx_outs):
+            for i in range(len(self.tx_ins)):
+                if self.tx_ins[i] != other.tx_ins[i]:
+                    return False
+
+            for i in range(len(self.tx_outs)):
+                if self.tx_outs[i] != other.tx_outs[i]:
+                    return False
+
+            return True
+        else:
+            return False
 
 
 def read_out_point(s, pver, version):
