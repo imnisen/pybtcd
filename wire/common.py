@@ -62,8 +62,7 @@ def read_element(s, element_type):
     # So, the next operation after read_element may also need it's element_type
 
     if element_type == "int32":
-        x = read_variable_bytes_as_integer(s, 4, LittleEndian)
-        return x
+        return read_variable_bytes_as_integer(s, 4, LittleEndian)
     elif element_type == "uint32":
         return read_variable_bytes_as_integer(s, 4, LittleEndian)
     elif element_type == "int64":
