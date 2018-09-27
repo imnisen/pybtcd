@@ -7,6 +7,7 @@ common -> protocol, message, error
 
 invect -> common
 netaddress -> common
+blockheader -> common
 
 msg_addr -> netaddress
 msg_getblock->common
@@ -15,4 +16,7 @@ msg_inv -> invect
 msg_notfound -> invect
 msg_verack -> common
 msg_version -> netaddress
+msg_tx -> common
+
+msg_geblock -> blockheader,msg_tx
 

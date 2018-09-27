@@ -8,6 +8,9 @@ from .common import *
 # PrevBlock and MerkleRoot hashes.
 MaxBlockHeaderPayload = 16 + (HashSize * 2)
 
+# blockHeaderLen is a constant that represents the number of bytes for a block
+# header.
+blockHeaderLen = 80
 
 # BlockHeader defines information about a block and is used in the bitcoin
 # block (MsgBlock) and headers (MsgHeaders) messages.

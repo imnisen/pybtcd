@@ -52,6 +52,17 @@ maxWitnessItemSize = 11000
 MaxBlockPayload = 4000000
 
 
+
+# minTxPayload is the minimum payload size for a transaction.  Note
+# that any realistically usable transaction must have at least one
+# input or output, but that is a rule enforced at a higher layer, so
+# it is intentionally not included here.
+# Version 4 bytes + Varint number of transaction inputs 1 byte + Varint
+# number of transaction outputs 1 byte + LockTime 4 bytes + min input
+# payload + min output payload.
+minTxPayload = 10
+
+
 class OutPoint:
     def __init__(self, hash: Hash, index: int):
         """

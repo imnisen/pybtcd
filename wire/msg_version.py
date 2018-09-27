@@ -63,6 +63,7 @@ class MsgVersion(Message):
     #
     # This is part of the Message interface implementation.
     def btc_decode(self, s, pver, message_encoding):
+        # TOCHECK Find length of stream
         s.seek(0, 2)
         eof_index = s.tell()
         s.seek(0, 0)
