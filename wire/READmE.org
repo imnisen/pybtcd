@@ -18,5 +18,7 @@ msg_verack -> common
 msg_version -> netaddress
 msg_tx -> common
 
-msg_geblock -> blockheader,msg_tx
+msg_getblock -> blockheader, msg_tx
+
+msg_headers -> blockheader
 
