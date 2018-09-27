@@ -84,3 +84,19 @@ class FixedBytesWriter:
             i += 1
             self.max -= 1
         return
+
+
+###################
+# Some debug utils
+###################
+
+def debug_check_bytes(b1, b2):
+    print("-------Debug output-------")
+    if len(b1) != len(b2):
+        print("len is not equal, one is {}, another is {}".format(len(b1), len(b2)))
+        return
+
+    for i in range(len(b1)):
+        print("{}, {},  equal?:{}".format(hex(b1[i]), hex(b2[i]), b1[i] == b2[i]))
+    print("-------EOF-------")
+    return

@@ -1,4 +1,5 @@
 import io
+import time
 from chainhash.hashfuncs import *
 from .common import *
 
@@ -11,7 +12,7 @@ MaxBlockHeaderPayload = 16 + (HashSize * 2)
 # BlockHeader defines information about a block and is used in the bitcoin
 # block (MsgBlock) and headers (MsgHeaders) messages.
 class BlockHeader:
-    def __init__(self, version, prev_block, merkle_root, timestamp, bits, nonce):
+    def __init__(self, version=None, prev_block=None, merkle_root=None, timestamp=None, bits=None, nonce=None):
         """
 
         :param int32 version:
@@ -22,12 +23,20 @@ class BlockHeader:
         :param uint32 nonce:
         """
 
-        self.version = version
-        self.prev_block = prev_block
-        self.merkle_root = merkle_root
-        self.timestamp = timestamp
-        self.bits = bits
-        self.nonce = nonce
+        self.version = version or 0
+        self.prev_block = prev_block or Hash()
+        self.merkle_root = merkle_root or Hash()
+        self.timestamp = timestamp or int(time.time())
+        self.bits = bits or 0
+        self.nonce = nonce or 0
+
+    def __eq__(self, other):
+        return self.version == other.version and \
+               self.prev_block == other.prev_block and \
+               self.merkle_root == other.merkle_root and \
+               self.timestamp == other.timestamp and \
+               self.bits == other.bits and \
+               self.nonce == other.nonce
 
     def block_hash(self):
         """BlockHash computes the block identifier hash for the given block header."""
@@ -45,14 +54,26 @@ class BlockHeader:
     # TOCHECK this btc_decode use return value , not change self structure
     # Also ,this class doesn't inherit class `Message`
     def btc_decode(self, s, pver, enc):
-        return read_block_header(s, pver)
+        self.version = read_element(s, "int32")
+        self.prev_block = read_element(s, "chainhash.Hash")
+        self.merkle_root = read_element(s, "chainhash.Hash")
+        self.timestamp = read_element(s, "uint32Time")
+        self.bits = read_element(s, "uint32")
+        self.nonce = read_element(s, "uint32")
+        return
 
     def serialize(self, s):
         write_block_header(s, 0, self)
         return
 
     def deserialize(self, s):
-        return read_block_header(s, 0)
+        self.version = read_element(s, "int32")
+        self.prev_block = read_element(s, "chainhash.Hash")
+        self.merkle_root = read_element(s, "chainhash.Hash")
+        self.timestamp = read_element(s, "uint32Time")
+        self.bits = read_element(s, "uint32")
+        self.nonce = read_element(s, "uint32")
+        return
 
 
 def read_block_header(s, pver):

@@ -130,12 +130,12 @@ def write_element(s, element_type, element):
             write_variable_bytes_from_integer(s, 1, 0x01)
         else:
             write_variable_bytes_from_integer(s, 1, 0x00)
-    # elif element_type == "uint32Time":
-    #     # Notice, here don't like origin, I just return the int, not the type timestamp
-    #     return read_variable_bytes_as_integer(s, 4, LittleEndian)
-    # elif element_type == "int64Time":
-    #     # Notice, here don't like origin, I just return the int, not the type timestamp
-    #     return read_variable_bytes_as_integer(s, 8, LittleEndian)
+    elif element_type == "uint32Time":
+        # Notice, here don't like origin, I just return the int, not the type timestamp
+        return write_variable_bytes_from_integer(s, 4, element, LittleEndian)
+    elif element_type == "int64Time":
+        # Notice, here don't like origin, I just return the int, not the type timestamp
+        return write_variable_bytes_from_integer(s, 8, element, LittleEndian)
 
     elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
         s.write(element)
