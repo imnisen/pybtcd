@@ -89,3 +89,6 @@ class Hash:
 
     def set_bytes(self, b):
         self._data = copy.deepcopy(b)
+
+    def copy(self):
+        return Hash(self.copy_bytes())

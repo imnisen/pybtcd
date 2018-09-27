@@ -28,11 +28,23 @@ class TxLoc:
         self.tx_start = tx_start
         self.tx_len = tx_len
 
+    def __eq__(self, other):
+        return self.tx_start == other.tx_start and self.tx_len == other.tx_len
+
 
 class MsgBlock(Message):
-    def __init__(self, header, transactions):
-        self.header = header
-        self.transactions = transactions
+    def __init__(self, header=None, transactions=None):
+        self.header = header or BlockHeader()
+        self.transactions = transactions or []
+
+    def __eq__(self, other):
+        if self.header == other.header and len(self.transactions) == len(other.transactions):
+            for i in range(len(self.transactions)):
+                if self.transactions[i] != other.transactions[i]:
+                    return False
+            return True
+        else:
+            return False
 
     def btc_decode(self, s, pver, message_encoding):
         self.header = read_block_header(s, pver)
@@ -76,7 +88,7 @@ class MsgBlock(Message):
             tx_len = s.tell() - tx_start
 
             tx_loc_lst.append(TxLoc(tx_start=tx_start, tx_len=tx_len))
-        return
+        return tx_loc_lst
 
     def btc_encode(self, s, pver, message_encoding):
         # write header
