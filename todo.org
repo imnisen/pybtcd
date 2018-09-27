@@ -6,3 +6,5 @@
 
 * Questions
 ** Consider read_element differs from int32 vs uint32
+
+* Move const in test case out in one file

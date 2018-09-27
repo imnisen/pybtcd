@@ -69,5 +69,8 @@ class MsgHeaders(Message):
         return MaxVarIntPayload + MaxBlockHeadersPerMsg * (MaxBlockHeaderPayload + 1)
 
     def add_block_header(self, bh):
+        if len(self.headers) + 1 > MaxBlockHeadersPerMsg:
+            raise MaxBlockHeadersPerMsgMsgErr
+
         self.headers.append(bh)
         return
