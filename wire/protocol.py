@@ -26,6 +26,9 @@ BIP0035Version = 60002
 # with a relay flag (pver >= BIP0037Version).
 BIP0037Version = 70001
 
+# RejectVersion is the protocol version which added a new reject
+# message.
+RejectVersion = 70002
 
 # BitcoinNet represents which bitcoin network a message belongs to.
 class BitcoinNet(Enum):

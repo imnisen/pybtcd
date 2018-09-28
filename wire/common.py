@@ -105,8 +105,8 @@ def read_element(s, element_type):
     # elif element_type == "BloomUpdateType":
     #     pass
 
-    # elif element_type == "RejectCode":
-    #     pass
+    elif element_type == "RejectCode":
+        return RejectCode.from_int(read_variable_bytes_as_integer(s, 1, LittleEndian))
     else:
         _logger.info("Notice,in read_element, I don't know what to do here.")
         return s.read()
@@ -160,8 +160,9 @@ def write_element(s, element_type, element):
     # elif element_type == "BloomUpdateType":
     #     pass
 
-    # elif element_type == "RejectCode":
-    #     pass
+    elif element_type == "RejectCode":
+        write_variable_bytes_from_integer(s, 1, element.value[0], LittleEndian)
+
     else:
         _logger.info("Notice, in write_element I don't know what to do here.")
         return s.write(element)

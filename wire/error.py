@@ -67,3 +67,6 @@ class MemPoolVerionBelowBIP35MsgErr(MessageErr):
 
 class NotSupportBelowBIP35MsgErr(MessageErr):
     pass
+
+class NotSupportBelowRejectVersionMsgErr(MessageErr):
+    pass
