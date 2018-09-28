@@ -1,4 +1,5 @@
 * Modules depends relations
+
 protocol -> chainhash
 message -> protocol
 
@@ -20,4 +21,6 @@ msg_tx -> common
 msg_getblock -> blockheader, msg_tx
 msg_headers -> blockheader
 msg_getaddr -> common
+msg_mempool -> common
+msg_ping -> common
 
