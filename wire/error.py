@@ -79,3 +79,6 @@ class MaxFilterLoadHashFuncsMsgErr(MessageErr):
 
 class MaxFilterLoadFilterSizeMsgErr(MessageErr):
     pass
+
+class MaxFilterAddDataSizeMsgErr(MessageErr):
+    pass
