@@ -53,8 +53,14 @@ class MaxWitnessItemsPerInputMsgErr(MessageErr):
 class MaxTxPerBlockMsgErr(MessageErr):
     pass
 
+
 class MaxBlockHeadersPerMsgMsgErr(MessageErr):
     pass
 
+
 class BlockHeadersTxCountNotZeroMsgErr(MessageErr):
+    pass
+
+
+class MemPoolVerionBelowBIP35MsgErr(MessageErr):
     pass
