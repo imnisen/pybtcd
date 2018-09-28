@@ -64,3 +64,6 @@ class BlockHeadersTxCountNotZeroMsgErr(MessageErr):
 
 class MemPoolVerionBelowBIP35MsgErr(MessageErr):
     pass
+
+class NotSupportBelowBIP35MsgErr(MessageErr):
+    pass
