@@ -13,10 +13,10 @@ BaseEncoding = 1 << 0
 # messages, the new encoding format detailed in BIP0144 will be used.
 WitnessEncoding = 1 << 1
 
-
 # MaxMessagePayload is the maximum bytes a message can be regardless of other
 # individual limits imposed by messages themselves.
-MaxMessagePayload = (1024 * 1024 * 32) # 32MB
+MaxMessagePayload = (1024 * 1024 * 32)  # 32MB
+
 
 class Commands(Enum):
     EMPTY = ""
@@ -119,3 +119,19 @@ class RejectCode(Enum):
                 return flagService
         raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
 
+
+class BloomUpdateType(Enum):
+    # BloomUpdateNone indicates the filter is not adjusted when a match is
+    # found.
+    BloomUpdateNone = 0
+
+    # BloomUpdateAll indicates if the filter matches any data element in a
+    # public key script, the outpoint is serialized and inserted into the
+    # filter.
+    BloomUpdateAll = 1
+
+    # BloomUpdateP2PubkeyOnly indicates if the filter matches a data
+    # element in a public key script and the script is of the standard
+    # pay-to-pubkey or multisig, the outpoint is serialized and inserted
+    # into the filter.
+    BloomUpdateP2PubkeyOnly = 2

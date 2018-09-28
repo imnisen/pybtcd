@@ -40,8 +40,7 @@ def read_variable_bytes(s, bytes_len):
 
 
 def read_variable_bytes_as_integer(s, bytes_len, byteorder=LittleEndian):
-    x = int.from_bytes(s.read(bytes_len), byteorder=byteorder)
-    return x
+    return int.from_bytes(s.read(bytes_len), byteorder=byteorder)
 
 
 def write_variable_bytes_from_integer(s, bytes_len, val, byteorder=LittleEndian):
@@ -102,8 +101,8 @@ def read_element(s, element_type):
     elif element_type == "BitcoinNet":
         return BitcoinNet.from_int(read_variable_bytes_as_integer(s, 4, LittleEndian))
 
-    # elif element_type == "BloomUpdateType":
-    #     pass
+    elif element_type == "BloomUpdateType":
+        return BloomUpdateType(read_variable_bytes_as_integer(s, 1, LittleEndian))
 
     elif element_type == "RejectCode":
         return RejectCode.from_int(read_variable_bytes_as_integer(s, 1, LittleEndian))
@@ -157,8 +156,8 @@ def write_element(s, element_type, element):
     elif element_type == "BitcoinNet":
         write_variable_bytes_from_integer(s, 4, element.value[0], LittleEndian)
 
-    # elif element_type == "BloomUpdateType":
-    #     pass
+    elif element_type == "BloomUpdateType":
+        write_variable_bytes_from_integer(s, 1, element.value, LittleEndian)
 
     elif element_type == "RejectCode":
         write_variable_bytes_from_integer(s, 1, element.value[0], LittleEndian)
@@ -247,7 +246,7 @@ def read_var_bytes(s, pver, max_allowed, filed_name):
     count = read_var_int(s, pver)
     if count > max_allowed:
         raise BytesTooLargeErr(
-            "{} is larger than the max allowed size [count {}, max {}".format(filed_name, count, max_allowed))
+            "{} is larger than the max allowed size count {}, max {}".format(filed_name, count, max_allowed))
     buf = s.read(count)
     return buf
 

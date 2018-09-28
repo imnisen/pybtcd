@@ -70,3 +70,12 @@ class NotSupportBelowBIP35MsgErr(MessageErr):
 
 class NotSupportBelowRejectVersionMsgErr(MessageErr):
     pass
+
+class NotSupportBelowBIP37MsgErr(MessageErr):
+    pass
+
+class MaxFilterLoadHashFuncsMsgErr(MessageErr):
+    pass
+
+class MaxFilterLoadFilterSizeMsgErr(MessageErr):
+    pass
