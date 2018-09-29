@@ -65,23 +65,42 @@ class BlockHeadersTxCountNotZeroMsgErr(MessageErr):
 class MemPoolVerionBelowBIP35MsgErr(MessageErr):
     pass
 
+
 class NotSupportBelowBIP35MsgErr(MessageErr):
     pass
+
 
 class NotSupportBelowRejectVersionMsgErr(MessageErr):
     pass
 
+
 class NotSupportBelowBIP37MsgErr(MessageErr):
     pass
+
 
 class MaxFilterLoadHashFuncsMsgErr(MessageErr):
     pass
 
+
 class MaxFilterLoadFilterSizeMsgErr(MessageErr):
     pass
+
 
 class MaxFilterAddDataSizeMsgErr(MessageErr):
     pass
 
+
 class MaxFlagsPerMerkleBlockMsgErr(MessageErr):
+    pass
+
+
+class MaxCountSetCancelMsgErr(MessageErr):
+    pass
+
+
+class MaxCountSetSubVerlMsgErr(MessageErr):
+    pass
+
+
+class AlertSerializedPayloadEmptyMsgErr(MessageErr):
     pass

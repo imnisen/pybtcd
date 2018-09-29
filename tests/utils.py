@@ -32,8 +32,9 @@ class FixedBytesReader:
         self._buf_len = len(buf)
 
     def read(self, size: int) -> bytes:
-        # Limit the case, maybe we can let size<=0, and decide what to do
-        if size <= 0:
+        # Limit the case, maybe we can let size<0, and decide what to do
+        if size < 0:
+            print(size)
             raise FixedBytesErr('size must greater than 0')
 
         result = bytearray()

@@ -8,3 +8,7 @@
 ** Consider read_element differs from int32 vs uint32
 
 * Move const in test case out in one file
+
+* change: read_variable_bytes and read_var_bytes are too similar
+
+* The unittest seems very slow at some tests, figure out why
