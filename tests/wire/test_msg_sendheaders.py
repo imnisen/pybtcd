@@ -8,7 +8,7 @@ class TestMsgGetAddr(unittest.TestCase):
         msgSendHeaders = MsgSendHeaders()
         msgSendHeadersEncoded = bytes([])
 
-        self.tests = [
+        self.wire_tests = [
             # Latest protocol version.
             {
                 "in": msgSendHeaders,
@@ -37,7 +37,7 @@ class TestMsgGetAddr(unittest.TestCase):
             },
         ]
 
-        self.err_tests = [
+        self.wire_err_tests = [
             # Protocol version SendHeadersVersion - 1
             {
                 "in": msgSendHeaders,
@@ -60,13 +60,13 @@ class TestMsgGetAddr(unittest.TestCase):
         self.assertEqual(msg.max_payload_length(ProtocolVersion), want_payload)
 
     def test_btc_encode(self):
-        for c in self.tests:
+        for c in self.wire_tests:
             s = io.BytesIO()
             c['in'].btc_encode(s, c['pver'], c['enc'])
             self.assertEqual(s.getvalue(), c['buf'])
 
         # Err conditions
-        for c in self.err_tests:
+        for c in self.wire_err_tests:
             s = io.BytesIO()
             try:
                 c['in'].btc_encode(s, c['pver'], c['enc'])
@@ -74,14 +74,14 @@ class TestMsgGetAddr(unittest.TestCase):
                 self.assertEqual(type(e), c['write_err'])
 
     def test_btc_decode(self):
-        for c in self.tests:
+        for c in self.wire_tests:
             s = io.BytesIO(c['buf'])
             msg = MsgSendHeaders()
             msg.btc_decode(s, c['pver'], c['enc'])
             self.assertEqual(msg, c['out'])
 
         # Err conditions
-        for c in self.err_tests:
+        for c in self.wire_err_tests:
             s = io.BytesIO(c['buf'])
             msg = MsgSendHeaders()
             try:
