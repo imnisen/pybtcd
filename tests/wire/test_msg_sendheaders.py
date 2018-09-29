@@ -66,7 +66,7 @@ class TestMsgGetAddr(unittest.TestCase):
             self.assertEqual(s.getvalue(), c['buf'])
 
         # Err conditions
-        for c in self.tests:
+        for c in self.err_tests:
             s = io.BytesIO()
             try:
                 c['in'].btc_encode(s, c['pver'], c['enc'])
