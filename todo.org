@@ -12,3 +12,5 @@
 * change: read_variable_bytes and read_var_bytes are too similar
 
 * The unittest seems very slow at some tests, figure out why
+
+* In unitest, use self.assert raise, checkout why not work before
