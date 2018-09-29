@@ -30,6 +30,10 @@ BIP0037Version = 70001
 # message.
 RejectVersion = 70002
 
+# SendHeadersVersion is the protocol version which added a new
+# sendheaders message.
+SendHeadersVersion = 70012
+
 # BitcoinNet represents which bitcoin network a message belongs to.
 class BitcoinNet(Enum):
     # MainNet represents the main bitcoin network.
