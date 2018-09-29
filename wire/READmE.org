@@ -18,7 +18,8 @@ msg_notfound -> invect
 msg_verack -> common
 msg_version -> netaddress
 msg_tx -> common
-msg_getblock -> blockheader, msg_tx
+msg_block -> blockheader, msg_tx
+msg_getblock -> blockheader, msg_tx , msg_block[maxTxPerBlock]
 msg_headers -> blockheader
 msg_getaddr -> common
 msg_mempool -> common

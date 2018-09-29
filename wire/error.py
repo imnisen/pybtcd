@@ -82,3 +82,6 @@ class MaxFilterLoadFilterSizeMsgErr(MessageErr):
 
 class MaxFilterAddDataSizeMsgErr(MessageErr):
     pass
+
+class MaxFlagsPerMerkleBlockMsgErr(MessageErr):
+    pass
