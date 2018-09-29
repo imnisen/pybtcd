@@ -476,14 +476,14 @@ class TesMsgtBlock(unittest.TestCase):
 
     def test_deserialize(self):
         # Right conditions
-        for c in self.wire_tests:
+        for c in self.serialize_tests:
             msg = MsgBlock()
             s = io.BytesIO(c['buf'])
             msg.deserialize(s)
             self.assertEqual(msg, c['out'])
 
         # Error conditions
-        for c in self.wire_err_tests:
+        for c in self.serialize_err_tests:
             s = FixedBytesReader(c['max'], c['buf'])
             try:
                 msg = MsgBlock()
@@ -502,7 +502,7 @@ class TesMsgtBlock(unittest.TestCase):
 
     def test_deserialize_tx_loc(self):
         # Right conditions
-        for c in self.wire_tests:
+        for c in self.serialize_tests:
             msg = MsgBlock()
             s = io.BytesIO(c['buf'])
             tx_loc_lst = msg.deserialize_tx_loc(s)
@@ -511,7 +511,7 @@ class TesMsgtBlock(unittest.TestCase):
             self.assertEqual(tx_loc_lst[0], c['txLocs'][0])
 
         # Error conditions
-        for c in self.wire_err_tests:
+        for c in self.serialize_err_tests:
             s = FixedBytesReader(c['max'], c['buf'])
             try:
                 msg = MsgBlock()
