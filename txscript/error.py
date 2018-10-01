@@ -267,3 +267,15 @@ class ErrorCode(Enum):
     ErrWitnessPubKeyType = (1 << 49, "ErrWitnessPubKeyType")
 
     numErrorCodes = (1 << 50, "numErrorCodes")
+
+
+class ScriptError(BaseException):
+    def __init__(self, c, desc):
+        """
+
+        :param ErrorCode c:
+        :param str desc:
+        """
+
+        self.c = c
+        self.desc = desc

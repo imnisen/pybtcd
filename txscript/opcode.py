@@ -263,6 +263,331 @@ OP_PUBKEY = 0xfe  # 254 - bitcoin core internal
 OP_INVALIDOPCODE = 0xff  # 255 - bitcoin core internal
 
 
+# An opcode defines the information related to a txscript opcode.  opfunc, if
+# present, is the function to call to perform the opcode on the script.  The
+# current script is passed in as a slice with the first member being the opcode
+# itself.
+class OpCode:
+    def __init__(self, value=None, name=None, length=None, opfunc=None):
+        """
+
+        :param byte value:
+        :param string name:
+        :param int length:
+        :param func opfunc:
+        """
+        self.value = value or 0x00
+        self.name = name or ""
+        self.length = length or 0
+        self.opfunc = opfunc or None  # TOCHECK
+
+    def __eq__(self, other):
+        return self.value == other.value and \
+               self.name == other.name and \
+               self.length == other.length and \
+               self.opfunc == other.opfunc
+
+    def __repr__(self):
+        return self.name
+
+
+class ParsedOpcode:
+    def __init__(self, opcode=None, data=None):
+        """
+
+        :param OpCode opcode:
+        :param []byte data:
+        """
+        self.opcode = opcode
+        self.data = data or bytes()
+
+    def __eq__(self, other):
+        return self.opcode == other.opcode and \
+               self.data == other.data
+
+
+# *******************************************
+# Opcode implementation functions start here.
+# *******************************************
+
+# opcodeDisabled is a common handler for disabled opcodes.  It returns an
+# appropriate error indicating the opcode is disabled.  While it would
+# ordinarily make more sense to detect if the script contains any disabled
+# opcodes before executing in an initial parse step, the consensus rules
+# dictate the script doesn't fail until the program counter passes over a
+# disabled opcode (even when they appear in a branch that is not executed).
+def opcodeDisabled(op, vm):
+    pass
+
+
+def opcodeFalse(op, vm):
+    pass
+
+
+def opcodePushData(op, vm):
+    pass
+
+
+def opcode1Negate(op, vm):
+    pass
+
+
+def opcodeReserved(op, vm):
+    pass
+
+
+def opcodeN(op, vm):
+    pass
+
+
+def opcodeNop(op, vm):
+    pass
+
+
+def opcodeIf(op, vm):
+    pass
+
+
+def opcodeNotIf(op, vm):
+    pass
+
+
+def opcodeElse(op, vm):
+    pass
+
+
+def opcodeEndif(op, vm):
+    pass
+
+
+def opcodeVerify(op, vm):
+    pass
+
+
+def opcodeReturn(op, vm):
+    pass
+
+
+def opcodeCheckLockTimeVerify(op, vm):
+    pass
+
+
+def opcodeCheckSequenceVerify(op, vm):
+    pass
+
+
+def opcodeToAltStack(op, vm):
+    pass
+
+
+def opcodeFromAltStack(op, vm):
+    pass
+
+
+def opcode2Drop(op, vm):
+    pass
+
+
+def opcode2Dup(op, vm):
+    pass
+
+
+def opcode3Dup(op, vm):
+    pass
+
+
+def opcode2Over(op, vm):
+    pass
+
+
+def opcode2Rot(op, vm):
+    pass
+
+
+def opcode2Swap(op, vm):
+    pass
+
+
+def opcodeIfDup(op, vm):
+    pass
+
+
+def opcodeDepth(op, vm):
+    pass
+
+
+def opcodeDrop(op, vm):
+    pass
+
+
+def opcodeDup(op, vm):
+    pass
+
+
+def opcodeNip(op, vm):
+    pass
+
+
+def opcodeOver(op, vm):
+    pass
+
+
+def opcodePick(op, vm):
+    pass
+
+
+def opcodeRoll(op, vm):
+    pass
+
+
+def opcodeRot(op, vm):
+    pass
+
+
+def opcodeSwap(op, vm):
+    pass
+
+
+def opcodeTuck(op, vm):
+    pass
+
+
+def opcodeSize(op, vm):
+    pass
+
+
+def opcodeEqual(op, vm):
+    pass
+
+
+def opcodeEqualVerify(op, vm):
+    pass
+
+
+def opcode1Add(op, vm):
+    pass
+
+
+def opcode1Sub(op, vm):
+    pass
+
+
+def opcodeNegate(op, vm):
+    pass
+
+
+def opcodeAbs(op, vm):
+    pass
+
+
+def opcodeNot(op, vm):
+    pass
+
+
+def opcode0NotEqual(op, vm):
+    pass
+
+
+def opcodeAdd(op, vm):
+    pass
+
+
+def opcodeSub(op, vm):
+    pass
+
+
+def opcodeBoolAnd(op, vm):
+    pass
+
+
+def opcodeBoolOr(op, vm):
+    pass
+
+
+def opcodeNumEqual(op, vm):
+    pass
+
+
+def opcodeNumEqualVerify(op, vm):
+    pass
+
+
+def opcodeNumNotEqual(op, vm):
+    pass
+
+
+def opcodeLessThan(op, vm):
+    pass
+
+
+def opcodeGreaterThan(op, vm):
+    pass
+
+
+def opcodeLessThanOrEqual(op, vm):
+    pass
+
+
+def opcodeGreaterThanOrEqual(op, vm):
+    pass
+
+
+def opcodeMin(op, vm):
+    pass
+
+
+def opcodeMax(op, vm):
+    pass
+
+
+def opcodeWithin(op, vm):
+    pass
+
+
+def opcodeRipemd160(op, vm):
+    pass
+
+
+def opcodeSha1(op, vm):
+    pass
+
+
+def opcodeSha256(op, vm):
+    pass
+
+
+def opcodeHash160(op, vm):
+    pass
+
+
+def opcodeHash256(op, vm):
+    pass
+
+
+def opcodeCodeSeparator(op, vm):
+    pass
+
+
+def opcodeCheckSig(op, vm):
+    pass
+
+
+def opcodeCheckSigVerify(op, vm):
+    pass
+
+
+def opcodeCheckMultiSig(op, vm):
+    pass
+
+
+def opcodeCheckMultiSigVerify(op, vm):
+    pass
+
+
+def opcodeInvalid(op, vm):
+    pass
+
+
 opcode_array = [
     # Data push opcodes.
     OpCode(OP_FALSE, "OP_0", 1, opcodeFalse),
@@ -374,8 +699,9 @@ opcode_array = [
     OpCode(OP_ENDIF, "OP_ENDIF", 1, opcodeEndif),
     OpCode(OP_VERIFY, "OP_VERIFY", 1, opcodeVerify),
     OpCode(OP_RETURN, "OP_RETURN", 1, opcodeReturn),
-    OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
-    OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
+    # # As same of OP_NOP2 and OP_NOP3
+    # OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
+    # OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
 
     # Stack opcodes.
     OpCode(OP_TOALTSTACK, "OP_TOALTSTACK", 1, opcodeToAltStack),
@@ -458,6 +784,8 @@ opcode_array = [
 
     # Reserved opcodes.
     OpCode(OP_NOP1, "OP_NOP1", 1, opcodeNop),
+    OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
+    OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
     OpCode(OP_NOP4, "OP_NOP4", 1, opcodeNop),
     OpCode(OP_NOP5, "OP_NOP5", 1, opcodeNop),
     OpCode(OP_NOP6, "OP_NOP6", 1, opcodeNop),
@@ -542,47 +870,3 @@ opcode_array = [
     OpCode(OP_INVALIDOPCODE, "OP_INVALIDOPCODE", 1, opcodeInvalid),
 
 ]
-
-
-# An opcode defines the information related to a txscript opcode.  opfunc, if
-# present, is the function to call to perform the opcode on the script.  The
-# current script is passed in as a slice with the first member being the opcode
-# itself.
-class OpCode:
-    def __init__(self, value, name, length, opfunc):
-        """
-
-        :param byte value:
-        :param string name:
-        :param int length:
-        :param func opfunc:
-        """
-        self.value = value
-        self.name = name
-        self.length = length
-        self.opfunc = opfunc
-
-
-class ParsedOpcode:
-    def __init__(self, opcode, data):
-        """
-
-        :param OpCode opcode:
-        :param []byte data:
-        """
-        self.opcode = opcode
-        self.data = data
-
-
-# *******************************************
-# Opcode implementation functions start here.
-# *******************************************
-
-# opcodeDisabled is a common handler for disabled opcodes.  It returns an
-# appropriate error indicating the opcode is disabled.  While it would
-# ordinarily make more sense to detect if the script contains any disabled
-# opcodes before executing in an initial parse step, the consensus rules
-# dictate the script doesn't fail until the program counter passes over a
-# disabled opcode (even when they appear in a branch that is not executed).
-def opcodeDisabled(op, vm):
-    pass
