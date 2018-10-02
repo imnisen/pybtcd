@@ -1,3 +1,5 @@
+from .error import *
+
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
 # to handling BTC scripts
@@ -304,6 +306,60 @@ class ParsedOpcode:
     def __eq__(self, other):
         return self.opcode == other.opcode and \
                self.data == other.data
+
+    def bytes(self):
+        script = []
+        if self.opcode.length == 1:
+            script.append(self.opcode.value)
+            if len(self.data) != 0:
+                desc = "internal consistency error - parsed opcode %s has data length %d when %d was expected".format(
+                    self.opcode.name, len(self.data), 0)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+        elif self.opcode.length > 1:
+            script.append(self.opcode.value)
+            if len(self.data) != self.opcode.length - 1:
+                desc = "internal consistency error - parsed opcode %s has data length %d when %d was expected".format(
+                    self.opcode.name, len(self.data), self.opcode.length - 1)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+            script.append(self.data)
+        elif self.opcode.length < 0:
+            script.append(self.opcode.value)
+            l = len(self.data)
+            if self.opcode.length == -1:
+                try:
+                    script.append(l.to_bytes(1, "little"))
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.append(self.data)
+            elif self.opcode.length == -2:
+                try:
+                    script.append(l.to_bytes(2, "little"))
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.append(self.data)
+            elif self.opcode.length == -4:
+                try:
+                    script.append(l.to_bytes(4, "little"))
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.append(self.data)
+            else:
+                desc = "internal consistency error - parsed opcode %s has opcode length %s, not one of -1, -2, -4".format(
+                    self.opcode.name, self.opcode.length)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+
+        else:
+            desc = "opcode: %s,  length: %s is illegal".format(
+                self.opcode.name, self.opcode.length)
+            raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+
+        return script
 
 
 # *******************************************

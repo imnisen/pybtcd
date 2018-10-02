@@ -69,3 +69,14 @@ def parse_script_template(script, opcodes):
 
         return_script.append(pop)
     return return_script
+
+
+def parse_script(script):
+    return parse_script_template(script, opcode_array)
+
+
+def unparse_script(pops):
+    scripts = []
+    for pop in pops:
+        scripts.append(pop.bytes())
+    return scripts
