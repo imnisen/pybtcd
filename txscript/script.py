@@ -76,7 +76,7 @@ def parse_script(script):
 
 
 def unparse_script(pops):
-    scripts = []
+    script = bytearray()
     for pop in pops:
-        scripts.append(pop.bytes())
-    return scripts
+        script.extend(pop.bytes())
+    return script

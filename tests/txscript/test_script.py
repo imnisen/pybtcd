@@ -102,3 +102,37 @@ class TestParseOpcode(unittest.TestCase):
         for c in self.err_tests:
             with self.assertRaises(c['err']):
                 parse_script_template(c['script'], c['opcodes'])
+
+
+class TestUnparseScript(unittest.TestCase):
+    def setUp(self):
+        # TODO need to split some test of these to method bytes() method of ParsedOpcode
+        self.tests = [
+            {
+                "name": "OP_FALSE",
+                "pops": [
+                    ParsedOpcode(opcode=OpCode(value=0x4d,
+                                               name="OP_PUSHDATA2",
+                                               length=-2,
+                                               opfunc=opcodePushData),
+                                 data=bytes([0x03, 0x04, 0x05])),
+                ],
+                "script": bytes([OP_PUSHDATA2, 0x03, 0x00, 0x03, 0x04, 0x05])
+            }
+        ]
+
+        self.err_tests = [
+            # {
+            #     "pops": [],
+            #     "err": None
+            # }
+        ]
+
+    def test_unparse_script(self):
+
+        for c in self.tests:
+            self.assertEqual(unparse_script(c['pops']), c['script'])
+
+        for c in self.err_tests:
+            with self.assertRaises(c['err']):
+                unparse_script(c['pops'])

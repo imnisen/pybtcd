@@ -308,7 +308,7 @@ class ParsedOpcode:
                self.data == other.data
 
     def bytes(self):
-        script = []
+        script = bytearray()
         if self.opcode.length == 1:
             script.append(self.opcode.value)
             if len(self.data) != 0:
@@ -321,34 +321,37 @@ class ParsedOpcode:
                 desc = "internal consistency error - parsed opcode %s has data length %d when %d was expected".format(
                     self.opcode.name, len(self.data), self.opcode.length - 1)
                 raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
-            script.append(self.data)
+            script.extend(self.data)
         elif self.opcode.length < 0:
             script.append(self.opcode.value)
             l = len(self.data)
             if self.opcode.length == -1:
                 try:
-                    script.append(l.to_bytes(1, "little"))
+                    len_bytes = l.to_bytes(1, "little")
                 except OverflowError:
                     desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
                         self.opcode.name, len(self.data))
                     raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
-                script.append(self.data)
+                script.extend(len_bytes)
+                script.extend(self.data)
             elif self.opcode.length == -2:
                 try:
-                    script.append(l.to_bytes(2, "little"))
+                    len_bytes = l.to_bytes(2, "little")
                 except OverflowError:
                     desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
                         self.opcode.name, len(self.data))
                     raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
-                script.append(self.data)
+                script.extend(len_bytes)
+                script.extend(self.data)
             elif self.opcode.length == -4:
                 try:
-                    script.append(l.to_bytes(4, "little"))
+                    len_bytes = l.to_bytes(4, "little")
                 except OverflowError:
                     desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
                         self.opcode.name, len(self.data))
                     raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
-                script.append(self.data)
+                script.extend(len_bytes)
+                script.extend(self.data)
             else:
                 desc = "internal consistency error - parsed opcode %s has opcode length %s, not one of -1, -2, -4".format(
                     self.opcode.name, self.opcode.length)
