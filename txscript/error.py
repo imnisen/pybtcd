@@ -279,3 +279,12 @@ class ScriptError(BaseException):
 
         self.c = c
         self.desc = desc
+
+    def __eq__(self, other):
+        return self.c == other.c and self.desc == other.desc
+
+    def __repr__(self):
+        return "ScriptError(ErrorCode={}, desc={})".format(str(self.c), self.desc or "\"\"")
+
+    def __str__(self):
+        return "ScriptError(ErrorCode={}, desc={})".format(str(self.c), self.desc or "\"\"")
