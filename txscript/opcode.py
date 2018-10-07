@@ -375,275 +375,276 @@ class ParsedOpcode:
 # opcodes before executing in an initial parse step, the consensus rules
 # dictate the script doesn't fail until the program counter passes over a
 # disabled opcode (even when they appear in a branch that is not executed).
-def opcodeDisabled(op, vm):
-    pass
+def opcodeDisabled(pop, vm):
+    desc = "attempt to execute disabled opcode {}".format(pop.opcode.name)
+    raise ScriptError(c=ErrorCode.ErrDisabledOpcode, desc=desc)
 
 
-def opcodeFalse(op, vm):
+def opcodeFalse(pop, vm):
     pass
 
 
-def opcodePushData(op, vm):
+def opcodePushData(pop, vm):
     pass
 
 
-def opcode1Negate(op, vm):
+def opcode1Negate(pop, vm):
     pass
 
 
-def opcodeReserved(op, vm):
+def opcodeReserved(pop, vm):
     pass
 
 
-def opcodeN(op, vm):
+def opcodeN(pop, vm):
     pass
 
 
-def opcodeNop(op, vm):
+def opcodeNop(pop, vm):
     pass
 
 
-def opcodeIf(op, vm):
+def opcodeIf(pop, vm):
     pass
 
 
-def opcodeNotIf(op, vm):
+def opcodeNotIf(pop, vm):
     pass
 
 
-def opcodeElse(op, vm):
+def opcodeElse(pop, vm):
     pass
 
 
-def opcodeEndif(op, vm):
+def opcodeEndif(pop, vm):
     pass
 
 
-def opcodeVerify(op, vm):
+def opcodeVerify(pop, vm):
     pass
 
 
-def opcodeReturn(op, vm):
+def opcodeReturn(pop, vm):
     pass
 
 
-def opcodeCheckLockTimeVerify(op, vm):
+def opcodeCheckLockTimeVerify(pop, vm):
     pass
 
 
-def opcodeCheckSequenceVerify(op, vm):
+def opcodeCheckSequenceVerify(pop, vm):
     pass
 
 
-def opcodeToAltStack(op, vm):
+def opcodeToAltStack(pop, vm):
     pass
 
 
-def opcodeFromAltStack(op, vm):
+def opcodeFromAltStack(pop, vm):
     pass
 
 
-def opcode2Drop(op, vm):
+def opcode2Drop(pop, vm):
     pass
 
 
-def opcode2Dup(op, vm):
+def opcode2Dup(pop, vm):
     pass
 
 
-def opcode3Dup(op, vm):
+def opcode3Dup(pop, vm):
     pass
 
 
-def opcode2Over(op, vm):
+def opcode2Over(pop, vm):
     pass
 
 
-def opcode2Rot(op, vm):
+def opcode2Rot(pop, vm):
     pass
 
 
-def opcode2Swap(op, vm):
+def opcode2Swap(pop, vm):
     pass
 
 
-def opcodeIfDup(op, vm):
+def opcodeIfDup(pop, vm):
     pass
 
 
-def opcodeDepth(op, vm):
+def opcodeDepth(pop, vm):
     pass
 
 
-def opcodeDrop(op, vm):
+def opcodeDrop(pop, vm):
     pass
 
 
-def opcodeDup(op, vm):
+def opcodeDup(pop, vm):
     pass
 
 
-def opcodeNip(op, vm):
+def opcodeNip(pop, vm):
     pass
 
 
-def opcodeOver(op, vm):
+def opcodeOver(pop, vm):
     pass
 
 
-def opcodePick(op, vm):
+def opcodePick(pop, vm):
     pass
 
 
-def opcodeRoll(op, vm):
+def opcodeRoll(pop, vm):
     pass
 
 
-def opcodeRot(op, vm):
+def opcodeRot(pop, vm):
     pass
 
 
-def opcodeSwap(op, vm):
+def opcodeSwap(pop, vm):
     pass
 
 
-def opcodeTuck(op, vm):
+def opcodeTuck(pop, vm):
     pass
 
 
-def opcodeSize(op, vm):
+def opcodeSize(pop, vm):
     pass
 
 
-def opcodeEqual(op, vm):
+def opcodeEqual(pop, vm):
     pass
 
 
-def opcodeEqualVerify(op, vm):
+def opcodeEqualVerify(pop, vm):
     pass
 
 
-def opcode1Add(op, vm):
+def opcode1Add(pop, vm):
     pass
 
 
-def opcode1Sub(op, vm):
+def opcode1Sub(pop, vm):
     pass
 
 
-def opcodeNegate(op, vm):
+def opcodeNegate(pop, vm):
     pass
 
 
-def opcodeAbs(op, vm):
+def opcodeAbs(pop, vm):
     pass
 
 
-def opcodeNot(op, vm):
+def opcodeNot(pop, vm):
     pass
 
 
-def opcode0NotEqual(op, vm):
+def opcode0NotEqual(pop, vm):
     pass
 
 
-def opcodeAdd(op, vm):
+def opcodeAdd(pop, vm):
     pass
 
 
-def opcodeSub(op, vm):
+def opcodeSub(pop, vm):
     pass
 
 
-def opcodeBoolAnd(op, vm):
+def opcodeBoolAnd(pop, vm):
     pass
 
 
-def opcodeBoolOr(op, vm):
+def opcodeBoolOr(pop, vm):
     pass
 
 
-def opcodeNumEqual(op, vm):
+def opcodeNumEqual(pop, vm):
     pass
 
 
-def opcodeNumEqualVerify(op, vm):
+def opcodeNumEqualVerify(pop, vm):
     pass
 
 
-def opcodeNumNotEqual(op, vm):
+def opcodeNumNotEqual(pop, vm):
     pass
 
 
-def opcodeLessThan(op, vm):
+def opcodeLessThan(pop, vm):
     pass
 
 
-def opcodeGreaterThan(op, vm):
+def opcodeGreaterThan(pop, vm):
     pass
 
 
-def opcodeLessThanOrEqual(op, vm):
+def opcodeLessThanOrEqual(pop, vm):
     pass
 
 
-def opcodeGreaterThanOrEqual(op, vm):
+def opcodeGreaterThanOrEqual(pop, vm):
     pass
 
 
-def opcodeMin(op, vm):
+def opcodeMin(pop, vm):
     pass
 
 
-def opcodeMax(op, vm):
+def opcodeMax(pop, vm):
     pass
 
 
-def opcodeWithin(op, vm):
+def opcodeWithin(pop, vm):
     pass
 
 
-def opcodeRipemd160(op, vm):
+def opcodeRipemd160(pop, vm):
     pass
 
 
-def opcodeSha1(op, vm):
+def opcodeSha1(pop, vm):
     pass
 
 
-def opcodeSha256(op, vm):
+def opcodeSha256(pop, vm):
     pass
 
 
-def opcodeHash160(op, vm):
+def opcodeHash160(pop, vm):
     pass
 
 
-def opcodeHash256(op, vm):
+def opcodeHash256(pop, vm):
     pass
 
 
-def opcodeCodeSeparator(op, vm):
+def opcodeCodeSeparator(pop, vm):
     pass
 
 
-def opcodeCheckSig(op, vm):
+def opcodeCheckSig(pop, vm):
     pass
 
 
-def opcodeCheckSigVerify(op, vm):
+def opcodeCheckSigVerify(pop, vm):
     pass
 
 
-def opcodeCheckMultiSig(op, vm):
+def opcodeCheckMultiSig(pop, vm):
     pass
 
 
-def opcodeCheckMultiSigVerify(op, vm):
+def opcodeCheckMultiSigVerify(pop, vm):
     pass
 
 
-def opcodeInvalid(op, vm):
+def opcodeInvalid(pop, vm):
     pass
 
 
