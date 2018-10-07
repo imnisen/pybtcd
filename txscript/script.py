@@ -12,6 +12,15 @@ class SigHashType(Enum):
     SigHashAnyOneCanPay = 0x80
 
 
+# is_small_int returns whether or not the opcode is considered a small integer,
+# which is an OP_0, or OP_1 through OP_16.
+def is_small_int(op) -> bool:
+    if op.value == OP_0 or (op.value >= OP_1 and op.value <= OP_16):
+        return True
+    else:
+        return False
+
+
 def parse_script_template(script, opcodes):
     """
     Parse script to ParsedOpcode list
