@@ -106,10 +106,22 @@ class TestParseOpcode(unittest.TestCase):
 
 class TestUnparseScript(unittest.TestCase):
     def setUp(self):
-        # TODO need to split some test of these to method bytes() method of ParsedOpcode
+        # TOADD more test case
         self.tests = [
+
             {
                 "name": "OP_FALSE",
+                "pops": [
+                    ParsedOpcode(opcode=OpCode(value=OP_FALSE,
+                                               name="OP_0",
+                                               length=1,
+                                               opfunc=opcodeFalse),
+                                 data=bytes([])),
+                ],
+                "script": bytes([OP_FALSE])
+            },
+            {
+                "name": "OP_PUSHDATA2",
                 "pops": [
                     ParsedOpcode(opcode=OpCode(value=0x4d,
                                                name="OP_PUSHDATA2",
@@ -122,10 +134,17 @@ class TestUnparseScript(unittest.TestCase):
         ]
 
         self.err_tests = [
-            # {
-            #     "pops": [],
-            #     "err": None
-            # }
+            {
+                "name": "OP_FALSE Err",
+                "pops": [
+                    ParsedOpcode(opcode=OpCode(value=OP_FALSE,
+                                               name="OP_0",
+                                               length=1,
+                                               opfunc=opcodeFalse),
+                                 data=bytes([0x00])),
+                ],
+                "err": ScriptError(c=ErrorCode.ErrInternal, desc=""),
+            }
         ]
 
     def test_unparse_script(self):
@@ -134,5 +153,6 @@ class TestUnparseScript(unittest.TestCase):
             self.assertEqual(unparse_script(c['pops']), c['script'])
 
         for c in self.err_tests:
-            with self.assertRaises(c['err']):
+            with self.assertRaises(ScriptError) as cm:
                 unparse_script(c['pops'])
+            self.assertEqual(cm.exception.c, c['err'].c)
