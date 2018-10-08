@@ -1,7 +1,8 @@
 from enum import Enum
+from .opcode import *
 
 
-class ScriptFlags(Enum):
+class ScriptFlag(Enum):
     # ScriptBip16 defines whether the bip16 threshold has passed and thus
     # pay-to-script hash transactions will be fully validated.
     ScriptBip16 = 1 << 0
@@ -78,6 +79,30 @@ class ScriptFlags(Enum):
     ScriptVerifyWitnessPubKeyType = 1 << 15
 
 
+class ScriptFlags:
+    def __init__(self, data):
+        if type(data) is ScriptFlag:
+            self._data = data.value
+        elif type(data) is int:
+            self._data = data
+        elif type(data) is ScriptFlags:
+            self._data = ScriptFlags.value
+        else:
+            self._data = 0
+
+    @property
+    def value(self):
+        return self._data
+
+
+    def has_flag(self, flag):
+        return (self._data & flag.value) == flag.value
+
+
+
+
+
+
 # Engine is the virtual machine that executes scripts.
 class Engine:
     def __init__(self, scripts, script_idx, script_off, last_code_seq,
@@ -123,3 +148,18 @@ class Engine:
         self.witness_version = witness_version
         self.witness_program = witness_program
         self.inptut_amount = inptut_amount
+
+
+    # has_flag returns whether the script engine instance has the passed flag set.
+    def has_flag(self, flag: ScriptFlag) -> bool:
+        return self.flags.has_flag(flag)
+
+    # is_branch_executing returns whether or not the current conditional branch is
+    # actively executing.  For example, when the data stack has an OP_FALSE on it
+    # and an OP_IF is encountered, the branch is inactive until an OP_ELSE or
+    # OP_ENDIF is encountered.  It properly handles nested conditionals.
+    def is_branch_executing(self) -> bool:
+        if len(self.cond_stack) == 0:
+            return True
+        return self.cond_stack[-1] == OpCondTrue
+    

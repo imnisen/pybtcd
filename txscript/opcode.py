@@ -263,6 +263,130 @@ OP_PUBKEY = 0xfe  # 254 - bitcoin core internal
 OP_INVALIDOPCODE = 0xff  # 255 - bitcoin core internal
 
 
+# Conditional execution constants.
+OpCondFalse = 0
+OpCondTrue = 1
+OpCondSkip = 2
+
+
+
+
+
+# An opcode defines the information related to a txscript opcode.  opfunc, if
+# present, is the function to call to perform the opcode on the script.  The
+# current script is passed in as a slice with the first member being the opcode
+# itself.
+class OpCode:
+    def __init__(self, value, name, length, opfunc):
+        """
+
+        :param byte value:
+        :param string name:
+        :param int length:
+        :param func opfunc:
+        """
+        self.value = value
+        self.name = name
+        self.length = length
+        self.opfunc = opfunc
+
+
+class ParsedOpcode:
+    def __init__(self, opcode, data):
+        """
+
+        :param OpCode opcode:
+        :param []byte data:
+        """
+        self.opcode = opcode
+        self.data = data
+
+    # Return the opcode if marked as disabled
+    # If any opcode marked as disabled is present in a script, it must abort and fail.
+    def is_disabled(self)->bool:
+        value = self.opcode.value
+        if value == OP_CAT:
+            return True
+        if value == OP_SUBSTR:
+            return True
+        if value == OP_LEFT:
+            return True
+        if value == OP_RIGHT:
+            return True
+        if value == OP_INVERT:
+            return True
+        if value == OP_AND:
+            return True
+        if value == OP_OR:
+            return True
+        if value == OP_XOR:
+            return True
+        if value == OP_2MUL:
+            return True
+        if value == OP_2DIV:
+            return True
+        if value == OP_MUL:
+            return True
+        if value == OP_DIV:
+            return True
+        if value == OP_MOD:
+            return True
+        if value == OP_LSHIFT:
+            return True
+        if value == OP_RSHIFT:
+            return True
+        return False
+
+    # alwaysIllegal returns whether or not the opcode is always illegal when passed
+    # over by the program counter even if in a non-executed branch (it isn't a
+    # coincidence that they are conditionals).
+    def always_illegal(self)-> bool:
+        value = self.opcode.value
+        if value == OP_VERIF:
+            return True
+        if value == OP_VERNOTIF:
+            return True
+        return False
+
+
+    # isConditional returns whether or not the opcode is a conditional opcode which
+    # changes the conditional execution stack when executed.
+    def is_conditional(self)-> bool:
+        value = self.opcode.value
+        if value == OP_IF:
+            return True
+        if value == OP_NOTIF:
+            return True
+        if value == OP_ELSE:
+            return True
+        if value == OP_ENDIF:
+            return True
+        return False
+
+    # checkMinimalDataPush returns whether or not the current data push uses the
+    # smallest possible opcode to represent it.  For example, the value 15 could
+    # be pushed with OP_DATA_1 15 (among other variations); however, OP_15 is a
+    # single opcode that represents the same value and is only a single byte versus
+    # two bytes.
+    def check_minimal_data_push(self):
+        pass
+
+    # print returns a human-readable string representation of the opcode for use
+    # in script disassembly.
+    def print(self, oneline: bool) -> str:
+        pass
+
+    # bytes returns any data associated with the opcode encoded as it would be in
+    # a script.  This is used for unparsing scripts from parsed opcodes.
+    def bytes(self):
+        pass
+        
+        
+
+
+
+
+
 opcode_array = [
     # Data push opcodes.
     OpCode(OP_FALSE, "OP_0", 1, opcodeFalse),
@@ -544,34 +668,6 @@ opcode_array = [
 ]
 
 
-# An opcode defines the information related to a txscript opcode.  opfunc, if
-# present, is the function to call to perform the opcode on the script.  The
-# current script is passed in as a slice with the first member being the opcode
-# itself.
-class OpCode:
-    def __init__(self, value, name, length, opfunc):
-        """
-
-        :param byte value:
-        :param string name:
-        :param int length:
-        :param func opfunc:
-        """
-        self.value = value
-        self.name = name
-        self.length = length
-        self.opfunc = opfunc
-
-
-class ParsedOpcode:
-    def __init__(self, opcode, data):
-        """
-
-        :param OpCode opcode:
-        :param []byte data:
-        """
-        self.opcode = opcode
-        self.data = data
 
 
 # *******************************************
