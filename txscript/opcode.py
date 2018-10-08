@@ -1,3 +1,5 @@
+from .error import *
+
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
 # to handling BTC scripts
@@ -271,13 +273,13 @@ OpCondSkip = 2
 
 
 
-
 # An opcode defines the information related to a txscript opcode.  opfunc, if
 # present, is the function to call to perform the opcode on the script.  The
 # current script is passed in as a slice with the first member being the opcode
 # itself.
 class OpCode:
-    def __init__(self, value, name, length, opfunc):
+
+    def __init__(self, value=None, name=None, length=None, opfunc=None):
         """
 
         :param byte value:
@@ -285,21 +287,35 @@ class OpCode:
         :param int length:
         :param func opfunc:
         """
-        self.value = value
-        self.name = name
-        self.length = length
-        self.opfunc = opfunc
+        self.value = value or 0x00
+        self.name = name or ""
+        self.length = length or 0
+        self.opfunc = opfunc or None  # TOCHECK
+
+
+    def __eq__(self, other):
+        return self.value == other.value and \
+               self.name == other.name and \
+               self.length == other.length and \
+               self.opfunc == other.opfunc
+
+    def __repr__(self):
+        return self.name
 
 
 class ParsedOpcode:
-    def __init__(self, opcode, data):
+    def __init__(self, opcode=None, data=None):
         """
 
         :param OpCode opcode:
         :param []byte data:
         """
-        self.opcode = opcode
-        self.data = data
+        self.opcode = opcode or OpCode()
+        self.data = data or bytes()
+
+    def __eq__(self, other):
+        return self.opcode == other.opcode and \
+               self.data == other.data
 
     # Return the opcode if marked as disabled
     # If any opcode marked as disabled is present in a script, it must abort and fail.
@@ -379,12 +395,344 @@ class ParsedOpcode:
     # bytes returns any data associated with the opcode encoded as it would be in
     # a script.  This is used for unparsing scripts from parsed opcodes.
     def bytes(self):
-        pass
-        
-        
+        script = bytearray()
+        if self.opcode.length == 1:
+            script.append(self.opcode.value)
+            if len(self.data) != 0:
+                desc = "internal consistency error - parsed opcode %s has data length %d when %d was expected".format(
+                    self.opcode.name, len(self.data), 0)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+        elif self.opcode.length > 1:
+            script.append(self.opcode.value)
+            if len(self.data) != self.opcode.length - 1:
+                desc = "internal consistency error - parsed opcode %s has data length %d when %d was expected".format(
+                    self.opcode.name, len(self.data), self.opcode.length - 1)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+            script.extend(self.data)
+        elif self.opcode.length < 0:
+            script.append(self.opcode.value)
+            l = len(self.data)
+            if self.opcode.length == -1:
+                try:
+                    len_bytes = l.to_bytes(1, "little")
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.extend(len_bytes)
+                script.extend(self.data)
+            elif self.opcode.length == -2:
+                try:
+                    len_bytes = l.to_bytes(2, "little")
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.extend(len_bytes)
+                script.extend(self.data)
+            elif self.opcode.length == -4:
+                try:
+                    len_bytes = l.to_bytes(4, "little")
+                except OverflowError:
+                    desc = "internal consistency error - parsed opcode %s has data length %d, but overflow".format(
+                        self.opcode.name, len(self.data))
+                    raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+                script.extend(len_bytes)
+                script.extend(self.data)
+            else:
+                desc = "internal consistency error - parsed opcode %s has opcode length %s, not one of -1, -2, -4".format(
+                    self.opcode.name, self.opcode.length)
+                raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+
+        else:
+            desc = "opcode: %s,  length: %s is illegal".format(
+                self.opcode.name, self.opcode.length)
+            raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
+
+        return script
 
 
+# *******************************************
+# Opcode implementation functions start here.
+# *******************************************
 
+# opcodeDisabled is a common handler for disabled opcodes.  It returns an
+# appropriate error indicating the opcode is disabled.  While it would
+# ordinarily make more sense to detect if the script contains any disabled
+# opcodes before executing in an initial parse step, the consensus rules
+# dictate the script doesn't fail until the program counter passes over a
+# disabled opcode (even when they appear in a branch that is not executed).
+def opcodeDisabled(pop, vm):
+    desc = "attempt to execute disabled opcode {}".format(pop.opcode.name)
+    raise ScriptError(c=ErrorCode.ErrDisabledOpcode, desc=desc)
+
+
+def opcodeFalse(pop, vm):
+    pass
+
+
+def opcodePushData(pop, vm):
+    pass
+
+
+def opcode1Negate(pop, vm):
+    pass
+
+
+def opcodeReserved(pop, vm):
+    pass
+
+
+def opcodeN(pop, vm):
+    pass
+
+
+def opcodeNop(pop, vm):
+    pass
+
+
+def opcodeIf(pop, vm):
+    pass
+
+
+def opcodeNotIf(pop, vm):
+    pass
+
+
+def opcodeElse(pop, vm):
+    pass
+
+
+def opcodeEndif(pop, vm):
+    pass
+
+
+def opcodeVerify(pop, vm):
+    pass
+
+
+def opcodeReturn(pop, vm):
+    pass
+
+
+def opcodeCheckLockTimeVerify(pop, vm):
+    pass
+
+
+def opcodeCheckSequenceVerify(pop, vm):
+    pass
+
+
+def opcodeToAltStack(pop, vm):
+    pass
+
+
+def opcodeFromAltStack(pop, vm):
+    pass
+
+
+def opcode2Drop(pop, vm):
+    pass
+
+
+def opcode2Dup(pop, vm):
+    pass
+
+
+def opcode3Dup(pop, vm):
+    pass
+
+
+def opcode2Over(pop, vm):
+    pass
+
+
+def opcode2Rot(pop, vm):
+    pass
+
+
+def opcode2Swap(pop, vm):
+    pass
+
+
+def opcodeIfDup(pop, vm):
+    pass
+
+
+def opcodeDepth(pop, vm):
+    pass
+
+
+def opcodeDrop(pop, vm):
+    pass
+
+
+def opcodeDup(pop, vm):
+    pass
+
+
+def opcodeNip(pop, vm):
+    pass
+
+
+def opcodeOver(pop, vm):
+    pass
+
+
+def opcodePick(pop, vm):
+    pass
+
+
+def opcodeRoll(pop, vm):
+    pass
+
+
+def opcodeRot(pop, vm):
+    pass
+
+
+def opcodeSwap(pop, vm):
+    pass
+
+
+def opcodeTuck(pop, vm):
+    pass
+
+
+def opcodeSize(pop, vm):
+    pass
+
+
+def opcodeEqual(pop, vm):
+    pass
+
+
+def opcodeEqualVerify(pop, vm):
+    pass
+
+
+def opcode1Add(pop, vm):
+    pass
+
+
+def opcode1Sub(pop, vm):
+    pass
+
+
+def opcodeNegate(pop, vm):
+    pass
+
+
+def opcodeAbs(pop, vm):
+    pass
+
+
+def opcodeNot(pop, vm):
+    pass
+
+
+def opcode0NotEqual(pop, vm):
+    pass
+
+
+def opcodeAdd(pop, vm):
+    pass
+
+
+def opcodeSub(pop, vm):
+    pass
+
+
+def opcodeBoolAnd(pop, vm):
+    pass
+
+
+def opcodeBoolOr(pop, vm):
+    pass
+
+
+def opcodeNumEqual(pop, vm):
+    pass
+
+
+def opcodeNumEqualVerify(pop, vm):
+    pass
+
+
+def opcodeNumNotEqual(pop, vm):
+    pass
+
+
+def opcodeLessThan(pop, vm):
+    pass
+
+
+def opcodeGreaterThan(pop, vm):
+    pass
+
+
+def opcodeLessThanOrEqual(pop, vm):
+    pass
+
+
+def opcodeGreaterThanOrEqual(pop, vm):
+    pass
+
+
+def opcodeMin(pop, vm):
+    pass
+
+
+def opcodeMax(pop, vm):
+    pass
+
+
+def opcodeWithin(pop, vm):
+    pass
+
+
+def opcodeRipemd160(pop, vm):
+    pass
+
+
+def opcodeSha1(pop, vm):
+    pass
+
+
+def opcodeSha256(pop, vm):
+    pass
+
+
+def opcodeHash160(pop, vm):
+    pass
+
+
+def opcodeHash256(pop, vm):
+    pass
+
+
+def opcodeCodeSeparator(pop, vm):
+    pass
+
+
+def opcodeCheckSig(pop, vm):
+    pass
+
+
+def opcodeCheckSigVerify(pop, vm):
+    pass
+
+
+def opcodeCheckMultiSig(pop, vm):
+    pass
+
+
+def opcodeCheckMultiSigVerify(pop, vm):
+    pass
+
+
+def opcodeInvalid(pop, vm):
+    pass
 
 
 opcode_array = [
@@ -498,8 +846,9 @@ opcode_array = [
     OpCode(OP_ENDIF, "OP_ENDIF", 1, opcodeEndif),
     OpCode(OP_VERIFY, "OP_VERIFY", 1, opcodeVerify),
     OpCode(OP_RETURN, "OP_RETURN", 1, opcodeReturn),
-    OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
-    OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
+    # # As same of OP_NOP2 and OP_NOP3
+    # OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
+    # OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
 
     # Stack opcodes.
     OpCode(OP_TOALTSTACK, "OP_TOALTSTACK", 1, opcodeToAltStack),
@@ -582,6 +931,8 @@ opcode_array = [
 
     # Reserved opcodes.
     OpCode(OP_NOP1, "OP_NOP1", 1, opcodeNop),
+    OpCode(OP_CHECKLOCKTIMEVERIFY, "OP_CHECKLOCKTIMEVERIFY", 1, opcodeCheckLockTimeVerify),
+    OpCode(OP_CHECKSEQUENCEVERIFY, "OP_CHECKSEQUENCEVERIFY", 1, opcodeCheckSequenceVerify),
     OpCode(OP_NOP4, "OP_NOP4", 1, opcodeNop),
     OpCode(OP_NOP5, "OP_NOP5", 1, opcodeNop),
     OpCode(OP_NOP6, "OP_NOP6", 1, opcodeNop),
@@ -666,19 +1017,3 @@ opcode_array = [
     OpCode(OP_INVALIDOPCODE, "OP_INVALIDOPCODE", 1, opcodeInvalid),
 
 ]
-
-
-
-
-# *******************************************
-# Opcode implementation functions start here.
-# *******************************************
-
-# opcodeDisabled is a common handler for disabled opcodes.  It returns an
-# appropriate error indicating the opcode is disabled.  While it would
-# ordinarily make more sense to detect if the script contains any disabled
-# opcodes before executing in an initial parse step, the consensus rules
-# dictate the script doesn't fail until the program counter passes over a
-# disabled opcode (even when they appear in a branch that is not executed).
-def opcodeDisabled(op, vm):
-    pass
