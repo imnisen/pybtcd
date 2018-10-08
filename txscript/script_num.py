@@ -1,7 +1,6 @@
+import math
 from .error import *
-
-maxInt32 = (1 << 31) - 1
-minInt32 = -1 << 31
+from .constant import *
 
 # defaultScriptNumLen is the default number of bytes
 # data being interpreted as an integer may be.
@@ -122,11 +121,11 @@ class ScriptNum:
     # out of range before being reinterpreted as an integer, this will provide the
     # correct behavior.
     def int32(self):
-        if self.value > maxInt32:
-            return maxInt32
+        if self.value > MaxInt32:
+            return MaxInt32
 
-        if self.value < minInt32:
-            return minInt32
+        if self.value < MinInt32:
+            return MinInt32
 
         return self.value
 
@@ -169,14 +168,12 @@ def make_script_num(v: bytes, require_minial: bool, script_num_len: int):
     if len(v) == 0:
         return 0
 
+    # result is int64 type, in order to act as int64 in python,
+    # let's do some trick
     result = 0
-
     # Decode from little endian.
     for i in range(len(v)):
-        result |= (v[i] << (8 * i))
-        print(i)
-        print(result)
-
+        result |= _make_sure_int64(v[i] << (8 * i))
 
     # When the most significant byte of the input bytes has the sign bit
     # set, the result is negative.  So, remove the sign bit from the result
@@ -185,7 +182,7 @@ def make_script_num(v: bytes, require_minial: bool, script_num_len: int):
         # The maximum length of v has already been determined to be 4
         # above, so uint8 is enough to cover the max possible shift
         # value of 24.
-        result &= ~(0x80 << 8 * (len(v) - 1))  # TOCHECK why
+        result &= ~(_make_sure_int64(0x80 << 8 * (len(v) - 1)))  # TOCHECK why
 
         return ScriptNum(-result)
 
@@ -216,3 +213,18 @@ def check_minimal_data_encoding(v: bytes):
             raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
 
     return
+
+
+def _make_sure_int64(number):
+    if number > MaxInt64:
+        # determine how many bytes need, maybe we can do this more smart
+        n = int((len(bin(number)) - 2) / 8) + 1
+        assert n > 8
+        # to_bytes(n, "little") use n bytes to contain more in case overflow, the truncate with [:8]
+        return int.from_bytes((number.to_bytes(n, "little", signed=True))[:8], "little", signed=True)
+    else:
+        return number
+
+# def _make_sure_int64_2(number):
+#     # to_bytes(9, "little") use 9 bytes to contain more in case overflow, the truncate with [:8]
+#     return int.from_bytes((number.to_bytes(9, "little", signed=True))[:8], "little", signed=True)
