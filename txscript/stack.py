@@ -1,4 +1,4 @@
-from .scriptnum import *
+from .script_num import *
 from .error import *
 
 
@@ -90,7 +90,8 @@ class Stack:
         if idx < 0 or idx > len(self.stk) - 1:
             desc = "index {} is invalid for stack size {}".format(idx, len(self.stk))
             raise ScriptError(c=ErrorCode.ErrInvalidStackOperation, desc=desc)
-        return self.stk.pop(-1 - idx)
+        x = self.stk.pop(-1 - idx)
+        return x
 
     # NipN removes the Nth object on the stack
     #

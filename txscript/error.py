@@ -270,7 +270,7 @@ class ErrorCode(Enum):
 
 
 class ScriptError(BaseException):
-    def __init__(self, c, desc):
+    def __init__(self, c, desc=None):
         """
 
         :param ErrorCode c:
@@ -278,7 +278,7 @@ class ScriptError(BaseException):
         """
 
         self.c = c
-        self.desc = desc
+        self.desc = desc or ""
 
     def __eq__(self, other):
         return self.c == other.c and self.desc == other.desc
