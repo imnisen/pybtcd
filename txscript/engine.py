@@ -162,4 +162,3 @@ class Engine:
         if len(self.cond_stack) == 0:
             return True
         return self.cond_stack[-1] == OpCondTrue
-    
