@@ -19,6 +19,11 @@ class TxSigHashes:
         self.hash_sequence = hash_sequence
         self.hash_outputs = hash_outputs
 
+    def __eq__(self, other):
+        return self.hash_prev_outs == other.hash_prev_outs and \
+               self.hash_sequence == other.hash_sequence and \
+               self.hash_outputs == other.hash_outputs
+
     @classmethod
     def from_msg_tx(cls, tx):
         return cls(hash_prev_outs=calc_hash_prevouts(tx),
@@ -32,7 +37,7 @@ class TxSigHashes:
 # multiple goroutines can safely re-use the pre-computed partial sighashes
 # speeding up validation time amongst all inputs found within a block.
 class HashCache:
-    def __init__(self, sig_hashes, lock=None):
+    def __init__(self, sig_hashes=None, lock=None):
         """
 
         :param dict{Hash->TxSigHashes} sig_hashes:

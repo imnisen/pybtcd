@@ -40,7 +40,7 @@ def copy_public_key(key):
 #     return msg_hash, sig, pub_key
 
 class TestSigCache(unittest.TestCase):
-    def test_add_exsits(self):
+    def test_add_exists(self):
         sig_cache = SigCache(max_entries=200)
         msg1, sig1, key1 = gen_random_sig()
         sig_cache.add(msg1, sig1, key1)
@@ -49,7 +49,7 @@ class TestSigCache(unittest.TestCase):
 
         self.assertTrue(sig_cache.exists(msg1, sig1_copy, key1_copy))
 
-    def test_add_exsits_max_entries(self):
+    def test_add_exists_max_entries(self):
         sig_cache_size = 5
         sig_cache = SigCache(max_entries=sig_cache_size)
 
@@ -73,7 +73,7 @@ class TestSigCache(unittest.TestCase):
 
         self.assertTrue(sig_cache.exists(msg2, sig2_copy, key2_copy))
 
-    def test_add_exsits_zero_entries(self):
+    def test_add_exists_zero_entries(self):
         sig_cache = SigCache(max_entries=0)
         msg1, sig1, key1 = gen_random_sig()
         sig_cache.add(msg1, sig1, key1)
