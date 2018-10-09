@@ -32,16 +32,16 @@ class SigCacheEntry:
 # optimization which speeds up the validation of transactions within a block,
 # if they've already been seen and verified within the mempool.
 class SigCache:
-    def __init__(self, lock=None, valid_sigs=None, max_entries=None):
+    def __init__(self, valid_sigs=None, max_entries=None, lock=None):
         """
 
-        :param RWLock lock:
         :param dict{Hash->SigCacheEntry} valid_sigs:
         :param uint max_entries:
+        :param RWLock lock:
         """
-        self.lock = lock or RWLock()
         self.valid_sigs = valid_sigs or {}
         self.max_entries = max_entries or 0
+        self.lock = lock or RWLock()
 
     # Exists returns true if an existing entry of 'sig' over 'sigHash' for public
     # key 'pubKey' is found within the SigCache. Otherwise, false is returned.
