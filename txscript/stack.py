@@ -27,6 +27,10 @@ class Stack:
     #
     # Stack transformation: [... x1 x2] -> [... x1 x2 int]
     def push_int(self, val: ScriptNum):
+        # print('cool')
+        # x = val.bytes()
+        # self.push_byte_array(x)
+
         self.push_byte_array(val.bytes())
 
     # PushBool converts the provided boolean to a suitable byte array then pushes
@@ -230,7 +234,7 @@ def from_bool(v: bool) -> bytes:
     if v:
         return bytes([0x01])
     else:
-        return None  # TOCHCEK TODO
+        return bytes()  # TOCHCEK TODO
 
 
 # asBool gets the boolean value of the byte array.
