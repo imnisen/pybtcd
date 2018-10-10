@@ -1,5 +1,5 @@
-from enum import Enum
-from .opcode import *
+from .script import *
+from .stack import *
 
 
 class ScriptFlag(Enum):
@@ -94,13 +94,8 @@ class ScriptFlags:
     def value(self):
         return self._data
 
-
     def has_flag(self, flag):
         return (self._data & flag.value) == flag.value
-
-
-
-
 
 
 # Engine is the virtual machine that executes scripts.
@@ -115,8 +110,8 @@ class Engine:
         :param int script_idx:
         :param int script_off:
         :param int last_code_seq:
-        :param stack dstack:
-        :param stack astack:
+        :param Stack dstack:
+        :param Stack astack:
         :param wire.MsgTx tx:
         :param int tx_idx:
         :param []int cond_stack:
@@ -149,7 +144,6 @@ class Engine:
         self.witness_program = witness_program
         self.inptut_amount = inptut_amount
 
-
     # has_flag returns whether the script engine instance has the passed flag set.
     def has_flag(self, flag: ScriptFlag) -> bool:
         return self.flags.has_flag(flag)
@@ -162,3 +156,40 @@ class Engine:
         if len(self.cond_stack) == 0:
             return True
         return self.cond_stack[-1] == OpCondTrue
+
+    # executeOpcode peforms execution on the passed opcode.  It takes into account
+    # whether or not it is hidden by conditionals, but some rules still must be
+    # tested in this case.
+    def execute_opcode(self, pop: ParsedOpcode):
+        """This method do some necessary check then call pop's opfunc to execute"""
+        # Disabled opcodes are fail on program counter.
+        if pop.is_disabled():
+            desc = "attempt to execute disabled opcode %s" % pop.opcode.name
+            raise ScriptError(ErrorCode.ErrDisabledOpcode, desc=desc)
+
+        # Always-illegal opcodes are fail on program counter.
+        if pop.always_illegal():
+            desc = "attempt to execute reserved opcode %s" % pop.opcode.name
+            raise ScriptError(ErrorCode.ErrReservedOpcode, desc=desc)
+
+        # Note that this includes OP_RESERVED which counts as a push operation.
+        if pop.opcode.value > OP_16:
+            self.num_ops += 1
+            if self.num_ops > MaxOpsPerScript:
+                desc = "exceeded max operation limit of %d" % MaxOpsPerScript
+                raise ScriptError(ErrorCode.ErrTooManyOperations, desc=desc)
+        elif len(pop.data) > MaxScriptElementSize:
+            desc = "element size %d exceeds max allowed size %d" % (len(pop.data), MaxScriptElementSize)
+            raise ScriptError(ErrorCode.ErrTooManyOperations, desc=desc)
+
+        # Nothing left to do when this is not a conditional opcode and it is
+        # not in an executing branch.
+        if not self.is_branch_executing() and not pop.is_conditional():
+            return
+
+        # Ensure all executed data push opcodes use the minimal encoding when
+        # the minimal data verification flag is set.
+        if self.dstack.verify_minimal_data and self.is_branch_executing() and 0 <= pop.opcode.value <= OP_PUSHDATA4:
+            pop.check_minimal_data_push()
+
+        return pop.opcode.opfunc(pop, self)

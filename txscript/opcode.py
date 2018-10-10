@@ -264,13 +264,10 @@ OP_PUBKEYHASH = 0xfd  # 253 - bitcoin core internal
 OP_PUBKEY = 0xfe  # 254 - bitcoin core internal
 OP_INVALIDOPCODE = 0xff  # 255 - bitcoin core internal
 
-
 # Conditional execution constants.
 OpCondFalse = 0
 OpCondTrue = 1
 OpCondSkip = 2
-
-
 
 
 # An opcode defines the information related to a txscript opcode.  opfunc, if
@@ -278,7 +275,6 @@ OpCondSkip = 2
 # current script is passed in as a slice with the first member being the opcode
 # itself.
 class OpCode:
-
     def __init__(self, value=None, name=None, length=None, opfunc=None):
         """
 
@@ -291,7 +287,6 @@ class OpCode:
         self.name = name or ""
         self.length = length or 0
         self.opfunc = opfunc or None  # TOCHECK
-
 
     def __eq__(self, other):
         return self.value == other.value and \
@@ -319,7 +314,7 @@ class ParsedOpcode:
 
     # Return the opcode if marked as disabled
     # If any opcode marked as disabled is present in a script, it must abort and fail.
-    def is_disabled(self)->bool:
+    def is_disabled(self) -> bool:
         value = self.opcode.value
         if value == OP_CAT:
             return True
@@ -356,7 +351,7 @@ class ParsedOpcode:
     # alwaysIllegal returns whether or not the opcode is always illegal when passed
     # over by the program counter even if in a non-executed branch (it isn't a
     # coincidence that they are conditionals).
-    def always_illegal(self)-> bool:
+    def always_illegal(self) -> bool:
         value = self.opcode.value
         if value == OP_VERIF:
             return True
@@ -364,10 +359,9 @@ class ParsedOpcode:
             return True
         return False
 
-
     # isConditional returns whether or not the opcode is a conditional opcode which
     # changes the conditional execution stack when executed.
-    def is_conditional(self)-> bool:
+    def is_conditional(self) -> bool:
         value = self.opcode.value
         if value == OP_IF:
             return True
@@ -385,7 +379,43 @@ class ParsedOpcode:
     # single opcode that represents the same value and is only a single byte versus
     # two bytes.
     def check_minimal_data_push(self):
-        pass
+        data = self.data
+        data_len = len(self.data)
+        opcode = self.opcode.value
+
+        # check zero length data pushed with OP_0
+        if data_len == 0 and opcode != OP_0:
+            desc = "zero length data push is encoded with opcode %s instead of OP_0" % self.opcode.name
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
+
+        # check one length data with value 1-16  pushed with OP_1-OP_16
+        if data_len == 1 and 1 <= data[0] <= 16 and opcode != (OP_1 + data[0] - 1):
+            desc = "data push of the value %d encoded with opcode %s instead of OP_%d" % (
+            data[0], self.opcode.name, data[0])
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
+
+        # check -1 pushed with OP_1NEGATE
+        if data_len == 1 and data[0] == 0x81 and opcode != OP_1NEGATE:
+            desc = "data push of the value -1 encoded with opcode %s instead of OP_1NEGATE" % (self.opcode.name)
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
+
+        # check data_len below 75 pushed with direct push
+        if data_len <= 75 and int(opcode) != data_len:
+            desc = "data push of %d bytes encoded with opcode %s instead of OP_DATA_%d" % (
+            data_len, self.opcode.name, data_len)
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
+
+        # check data_len below 255 pushed with OP_PUSHDATA1
+        if data_len <= 255 and opcode != OP_PUSHDATA1:
+            desc = "data push of %d bytes encoded with opcode %s instead of OP_PUSHDATA1" % (
+                data_len, self.opcode.name)
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
+
+        # check data_len below 65535 pushed with OP_PUSHDATA2
+        if data_len <= 65535 and opcode != OP_PUSHDATA2:
+            desc = "data push of %d bytes encoded with opcode %s instead of OP_PUSHDATA2" % (
+                data_len, self.opcode.name)
+            raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
 
     # print returns a human-readable string representation of the opcode for use
     # in script disassembly.

@@ -5,6 +5,10 @@ from .error import *
 from wire.msg_tx import MsgTx, write_tx_out
 from chainhash import *
 
+MaxOpsPerScript = 201  # Max number of non-push operations.
+MaxPubKeysPerMultiSig = 20  # Multisig can't have more sigs than this.
+MaxScriptElementSize = 520  # Max bytes pushable to the stack.
+
 
 # SigHashType represents hash type bits at the end of a signature.
 class SigHashType(Enum):

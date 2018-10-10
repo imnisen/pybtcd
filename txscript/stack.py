@@ -10,7 +10,7 @@ class Stack:
         :param bool verify_minimal_data:
         """
         self.stk = stk or []
-        self.verify_minimal_data = verify_minimal_data
+        self.verify_minimal_data = verify_minimal_data or False
 
     # Depth returns the number of items on the stack.
     def depth(self):
