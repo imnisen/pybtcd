@@ -1,7 +1,11 @@
+import copy
+import logging
 from .script import *
 from .stack import *
 from .sig_cache import *
 from .hash_cache import *
+
+_logger = logging.getLogger(__name__)
 
 # MaxScriptSize is the maximum allowed length of a raw script.
 MaxScriptSize = 10000
@@ -203,19 +207,35 @@ class Engine:
     # DisasmScript.  It produces the opcode prefixed by the program counter at the
     # provided position in the script.  It does no error checking and leaves that
     # to the caller to provide a valid offset.
-    def disasm(self, script_index: int, script_off: int) -> str:
-        pass
+    def disasm(self, script_idx: int, script_off: int) -> str:
+        return "%02x:%04x: %s" % (script_idx, script_off, self.scripts[script_idx][script_off].print(one_line=False))
 
     # DisasmScript returns the disassembly string for the script at the requested
     # offset index.  Index 0 is the signature script and 1 is the public key
     # script.
     def disasm_script(self, idx: int) -> str:
-        pass
+
+        if idx >= len(self.scripts):
+            desc = "script index %d >= total scripts %d" % (idx, len(self.scripts))
+            raise ScriptError(ErrorCode.ErrInvalidIndex, desc=desc)
+
+        dis_str = ""
+        for i in self.scripts[idx]:
+            dis_str = dis_str + self.disasm(idx, i) + "\n"
+
+        return dis_str
 
     # validPC returns an error if the current script position is valid for
     # execution, nil otherwise.
     def valid_pc(self):
-        pass
+        if self.script_idx >= len(self.scripts):
+            desc = "past input scripts %s:%s %s:xxxx" % (self.script_idx, self.script_off, len(self.scripts))
+            raise ScriptError(ErrorCode.ErrInvalidProgramCounter, desc=desc)
+        if self.script_off >= len(self.scripts[self.script_idx]):
+            desc = "past input scripts %s:%s %s:%04d" % (
+            self.script_idx, self.script_off, self.script_idx, len(self.scripts[self.script_idx]))
+            raise ScriptError(ErrorCode.ErrInvalidProgramCounter, desc=desc)
+        return
 
     # curPC returns either the current script and offset, or an error if the
     # position isn't valid.
@@ -238,7 +258,37 @@ class Engine:
     # successful, leaving a a true boolean on the stack.  An error otherwise,
     # including if the script has not finished.
     def check_error_condition(self, final_script: bool):
-        pass  # TODO
+        # Check execution is actually done.  When pc is past the end of script
+        # array there are no more scripts to run.
+        if self.script_idx < len(self.scripts):
+            desc = "error check when script unfinished"
+            raise ScriptError(ErrorCode.ErrScriptUnfinished, desc=desc)
+
+        # If we're in version zero witness execution mode, and this was the
+        # final script, then the stack MUST be clean in order to maintain
+        # compatibility with BIP16.
+        if final_script and self.is_witness_version_active(0) and self.dstack.depth() != 1:
+            desc = "witness program must have clean stack"
+            raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
+
+        if final_script and self.has_flag(ScriptFlag.ScriptVerifyCleanStack) and self.dstack.depth() != 1:
+            desc = "stack contains %d unexpected items" % (self.dstack.depth() - 1)
+            raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
+        elif self.dstack.depth() < 1:
+            desc = "stack empty at end of script execution"
+            raise ScriptError(ErrorCode.ErrEmptyStack, desc=desc)
+
+        v = self.dstack.pop_bool()
+        if not v:
+            # Do some log
+            dis0 = self.disasm_script(0)
+            dis1 = self.disasm_script(1)
+            _logger.error("scripts failed: script0: %s\n script1: %s" % (dis0, dis1))
+
+            desc = "false stack entry at end of script execution"
+            raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
+
+        return
 
     # Step will execute the next instruction and move the program counter to the
     # next opcode in the script, or the next script if the current has ended.  Step
@@ -272,30 +322,34 @@ class Engine:
     # GetStack returns the contents of the primary stack as an array. where the
     # last item in the array is the top of the stack.
     def get_stack(self):
-        pass  # TODO
+        return get_stack(self.dstack)
 
     # SetStack sets the contents of the primary stack to the contents of the
     # provided array where the last item in the array will be the top of the stack.
     def set_stack(self, data):
-        pass  # TODO
+        set_stack(self.dstack, data)
 
     # GetAltStack returns the contents of the alternate stack as an array where the
     # last item in the array is the top of the stack.
     def get_alt_stack(self):
-        pass
+        return get_stack(self.astack)
 
     # SetAltStack sets the contents of the alternate stack to the contents of the
     # provided array where the last item in the array will be the top of the stack.
-    def set_alt_stack(self):
-        pass
+    def set_alt_stack(self, data):
+        set_stack(self.astack, data)
 
 
+# getStack returns the contents of stack as a byte array bottom up
 def get_stack(stack):
-    pass
+    return list(reversed(copy.deepcopy(stack.stk)))
 
 
 def set_stack(stack, data):
-    pass
+    stack.dropN(stack.depth())
+    for each in data:
+        stack.push_byte_array(each)
+    return
 
 
 # NewEngine returns a new script engine for the provided public key script,

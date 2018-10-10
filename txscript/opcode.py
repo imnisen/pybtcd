@@ -1,4 +1,5 @@
 from .error import *
+from .utils import *
 
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
@@ -269,6 +270,31 @@ OpCondFalse = 0
 OpCondTrue = 1
 OpCondSkip = 2
 
+# opcodeOnelineRepls defines opcode names which are replaced when doing a
+# one-line disassembly.  This is done to match the output of the reference
+# implementation while not changing the opcode names in the nicer full
+# disassembly.
+OpcodeOnelineRepls = {
+    "OP_1NEGATE": "-1",
+    "OP_0": "0",
+    "OP_1": "1",
+    "OP_2": "2",
+    "OP_3": "3",
+    "OP_4": "4",
+    "OP_5": "5",
+    "OP_6": "6",
+    "OP_7": "7",
+    "OP_8": "8",
+    "OP_9": "9",
+    "OP_10": "10",
+    "OP_11": "11",
+    "OP_12": "12",
+    "OP_13": "13",
+    "OP_14": "14",
+    "OP_15": "15",
+    "OP_16": "16",
+}
+
 
 # An opcode defines the information related to a txscript opcode.  opfunc, if
 # present, is the function to call to perform the opcode on the script.  The
@@ -391,7 +417,7 @@ class ParsedOpcode:
         # check one length data with value 1-16  pushed with OP_1-OP_16
         if data_len == 1 and 1 <= data[0] <= 16 and opcode != (OP_1 + data[0] - 1):
             desc = "data push of the value %d encoded with opcode %s instead of OP_%d" % (
-            data[0], self.opcode.name, data[0])
+                data[0], self.opcode.name, data[0])
             raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
 
         # check -1 pushed with OP_1NEGATE
@@ -402,7 +428,7 @@ class ParsedOpcode:
         # check data_len below 75 pushed with direct push
         if data_len <= 75 and int(opcode) != data_len:
             desc = "data push of %d bytes encoded with opcode %s instead of OP_DATA_%d" % (
-            data_len, self.opcode.name, data_len)
+                data_len, self.opcode.name, data_len)
             raise ScriptError(ErrorCode.ErrMinimalData, desc=desc)
 
         # check data_len below 255 pushed with OP_PUSHDATA1
@@ -419,8 +445,38 @@ class ParsedOpcode:
 
     # print returns a human-readable string representation of the opcode for use
     # in script disassembly.
-    def print(self, oneline: bool) -> str:
-        pass
+    def print(self, one_line: bool) -> str:
+        # The reference implementation one-line disassembly replaces opcodes
+        # which represent values (e.g. OP_0 through OP_16 and OP_1NEGATE)
+        # with the raw value.  However, when not doing a one-line dissassembly,
+        # we prefer to show the actual opcode names.  Thus, only replace the
+        # opcodes in question when the oneline flag is set.
+        opcode_name = self.opcode.name
+
+        if one_line:
+            repl_name = OpcodeOnelineRepls[opcode_name]
+            if repl_name:
+                opcode_name = repl_name
+
+            # Nothing more to do for non-data push opcodes.
+            if self.opcode.length == 1:
+                return opcode_name
+
+            return format_bytes(self.data)
+
+        # Nothing more to do for non-data push opcodes.
+        if self.opcode.length == 1:
+            return opcode_name
+
+        ret_string = opcode_name
+        if self.opcode.length == -1:
+            ret_string += (" 0x%02x" % len(self.data))
+        elif self.opcode.length == -2:
+            ret_string += (" 0x%04x" % len(self.data))
+        elif self.opcode.length == -4:
+            ret_string += (" 0x%08x" % len(self.data))
+
+        return "%s %s" % (ret_string, format_bytes(self.data, prefix="0x", holder="%02x"))
 
     # bytes returns any data associated with the opcode encoded as it would be in
     # a script.  This is used for unparsing scripts from parsed opcodes.
