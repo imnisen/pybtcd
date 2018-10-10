@@ -288,3 +288,12 @@ class ScriptError(BaseException):
 
     def __str__(self):
         return "ScriptError(ErrorCode={}, desc={})".format(str(self.c), self.desc or "\"\"")
+
+
+
+
+class OtherScriptError(BaseException):
+    pass
+
+class NotWitnessProgramError(OtherScriptError):
+    pass

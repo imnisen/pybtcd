@@ -1,5 +1,10 @@
 from .script import *
 from .stack import *
+from .sig_cache import *
+from .hash_cache import *
+
+# MaxScriptSize is the maximum allowed length of a raw script.
+MaxScriptSize = 10000
 
 
 class ScriptFlag(Enum):
@@ -80,7 +85,7 @@ class ScriptFlag(Enum):
 
 
 class ScriptFlags:
-    def __init__(self, data):
+    def __init__(self, data=None):
         if type(data) is ScriptFlag:
             self._data = data.value
         elif type(data) is int:
@@ -100,10 +105,10 @@ class ScriptFlags:
 
 # Engine is the virtual machine that executes scripts.
 class Engine:
-    def __init__(self, scripts, script_idx, script_off, last_code_seq,
-                 dstack, astack, tx, tx_idx, cond_stack, num_ops,
-                 flags, sig_cache, hash_cache, bip16, saved_first_stack,
-                 witness_version, witness_program, inptut_amount):
+    def __init__(self, scripts=None, script_idx=None, script_off=None, last_code_seq=None,
+                 dstack=None, astack=None, tx=None, tx_idx=None, cond_stack=None, num_ops=None,
+                 flags=None, sig_cache=None, hash_cache=None, bip16=None, saved_first_stack=None,
+                 witness_version=None, witness_program=None, inptut_amount=None):
         """
 
         :param [][]parsedOpcode scripts:
@@ -125,24 +130,24 @@ class Engine:
         :param []byte witness_program:
         :param int64 inptut_amount:
         """
-        self.scripts = scripts
-        self.script_idx = script_idx
-        self.script_off = script_off
-        self.last_code_seq = last_code_seq
-        self.dstack = dstack
-        self.astack = astack
-        self.tx = tx
-        self.tx_idx = tx_idx
-        self.cond_stack = cond_stack
-        self.num_ops = num_ops
-        self.flags = flags
-        self.sig_cache = sig_cache
-        self.hash_cache = hash_cache
-        self.bip16 = bip16
-        self.saved_first_stack = saved_first_stack
-        self.witness_version = witness_version
-        self.witness_program = witness_program
-        self.inptut_amount = inptut_amount
+        self.scripts = scripts or []
+        self.script_idx = script_idx or 0
+        self.script_off = script_off or 0
+        self.last_code_seq = last_code_seq or 0
+        self.dstack = dstack or Stack()
+        self.astack = astack or Stack()
+        self.tx = tx or MsgTx()
+        self.tx_idx = tx_idx or 0
+        self.cond_stack = cond_stack or []
+        self.num_ops = num_ops or 0
+        self.flags = flags or ScriptFlags()
+        self.sig_cache = sig_cache or SigCache()
+        self.hash_cache = hash_cache or HashCache
+        self.bip16 = bip16 or False
+        self.saved_first_stack = saved_first_stack or []
+        self.witness_version = witness_version or 0
+        self.witness_program = witness_program or bytes()
+        self.inptut_amount = inptut_amount or 0
 
     # has_flag returns whether the script engine instance has the passed flag set.
     def has_flag(self, flag: ScriptFlag) -> bool:
@@ -193,3 +198,238 @@ class Engine:
             pop.check_minimal_data_push()
 
         return pop.opcode.opfunc(pop, self)
+
+    # disasm is a helper function to produce the output for DisasmPC and
+    # DisasmScript.  It produces the opcode prefixed by the program counter at the
+    # provided position in the script.  It does no error checking and leaves that
+    # to the caller to provide a valid offset.
+    def disasm(self, script_index: int, script_off: int) -> str:
+        pass
+
+    # DisasmScript returns the disassembly string for the script at the requested
+    # offset index.  Index 0 is the signature script and 1 is the public key
+    # script.
+    def disasm_script(self, idx: int) -> str:
+        pass
+
+    # validPC returns an error if the current script position is valid for
+    # execution, nil otherwise.
+    def valid_pc(self):
+        pass
+
+    # curPC returns either the current script and offset, or an error if the
+    # position isn't valid.
+    def cur_pc(self):
+        self.valid_pc()
+        return self.script_idx, self.script_off
+
+    # isWitnessVersionActive returns true if a witness program was extracted
+    # during the initialization of the Engine, and the program's version matches
+    # the specified version.
+    def is_witness_version_active(self, version: int) -> bool:
+        return self.witness_program and self.witness_version == version
+
+    # verifyWitnessProgram validates the stored witness program using the passed
+    # witness as input.
+    def verify_witness_program(self, witness):
+        pass
+
+    # CheckErrorCondition returns nil if the running script has ended and was
+    # successful, leaving a a true boolean on the stack.  An error otherwise,
+    # including if the script has not finished.
+    def check_error_condition(self, final_script: bool):
+        pass  # TODO
+
+    # Step will execute the next instruction and move the program counter to the
+    # next opcode in the script, or the next script if the current has ended.  Step
+    # will return true in the case that the last opcode was successfully executed.
+    #
+    # The result of calling Step or any other method is undefined if an error is
+    # returned.
+    def step(self):
+        pass
+
+    # Execute will execute all scripts in the script engine and return either nil
+    # for successful validation or an error if one occurred.
+    def execute(self):
+        pass
+
+    # subScript returns the script since the last OP_CODESEPARATOR.
+    def sub_script(self):
+        pass
+
+    # checkHashTypeEncoding returns whether or not the passed hashtype adheres to
+    # the strict encoding requirements if enabled.
+    def check_hash_type_encoding(self, hash_type):
+        pass
+
+    def check_pub_key_encoding(self, pub_key):
+        pass
+
+    def check_signature_encoding(self, sig):
+        pass
+
+    # GetStack returns the contents of the primary stack as an array. where the
+    # last item in the array is the top of the stack.
+    def get_stack(self):
+        pass  # TODO
+
+    # SetStack sets the contents of the primary stack to the contents of the
+    # provided array where the last item in the array will be the top of the stack.
+    def set_stack(self, data):
+        pass  # TODO
+
+    # GetAltStack returns the contents of the alternate stack as an array where the
+    # last item in the array is the top of the stack.
+    def get_alt_stack(self):
+        pass
+
+    # SetAltStack sets the contents of the alternate stack to the contents of the
+    # provided array where the last item in the array will be the top of the stack.
+    def set_alt_stack(self):
+        pass
+
+
+def get_stack(stack):
+    pass
+
+
+def set_stack(stack, data):
+    pass
+
+
+# NewEngine returns a new script engine for the provided public key script,
+# transaction, and input index.  The flags modify the behavior of the script
+# engine according to the description provided by each flag.
+def new_engine(script_pub_key, tx, tx_idx, flags, sig_cache, hash_cache, input_amount):
+    """
+
+    :param script_pub_key:
+    :param tx:
+    :param tx_idx:
+    :param flags:
+    :param sig_cache:
+    :param hash_cache:
+    :param input_amount:
+    :return:
+    """
+
+    # The provided transaction input index must refer to a valid input.
+    if tx_idx < 0 or tx_idx >= len(tx.tx_ins):
+        desc = "transaction input index %d is negative or >= %d" % (tx_idx, len(tx.tx_ins))
+        raise ScriptError(ErrorCode.ErrInvalidIndex, desc=desc)
+
+    script_sig = tx.tx_ins[tx_idx].signature_script
+
+    # When both the signature script and public key script are empty the
+    # result is necessarily an error since the stack would end up being
+    # empty which is equivalent to a false top element.  Thus, just return
+    # the relevant error now as an optimization.
+    if len(script_sig) == 0 and len(script_pub_key) == 0:
+        desc = "false stack entry at end of script execution"
+        raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
+
+    vm = Engine(flags=flags,
+                sig_cache=sig_cache,
+                hash_cache=hash_cache,
+                inptut_amount=input_amount)
+
+    # The clean stack flag (ScriptVerifyCleanStack) is not allowed without
+    # either the pay-to-script-hash (P2SH) evaluation (ScriptBip16)
+    # flag or the Segregated Witness (ScriptVerifyWitness) flag.
+    #
+    # Recall that evaluating a P2SH script without the flag set results in
+    # non-P2SH evaluation which leaves the P2SH inputs on the stack.
+    # Thus, allowing the clean stack flag without the P2SH flag would make
+    # it possible to have a situation where P2SH would not be a soft fork
+    # when it should be. The same goes for segwit which will pull in
+    # additional scripts for execution from the witness stack.
+    if vm.has_flag(ScriptFlag.ScriptVerifyCleanStack) and (not vm.has_flag(ScriptFlag.ScriptBip16)) and \
+            (not vm.has_flag(ScriptFlag.ScriptVerifyWitness)):
+        desc = "invalid flags combination"
+        raise ScriptError(ErrorCode.ErrInvalidFlags, desc=desc)
+
+    # The signature script must only contain data pushes when the
+    # associated flag is set.
+    if vm.has_flag(ScriptFlag.ScriptVerifySigPushOnly) and (not is_push_only_script(script_sig)):
+        desc = "signature script is not push only"
+        raise ScriptError(ErrorCode.ErrNotPushOnly, desc=desc)
+
+    # The engine stores the scripts in parsed form using a slice.  This
+    # allows multiple scripts to be executed in sequence.  For example,
+    # with a pay-to-script-hash transaction, there will be ultimately be
+    # a third script to execute.
+    scripts = [script_sig, script_pub_key]
+    for scr in scripts:
+        if len(scr) > MaxScriptSize:
+            desc = "script size %d is larger than max allowed size %d" % (len(scr), MaxScriptSize)
+            raise ScriptError(ErrorCode.ErrScriptTooBig, desc=desc)
+
+        vm.scripts.append(parse_script(scr))
+
+    # Advance the program counter to the public key script if the signature
+    # script is empty since there is nothing to execute for it in that
+    # case.
+    if len(scripts[0]) == 0:
+        vm.script_idx += 1
+
+    if vm.has_flag(ScriptFlag.ScriptBip16) and is_script_hash(vm.scripts[1]):
+        # Only accept input scripts that push data for P2SH.
+        if not is_push_only(vm.scripts[0]):
+            desc = "pay to script hash is not push only"
+            raise ScriptError(ErrorCode.ErrNotPushOnly, desc=desc)
+        vm.bip16 = True
+
+    if vm.has_flag(ScriptFlag.ScriptVerifyMinimalData):
+        vm.dstack.verify_minimal_data = True
+        vm.astack.verify_minimal_data = True
+
+    # Check to see if we should execute in witness verification mode
+    # according to the set flags. We check both the pkScript, and sigScript
+    # here since in the case of nested p2sh, the scriptSig will be a valid
+    # witness program. For nested p2sh, all the bytes after the first data
+    # push should *exactly* match the witness program template.
+    if vm.has_flag(ScriptFlag.ScriptVerifyWitness):
+
+        # If witness evaluation is enabled, then P2SH MUST also be
+        # active.
+        if not vm.has_flag(ScriptFlag.ScriptBip16):
+            desc = "P2SH must be enabled to do witness verification"
+            raise ScriptError(ErrorCode.ErrInvalidFlags, desc=desc)
+
+        wit_program = None
+        if is_pops_witness_program(scripts[1]):
+            # The scriptSig must be *empty* for all native witness
+            # programs, otherwise we introduce malleability.
+            if len(script_sig) != 0:
+                desc = "native witness program cannot also have a signature script"
+                raise ScriptError(ErrorCode.ErrWitnessMalleated, desc=desc)
+
+            wit_program = script_pub_key
+
+        elif len(tx.tx_ins[tx_idx].witness) != 0 and vm.bip16:
+            # The sigScript MUST be *exactly* a single canonical
+            # data push of the witness program, otherwise we
+            # reintroduce malleability.
+            sig_pops = vm.scripts[0]
+            if len(sig_pops) == 1 and canonical_push(sig_pops[0]) and \
+                    is_script_witness_program(sig_pops[0].data):
+                wit_program = sig_pops[0].data
+            else:
+                desc = "signature script for witness nested p2sh is not canonical"
+                raise ScriptError(ErrorCode.ErrWitnessMalleatedP2SH, desc=desc)
+
+        if wit_program:
+            vm.witness_version, vm.witness_program = extract_witness_program_info(wit_program)
+        else:
+            # If we didn't find a witness program in either the
+            # pkScript or as a datapush within the sigScript, then
+            # there MUST NOT be any witness data associated with
+            # the input being validated.
+            if not vm.witness_program and len(tx.tx_ins[tx_idx].witness) != 0:
+                desc = "non-witness inputs cannot have a witness"
+                raise ScriptError(ErrorCode.ErrWitnessUnexpected, desc=desc)
+
+    vm.tx = tx
+    vm.tx_idx = tx_idx
+    return vm

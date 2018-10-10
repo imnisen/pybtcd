@@ -22,10 +22,125 @@ class SigHashType(Enum):
 # is_small_int returns whether or not the opcode is considered a small integer,
 # which is an OP_0, or OP_1 through OP_16.
 def is_small_int(op) -> bool:
-    if op.value == OP_0 or (op.value >= OP_1 and op.value <= OP_16):
+    if op.value == OP_0 or OP_1 <= op.value <= OP_16:
         return True
     else:
         return False
+
+
+# isScriptHash returns true if the script passed is a pay-to-script-hash
+# transaction, false otherwise.
+def is_script_hash(pops) -> bool:
+    return len(pops) == 3 and \
+           pops[0].opcode.value == OP_HASH160 and \
+           pops[1].opcode.value == OP_DATA_20 and \
+           pops[2].opcode.value == OP_EQUAL
+
+
+# isPushOnly returns true if the script only pushes data, false otherwise.
+def is_push_only(pops) -> bool:
+    # NOTE: This function does NOT verify opcodes directly since it is
+    # internal and is only called with parsed opcodes for scripts that did
+    # not have any parse errors.  Thus, consensus is properly maintained.
+
+    for pop in pops:
+        if pop.opcode.value > OP_16:
+            return False
+    return True
+
+
+# IsPushOnlyScript returns whether or not the passed script only pushes data.
+#
+# False will be returned when the script does not parse
+def is_push_only_script(script) -> bool:
+    pops = parse_script(script)
+    return is_push_only(pops)
+
+
+# IsWitnessProgram returns true if the passed script is a valid witness
+# program which is encoded according to the passed witness program version. A
+# witness program must be a small integer (from 0-16), followed by 2-40 bytes
+# of pushed data.
+def is_script_witness_program(script: bytes) -> bool:
+    # The length of the script must be between 4 and 42 bytes. The
+    # smallest program is the witness version, followed by a data push of
+    # 2 bytes.  The largest allowed witness program has a data push of
+    # 40-bytes.
+    if len(script) < 4 or len(script) > 42:
+        return False
+
+    pops = parse_script(script)
+    return is_pops_witness_program(pops)
+
+
+# isWitnessProgram returns true if the passed script is a witness program, and
+# false otherwise. A witness program MUST adhere to the following constraints:
+# there must be exactly two pops (program version and the program itself), the
+# first opcode MUST be a small integer (0-16), the push data MUST be
+# canonical, and finally the size of the push data must be between 2 and 40
+# bytes.
+def is_pops_witness_program(pops):
+    return len(pops) == 2 and \
+           is_small_int(pops[0].opcode) and \
+           canonical_push(pops[1]) and \
+           2 <= len(pops[1].data) <= 40
+
+
+# ExtractWitnessProgramInfo attempts to extract the witness program version,
+# as well as the witness program itself from the passed script.
+def extract_witness_program_info(script: bytes):
+    pops = parse_script(script)
+
+    # If at this point, the scripts doesn't resemble a witness program,
+    # then we'll exit early as there isn't a valid version or program to
+    # extract.
+    if not is_pops_witness_program(pops):
+        # desc = "script is not a witness program, unable to extract version or witness program"
+        raise NotWitnessProgramError
+
+    witness_version = as_small_int(pops[0].opcode)
+    witness_program = pops[1].data
+    return witness_version, witness_program
+
+
+# asSmallInt returns the passed opcode, which must be true according to
+# isSmallInt(), as an integer.
+def as_small_int(op) -> int:
+    if op.value == OP_0:
+        return 0
+    return int(op.value - (OP_1 - 1))
+
+
+# canonicalPush returns true if the object is either not a push instruction
+# or the push instruction contained wherein is matches the canonical form
+# or using the smallest instruction to do the job. False otherwise.
+def canonical_push(pop):
+    opcode = pop.opcode.value
+    data = pop.data
+    data_len = len(pop.data)
+
+    # opcode > OP_16 don't worry about canonical push
+    if opcode > OP_16:
+        return True
+
+    # if you have one byte to push and it's value <= 16, use OP_2 - OP_16 to push
+    # don't use OP_DATA_1 - OP_DATA_75
+    if OP_0 < opcode < OP_PUSHDATA1 and data_len == 1 and data[0] <= 16:
+        return False
+
+    # if data_len < OP_PUSHDATA1, no need to use OP_PUSHDATA1, use OP_DATA1-OP_DATA_75
+    if opcode == OP_PUSHDATA1 and data_len < OP_PUSHDATA1:
+        return False
+
+    # if push data len <= 0xffff(1 bytes max), no need to use OP_PUSHDATA2
+    if opcode == OP_PUSHDATA2 and data_len <= 0xff:
+        return False
+
+    # if push data len <= 0xffff(2 bytes max), no need to use OP_PUSHDATA4
+    if opcode == OP_PUSHDATA4 and data_len <= 0xffff:
+        return False
+
+    return True
 
 
 def parse_script_template(script, opcodes):
