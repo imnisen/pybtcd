@@ -14,3 +14,21 @@
 * The unittest seems very slow at some tests, figure out why
 
 * In unitest, use self.assert raise, checkout why not work before
+
+* Finish test case for txscript
+** engine
+** error
+** DONE hashcache
+   CLOSED: [2018-10-11 Thu 15:44]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-11 Thu 15:44]
+   :END:
+** opcode
+** script
+** scriptbuilder
+** scriptnum
+** sigcache
+** sign
+** stack
+** standard
+

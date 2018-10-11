@@ -454,7 +454,7 @@ class ParsedOpcode:
         opcode_name = self.opcode.name
 
         if one_line:
-            repl_name = OpcodeOnelineRepls[opcode_name]
+            repl_name = OpcodeOnelineRepls.get(opcode_name, None)
             if repl_name:
                 opcode_name = repl_name
 
@@ -462,7 +462,7 @@ class ParsedOpcode:
             if self.opcode.length == 1:
                 return opcode_name
 
-            return format_bytes(self.data)
+            return format_bytes(self.data, holder="02x")
 
         # Nothing more to do for non-data push opcodes.
         if self.opcode.length == 1:
@@ -476,7 +476,7 @@ class ParsedOpcode:
         elif self.opcode.length == -4:
             ret_string += (" 0x%08x" % len(self.data))
 
-        return "%s %s" % (ret_string, format_bytes(self.data, prefix="0x", holder="%02x"))
+        return "%s %s" % (ret_string, format_bytes(self.data, prefix="0x", holder="02x"))
 
     # bytes returns any data associated with the opcode encoded as it would be in
     # a script.  This is used for unparsing scripts from parsed opcodes.

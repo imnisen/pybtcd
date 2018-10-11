@@ -10,8 +10,6 @@ def list_equal(l1, l2):
 
 # we can alse use binascii.hexlify(a).decode() to binay->hex string,
 # but can't control holder
-# In  : format_bytes(a, "0x", "02x", "")
-# Out : '0x0102
-def format_bytes(data, prefix="", holder="%x", separator=""):
-    format_string = "{:s}" % holder
+def format_bytes(data, prefix="", holder="02x", separator=""):
+    format_string = "{:%s}" % holder
     return prefix + separator.join(format_string.format(x) for x in data)
