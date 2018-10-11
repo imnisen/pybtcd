@@ -52,7 +52,7 @@ def is_push_only(pops) -> bool:
 # IsPushOnlyScript returns whether or not the passed script only pushes data.
 #
 # False will be returned when the script does not parse
-def is_push_only_script(script) -> bool:
+def is_push_only_script(script: bytes) -> bool:
     pops = parse_script(script)
     return is_push_only(pops)
 

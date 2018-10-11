@@ -23,12 +23,28 @@
    :LOGBOOK:
    - State "DONE"       from              [2018-10-11 Thu 15:44]
    :END:
-** opcode
-** script
+** DONE opcode
+   CLOSED: [2018-10-11 Thu 17:19]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-11 Thu 17:19]
+   :END:
+** DOING script
 ** scriptbuilder
-** scriptnum
-** sigcache
+** DONE scriptnum
+   CLOSED: [2018-10-11 Thu 17:40]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-11 Thu 17:40]
+   :END:
+** DONE sigcache
+   CLOSED: [2018-10-11 Thu 17:41]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-11 Thu 17:41]
+   :END:
 ** sign
-** stack
+** DONE stack
+   CLOSED: [2018-10-11 Thu 17:42]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-11 Thu 17:42]
+   :END:
 ** standard
 
