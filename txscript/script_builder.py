@@ -77,10 +77,10 @@ class ScriptBuilder:
         """
 
         :param bytes script:
-        :param ErrScriptNotCanonical err:
+        # :param ErrScriptNotCanonical err:
         """
         self.script = script or bytes()
-        self.err = err
+        # self.err = err
 
     # AddOp pushes the passed opcode to the end of the script.  The script will not
     # be modified if pushing the opcode would cause the script to exceed the
@@ -91,13 +91,14 @@ class ScriptBuilder:
         :param byte opcode:
         :return:
         """
-        if self.err:
-            return self
+        # if self.err:
+        #     return self
 
         if len(self.script) + 1 > MaxScriptSize:
             msg = "adding an opcode would exceed the maximum allowed canonical script length of %d" % MaxScriptSize
-            self.err = ErrScriptNotCanonical(msg)
-            return self
+            raise ErrScriptNotCanonical(msg)
+            # self.err = ErrScriptNotCanonical(msg)
+            # return self
 
         self.script += opcode
 
@@ -110,13 +111,14 @@ class ScriptBuilder:
         :param bytes opcodes:
         :return:
         """
-        if self.err:
-            return self
+        # if self.err:
+        #     return self
 
         if len(self.script) + 1 > MaxScriptSize:
             msg = "adding an opcode would exceed the maximum allowed canonical script length of %d" % MaxScriptSize
-            self.err = ErrScriptNotCanonical(msg)
-            return self
+            raise ErrScriptNotCanonical(msg)
+            # self.err = ErrScriptNotCanonical(msg)
+            # return self
 
         self.script += opcodes
 
@@ -132,13 +134,13 @@ class ScriptBuilder:
         # a data push opcode followed by the number.
 
         if data_len == 0 or (data_len == 1 and data[0] == 0):
-            self.script += OP_0
+            self.script += bytes([OP_0])
             return self
         elif data_len == 1 and data[0] <= 16:
-            self.script += (OP_1 - 1 + data[0])  # Use OP_1 - OP_16
+            self.script += bytes([(OP_1 - 1 + data[0])])  # Use OP_1 - OP_16
             return self
         elif data_len == 1 and data[0] == 0x81:
-            self.script += OP_1NEGATE  # use OP_1NEGATE to represent -1
+            self.script += bytes([OP_1NEGATE])  # use OP_1NEGATE to represent -1
             return self
         else:
             pass
@@ -148,18 +150,18 @@ class ScriptBuilder:
         # Otherwise, choose the smallest possible OP_PUSHDATA# opcode that
         # can represent the length of the data.
         if data_len < OP_PUSHDATA1:
-            self.script += OP_DATA_1 - 1 + data_len  # Use OP_DATA_1 - OP_DATA_16
+            self.script += bytes([OP_DATA_1 - 1 + data_len])  # Use OP_DATA_1 - OP_DATA_16
             self.script += data  # push actual data
         elif data_len <= 0xff:
-            self.script += OP_PUSHDATA1  # Use OP_PUSHDATA1
+            self.script += bytes([OP_PUSHDATA1])  # Use OP_PUSHDATA1
             self.script += data_len.to_bytes(1, "little")
             self.script += data
         elif data_len <= 0xffff:
-            self.script += OP_PUSHDATA2  # Use OP_PUSHDATA1
+            self.script += bytes([OP_PUSHDATA2])  # Use OP_PUSHDATA1
             self.script += data_len.to_bytes(2, "little")
             self.script += data
         else:
-            self.script += OP_PUSHDATA4  # Use OP_PUSHDATA4
+            self.script += bytes([OP_PUSHDATA4])  # Use OP_PUSHDATA4
             self.script += data_len.to_bytes(4, "little")
             self.script += data
         return self
@@ -172,8 +174,8 @@ class ScriptBuilder:
     #
     # Use add_data instead.
     def add_full_data(self, data: bytes):
-        if self.err:
-            return self
+        # if self.err:
+        #     return self
         return self._add_data(data)
 
     # AddData pushes the passed data to the end of the script.  It automatically
@@ -190,17 +192,18 @@ class ScriptBuilder:
         :param data:
         :return:
         """
-        if self.err:
-            return self
+        # if self.err:
+        #     return self
 
         # Pushes that would cause the script to exceed the largest allowed
         # script size would result in a non-canonical script.
-        data_size = canonical_push(data)
+        data_size = canonical_data_size(data)
         if len(self.script) + data_size > MaxScriptSize:
             msg = "adding %d bytes of data would exceed the maximum allowed canonical script length of %d" % (
                 data_size, MaxScriptSize)
-            self.err = ErrScriptNotCanonical(msg)
-            return self
+            raise ErrScriptNotCanonical(msg)
+            # self.err = ErrScriptNotCanonical(msg)
+            # return self
 
         # Pushes larger than the max script element size would result in a
         # script that is not canonical.
@@ -208,8 +211,9 @@ class ScriptBuilder:
         if data_len > MaxScriptElementSize:
             msg = "adding a data element of %d bytes would exceed the maximum allowed script element size of %d" % (
                 data_len, MaxScriptElementSize)
-            self.err = ErrScriptNotCanonical(msg)
-            return self
+            raise ErrScriptNotCanonical(msg)
+            # self.err = ErrScriptNotCanonical(msg)
+            # return self
 
         return self._add_data(data)
 
@@ -218,34 +222,35 @@ class ScriptBuilder:
     # maximum allowed script engine size.
     def add_int64(self, val: int):
 
-        if self.err:
-            return self
+        # if self.err:
+        #     return self
 
         # Pushes that would cause the script to exceed the largest allowed
         # script size would result in a non-canonical script.
         if len(self.script) + 1 > MaxScriptSize:
             msg = "adding an integer would exceed the maximum allowed canonical script length of %d" % MaxScriptSize
-            self.err = ErrScriptNotCanonical(msg)
-            return self
+            raise ErrScriptNotCanonical(msg)
+            # self.err = ErrScriptNotCanonical(msg)
+            # return self
 
         # Fast path for small integers and OP_1NEGATE.
         if val == 0:
-            self.script += OP_0
+            self.script += bytes([OP_0])
             return self
 
         if val == -1 or 1 <= val <= 16:
-            self.script += (OP_1 - 1 + val)
+            self.script += bytes([(OP_1 - 1 + val)])
             return self
 
         return self.add_data(ScriptNum(val).bytes())
 
     # Reset resets the script so it has no content.
     def reset(self):
-        self.script = []
+        self.script = bytes()
         return self
 
-    # Script returns the currently built script.  When any errors occurred while
-    # building the script, the script will be returned up the point of the first
-    # error along with the error.
-    def script(self):
-        return self.script, self.err
+    # # Script returns the currently built script.  When any errors occurred while
+    # # building the script, the script will be returned up the point of the first
+    # # error along with the error.
+    # def get_script(self):
+    #     return self.script, self.err
