@@ -29,7 +29,11 @@
    - State "DONE"       from              [2018-10-11 Thu 17:19]
    :END:
 ** DOING script
-** scriptbuilder
+** DONE scriptbuilder
+   CLOSED: [2018-10-12 Fri 18:27]
+   :LOGBOOK:
+   - State "DONE"       from              [2018-10-12 Fri 18:27]
+   :END:
 ** DONE scriptnum
    CLOSED: [2018-10-11 Thu 17:40]
    :LOGBOOK:
@@ -46,5 +50,5 @@
    :LOGBOOK:
    - State "DONE"       from              [2018-10-11 Thu 17:42]
    :END:
-** standard
+** TODO standard
 
