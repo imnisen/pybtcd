@@ -7,6 +7,7 @@ from .sig_cache import *
 from .hash_cache import *
 from .standard import *
 
+
 _logger = logging.getLogger(__name__)
 
 # MaxStackSize is the maximum combined height of stack and alt stack

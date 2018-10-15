@@ -28,13 +28,6 @@ def is_small_int(op) -> bool:
         return False
 
 
-# isScriptHash returns true if the script passed is a pay-to-script-hash
-# transaction, false otherwise.
-def is_script_hash(pops) -> bool:
-    return len(pops) == 3 and \
-           pops[0].opcode.value == OP_HASH160 and \
-           pops[1].opcode.value == OP_DATA_20 and \
-           pops[2].opcode.value == OP_EQUAL
 
 
 # isPushOnly returns true if the script only pushes data, false otherwise.
@@ -110,6 +103,13 @@ def as_small_int(op) -> int:
         return 0
     return int(op.value - (OP_1 - 1))
 
+
+# TODO
+def get_sig_op_count(pops, precise)->int:
+    pass
+
+def get_witness_sig_op_count(sig_script, pk_script, witness)->int:
+    pass
 
 # canonicalPush returns true if the object is either not a push instruction
 # or the push instruction contained wherein is matches the canonical form
