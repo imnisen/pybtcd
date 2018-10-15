@@ -2,6 +2,7 @@ from enum import Enum
 from .opcode import *
 from .script import *
 from .script_builder import *
+from btcutil.address import *
 
 # MaxDataCarrierSize is the maximum number of bytes allowed in pushed
 # data to be considered a nulldata transaction
@@ -309,12 +310,160 @@ def pay_to_witness_script_hash_script(script_hash: bytes) -> bytes:
 
 # payToPubkeyScript creates a new script to pay a transaction output to a
 # public key. It is expected that the input is a valid pubkey.
-def pay_to_publickey_script(serialized_pubkey: bytes) -> bytes:
+def pay_to_pubkey_script(serialized_pubkey: bytes) -> bytes:
     return ScriptBuilder().add_data(serialized_pubkey).add_op(OP_CHECKSIG).script
 
 
 # PayToAddrScript creates a new script to pay a transaction output to a the
 # specified address.
-def pay_to_addr_script():
-    pass
+def pay_to_addr_script(addr):
+    if not addr:
+        desc = "unable to generate payment script for nil address"
+        raise ScriptError(ErrorCode.ErrUnsupportedAddress, desc=desc)
 
+    addr_type = type(addr)
+    if addr_type == AddressPubKeyHash:
+        return pay_to_pubkey_hash_script(addr.script_address())
+    elif addr_type == AddressScriptHash:
+        return pay_to_script_hash_script(addr.script_address())
+    elif addr_type == AddressPubKey:
+        return pay_to_pubkey_script(addr.script_address())
+    elif addr_type == AddressWitnessPubKeyHash:
+        return pay_to_witness_pubkey_hash_script(addr.script_address())
+    elif addr_type == AddressWitnessScriptHash:
+        return pay_to_witness_script_hash_script(addr.script_address())
+    else:
+        desc = "unable to generate payment script for unsupported address type %s" % addr_type
+        raise ScriptError(ErrorCode.ErrUnsupportedAddress, desc=desc)
+
+
+# NullDataScript creates a provably-prunable script containing OP_RETURN
+# followed by the passed data.  An Error with the error code ErrTooMuchNullData
+# will be returned if the length of the passed data exceeds MaxDataCarrierSize.
+def null_data_script(data: bytes):
+    if len(data) > MaxDataCarrierSize:
+        desc = "data size %d is larger than max allowed size %d" % (len(data), MaxDataCarrierSize)
+        raise ScriptBuilder().add_op(OP_RETURN).add_data(data).script
+
+
+# MultiSigScript returns a valid script for a multisignature redemption where
+# nrequired of the keys in pubkeys are required to have signed the transaction
+# for success.  An Error with the error code ErrTooManyRequiredSigs will be
+# returned if nrequired is larger than the number of keys provided.
+def multi_sig_script(pubkeys, nrequired):
+    """
+
+    :param []btcutil.AddressPubKey pubkeys:
+    :param int nrequired:
+    :return:
+    """
+    if len(pubkeys) < nrequired:
+        desc = "unable to generate multisig script with %d required signatures when there are only %d public keys available" % (
+            nrequired, len(pubkeys))
+        raise ScriptError(ErrorCode.ErrTooManyRequiredSigs, desc=desc)
+
+    builder = ScriptBuilder().add_int64(nrequired)
+    for key in pubkeys:
+        builder.add_data(key.script_address())
+
+    builder.add_int64(len(pubkeys))
+    builder.add_op(OP_CHECKMULTISIG)
+    return builder.script
+
+
+# PushedData returns an array of byte slices containing any pushed data found
+# in the passed script.  This includes OP_0, but not OP_1 - OP_16.
+def pushed_data(script: bytes):
+    pops = parse_script(script)
+
+    data = []
+    for pop in pops:
+        if pop.data:
+            data.append(pop.data)
+        elif pop.opcode.value == OP_0:
+            data.append(bytes())
+        else:
+            pass
+
+    return data
+
+
+# ExtractPkScriptAddrs returns the type of script, addresses and required
+# signatures associated with the passed PkScript.  Note that it only works for
+# 'standard' transaction script types.  Any data such as public keys which are
+# invalid are omitted from the results.
+def extract_pk_script_addrs(pk_script, chain_params):
+    addrs = []
+    required_sigs = 0
+
+    pops = parse_script(pk_script)
+
+    script_class = type_of_script(pops)
+
+    if script_class == ScriptClass.PubKeyHashTy:
+        # A pay-to-pubkey-hash script is of the form:
+        #  OP_DUP OP_HASH160 <hash> OP_EQUALVERIFY OP_CHECKSIG
+        # Therefore the pubkey hash is the 3rd item on the stack.
+        # Skip the pubkey hash if it's invalid for some reason.
+        required_sigs = 1
+        addr = AddressPubKeyHash.new_from_params(pops[2].data, chain_params)
+        addrs.append(addr)
+    elif script_class == ScriptClass.WitnessV0PubKeyHashTy:
+        # A pay-to-witness-pubkey-hash script is of the form:
+        #  OP_0 <20-byte hash>
+        # Therefore, the pubkey hash is the second item on the stack.
+        # Skip the pubkey hash if it's invalid for some reason.
+        required_sigs = 1
+        addr = AddressWitnessPubKeyHash.new_from_params(pops[1].data, chain_params)
+        addrs.append(addr)
+    elif script_class == ScriptClass.PubKeyTy:
+        # A pay-to-pubkey script is of the form:
+        #  <pubkey> OP_CHECKSIG
+        # Therefore the pubkey is the first item on the stack.
+        # Skip the pubkey if it's invalid for some reason.
+        required_sigs = 1
+        addr = AddressPubKey.new_from_params(pops[0].data, chain_params)
+        addrs.append(addr)
+    elif script_class == ScriptClass.ScriptHashTy:
+        # A pay-to-script-hash script is of the form:
+        #  OP_HASH160 <scripthash> OP_EQUAL
+        # Therefore the script hash is the 2nd item on the stack.
+        # Skip the script hash if it's invalid for some reason.
+        required_sigs = 1
+        addr = AddressScriptHash.new_from_params(pops[1].data, chain_params)
+        addrs.append(addr)
+    elif script_class == ScriptClass.WitnessV0ScriptHashTy:
+        # A pay-to-witness-script-hash script is of the form:
+        #  OP_0 <32-byte hash>
+        # Therefore, the script hash is the second item on the stack.
+        # Skip the script hash if it's invalid for some reason.
+        required_sigs = 1
+        addr = AddressWitnessScriptHash.new_from_params(pops[1].data, chain_params)
+        addrs.append(addr)
+    elif script_class == ScriptClass.MultiSigTy:
+        # A multi-signature script is of the form:
+        #  <numsigs> <pubkey> <pubkey> <pubkey>... <numpubkeys> OP_CHECKMULTISIG
+        # Therefore the number of required signatures is the 1st item
+        # on the stack and the number of public keys is the 2nd to last
+        # item on the stack.
+        required_sigs = as_small_int(pops[0].opcode)
+        num_pubkeys = as_small_int(pops[-2].opcode)
+        for i in range(num_pubkeys):
+            addr = AddressPubKey.new_from_params(pops[i + 1].data, chain_params)
+            addrs.append(addr)
+    elif script_class == ScriptClass.NullDataTy:
+        # Null data transactions have no addresses or required
+        # signatures.
+        pass
+    elif script_class == ScriptClass.NonStandardTy:
+        # Don't attempt to extract addresses or required signatures for
+        # nonstandard transactions.
+        pass
+    else:
+        pass
+
+    return script_class, addrs, required_sigs
+
+
+def ExtractAtomicSwapDataPushes():
+    pass

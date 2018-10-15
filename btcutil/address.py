@@ -54,11 +54,20 @@ class Address:
     def is_for_net(self):
         pass
 
+    @classmethod
+    def new_from_params(cls, pk_hash, net):
+        pass
+
 
 class AddressPubKeyHash(Address):
     def __init__(self, hash, net_id):
         self.hash = hash
         self.net_id = net_id
+
+
+
+def new_address_pubkey_hash(pk_hash, net):
+    pass
 
 
 class AddressScriptHash(Address):

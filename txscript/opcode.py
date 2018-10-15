@@ -1103,3 +1103,9 @@ opcode_array = [
     OpCode(OP_INVALIDOPCODE, "OP_INVALIDOPCODE", 1, opcodeInvalid),
 
 ]
+
+OpcodeByName = {op.name: op.value for op in opcode_array}
+OpcodeByName["OP_FALSE"] = OP_FALSE
+OpcodeByName["OP_TRUE"] = OP_TRUE
+OpcodeByName["OP_NOP2"] = OP_CHECKLOCKTIMEVERIFY
+OpcodeByName["OP_NOP3"] = OP_CHECKSEQUENCEVERIFY
