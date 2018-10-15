@@ -40,6 +40,8 @@ FeeFilterVersion = 70013
 
 # BitcoinNet represents which bitcoin network a message belongs to.
 class BitcoinNet(Enum):
+    EMPTY = (0, "EMPTY")
+
     # MainNet represents the main bitcoin network.
     MainNet = (0xd9b4bef9, "MainNet")
 
