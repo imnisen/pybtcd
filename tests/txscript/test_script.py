@@ -298,6 +298,8 @@ class TestGetWitnessSigOpCount(unittest.TestCase):
 
 class TestRemoveOpcodes(unittest.TestCase):
     def test_remove_opcode(self):
+        # TOADD parallel
+
         tests = [
             # Nothing to remove.
             {
@@ -370,3 +372,176 @@ class TestRemoveOpcodes(unittest.TestCase):
             else:
                 result = tstRemoveOpcode(before, test['remove'])
                 self.assertEqual(result, after)
+
+
+# TestRemoveOpcodeByData ensures that removing data carrying opcodes based on
+# the data they contain works as expected.
+class TestRemoveOpcodeByData(unittest.TestCase):
+    def test_remove_opcode(self):
+        # TOADD parallel
+
+        tests = [
+            {
+                "name": "nothing to do",
+                "before": bytes([OP_NOP]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([OP_NOP]),
+                "err": None
+            },
+
+            {
+                "name": "simple case",
+                "before": bytes([OP_DATA_4, 1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes(),
+                "err": None
+            },
+
+            {
+                "name": "simple case (miss)",
+                "before": bytes([OP_DATA_4, 1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 5]),
+                "after": bytes([OP_DATA_4, 1, 2, 3, 4]),
+                "err": None
+            },
+
+            # padded to keep it canonical.
+            {
+                "name": "simple case (pushdata1)",
+                "before": bytes([OP_PUSHDATA1, 76]) + bytes([0]) * 72 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata1 miss)",
+                "before": bytes([OP_PUSHDATA1, 76]) + bytes([0]) * 72 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 5]),
+                "after": bytes([OP_PUSHDATA1, 76]) + bytes([0]) * 72 + bytes([1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata1 miss noncanonical)",
+                "before": bytes([OP_PUSHDATA1, 4, 1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([OP_PUSHDATA1, 4, 1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata2)",
+                "before": bytes([OP_PUSHDATA2, 0, 1]) + bytes([0]) * 252 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata2 miss)",
+                "before": bytes([OP_PUSHDATA2, 0, 1]) + bytes([0]) * 252 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 5]),
+                "after": bytes([OP_PUSHDATA2, 0, 1]) + bytes([0]) * 252 + bytes([1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata2 miss noncanonical)",
+                "before": bytes([OP_PUSHDATA2, 4, 0, 1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([OP_PUSHDATA2, 4, 0, 1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata4)",
+                "before": bytes([OP_PUSHDATA4, 0, 0, 1, 0]) + bytes([0]) * 65532 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata4 miss)",
+                "before": bytes([OP_PUSHDATA4, 0, 0, 1, 0]) + bytes([0]) * 65532 + bytes([1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 5]),
+                "after": bytes([OP_PUSHDATA4, 0, 0, 1, 0]) + bytes([0]) * 65532 + bytes([1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "simple case (pushdata4 miss noncanonical)",
+                "before": bytes([OP_PUSHDATA4, 4, 0, 0, 0, 1, 2, 3, 4]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([OP_PUSHDATA4, 4, 0, 0, 0, 1, 2, 3, 4]),
+                "err": None
+            },
+
+            {
+                "name": "invalid opcode ",
+                "before": bytes([OP_UNKNOWN187]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": bytes([OP_UNKNOWN187]),
+                "err": None
+            },
+
+            {
+                "name": "invalid length (instruction)",
+                "before": bytes([OP_PUSHDATA1]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": None,
+                "err": ScriptError(ErrorCode.ErrMalformedPush)
+            },
+
+            {
+                "name": "invalid length (data)",
+                "before": bytes([OP_PUSHDATA1, 255, 254]),
+                "remove": bytes([1, 2, 3, 4]),
+                "after": None,
+                "err": ScriptError(ErrorCode.ErrMalformedPush)
+            },
+
+        ]
+
+        def tstRemoveOpcodeByData(script, data):
+            pops = parse_script(script)
+            pops = remove_opcode_by_data(pops, data)
+            return unparse_script(pops)
+
+        for test in tests:
+            before = test['before']
+            after = test['after']
+
+            if test['err']:
+                with self.assertRaises(type(test['err'])) as cm:
+                    tstRemoveOpcodeByData(before, test['remove'])
+                self.assertEqual(cm.exception.c, test['err'].c)
+
+            else:
+                result = tstRemoveOpcodeByData(before, test['remove'])
+                self.assertEqual(result, after)
+
+# # scriptClassTests houses several test scripts used to ensure various class
+# # determination is working as expected.
+# class TestTypeOfScriptHash(unittest.TestCase):
+#     def setUp(self):
+#         self.scriptClassTests = [
+#             {
+#                 "name": "Pay Pubkey",
+#                 "script": "DATA_65 0x0411db93e1dcdb8a016b49840f8c53bc1eb68a382e" +
+#                           "97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e16"+
+#                           "0bfa9b8b64f9d4c03f999b8643f656b412a3 CHECKSIG",
+#                 "class": ScriptClass.PubKeyTy
+#             },
+#
+#             # tx 599e47a8114fe098103663029548811d2651991b62397e057f0c863c2bc9f9ea
+#             {
+#                 "name": "Pay PubkeyHash",
+#                 "script": "DUP HASH160 DATA_20 0x660d4ef3a743e3e696ad990364e555" +
+#                           "c271ad504b EQUALVERIFY CHECKSIG" +
+#                           "0bfa9b8b64f9d4c03f999b8643f656b412a3 CHECKSIG",
+#                 "class": ScriptClass.PubKeyHashTy
+#             },
+#
+#         ]

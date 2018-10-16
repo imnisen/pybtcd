@@ -269,6 +269,16 @@ def remove_opcode(pops, opcode):
     return ret_pops
 
 
+# removeOpcodeByData will return the script minus any opcodes that would push
+# the passed data to the stack.
+def remove_opcode_by_data(pops, data):
+    ret_pops = []
+    for pop in pops:
+        if not canonical_push(pop) or data not in pop.data:
+            ret_pops.append(pop)
+    return ret_pops
+
+
 # canonicalPush returns true if the object is either not a push instruction
 # or the push instruction contained wherein is matches the canonical form
 # or using the smallest instruction to do the job. False otherwise.
