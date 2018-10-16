@@ -699,5 +699,50 @@ def must_register(params: Params):
     register(params)
 
 
+# IsPubKeyHashAddrID returns whether the id is an identifier known to prefix a
+# pay-to-pubkey-hash address on any default or registered network.  This is
+# used when decoding an address string into a specific address type.  It is up
+# to the caller to check both this and IsScriptHashAddrID and decide whether an
+# address is a pubkey hash address, script hash address, neither, or
+# undeterminable (if both return true).
+def is_pub_key_hash_addr_id(id)->bool:
+    return id in pubKeyHashAddrIDs
+
+# IsScriptHashAddrID returns whether the id is an identifier known to prefix a
+# pay-to-script-hash address on any default or registered network.  This is
+# used when decoding an address string into a specific address type.  It is up
+# to the caller to check both this and IsPubKeyHashAddrID and decide whether an
+# address is a pubkey hash address, script hash address, neither, or
+# undeterminable (if both return true).
+def is_script_hash_addr_id(id)->bool:
+    return id in scriptHashAddrIDs
+
+# IsBech32SegwitPrefix returns whether the prefix is a known prefix for segwit
+# addresses on any default or registered network.  This is used when decoding
+# an address string into a specific address type.
+def is_bech32_segwit_prefix(prefix) -> bool:
+    prefix = prefix.lower()
+    return prefix in bech32SegwitPrefixes
+
+
+# HDPrivateKeyToPublicKeyID accepts a private hierarchical deterministic
+# extended key id and returns the associated public key id.  When the provided
+# id is not registered, the ErrUnknownHDKeyID error will be returned.
+def hd_private_key_to_public_key_id(id):
+    if len(id) != 4:
+        raise ErrUnknownHDKeyID
+
+    if id in hdPrivToPubKeyIDs:
+        return hdPrivToPubKeyIDs[id]
+    else:
+        raise ErrUnknownHDKeyID
+
+
+
+
+
+
+
+
 
 
