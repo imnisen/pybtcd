@@ -295,3 +295,12 @@ class TestGetWitnessSigOpCount(unittest.TestCase):
             count = get_witness_sig_op_count(test["sigScript"], test["pkScript"], test["witness"])
             self.assertEqual(count, test["numSigOps"])
 
+
+# class TestRemoveOpcodes(unittest.TestCase):
+#     def test_remove_opcode(self):
+#         tests = [
+#             # Nothing to remove.
+#             {
+#                 "name": ""
+#             }
+#         ]

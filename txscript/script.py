@@ -254,6 +254,15 @@ def _get_witness_sig_op_count(pk_script, witness) -> int:
     return 0
 
 
+# removeOpcode will remove any opcode matching ``opcode'' in the pops
+def remove_opcode(pops, opcode):
+    ret_pops = []
+    for pop in pops:
+        if pop.opcode.value != opcode:
+            ret_pops.append(pop)
+    return ret_pops
+
+
 # canonicalPush returns true if the object is either not a push instruction
 # or the push instruction contained wherein is matches the canonical form
 # or using the smallest instruction to do the job. False otherwise.
