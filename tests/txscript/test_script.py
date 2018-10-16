@@ -296,11 +296,77 @@ class TestGetWitnessSigOpCount(unittest.TestCase):
             self.assertEqual(count, test["numSigOps"])
 
 
-# class TestRemoveOpcodes(unittest.TestCase):
-#     def test_remove_opcode(self):
-#         tests = [
-#             # Nothing to remove.
-#             {
-#                 "name": ""
-#             }
-#         ]
+class TestRemoveOpcodes(unittest.TestCase):
+    def test_remove_opcode(self):
+        tests = [
+            # Nothing to remove.
+            {
+                "name": "nothing to remove",
+                "before": "NOP",
+                "remove": OP_CODESEPARATOR,
+                "after": "NOP",
+                "err": None
+            },
+
+            # Test basic opcode removal
+            {
+                "name": "codeseparator 1",
+                "before": "NOP CODESEPARATOR TRUE",
+                "remove": OP_CODESEPARATOR,
+                "after": "NOP TRUE",
+                "err": None
+            },
+
+            # The opcode in question is actually part of the data
+            # in a previous opcode.
+            {
+                "name": "codeseparator by coincidence",
+                "before": "NOP DATA_1 CODESEPARATOR TRUE",
+                "remove": OP_CODESEPARATOR,
+                "after": "NOP DATA_1 CODESEPARATOR TRUE",
+                "err": None
+            },
+
+            {
+                "name": "invalid opcode",
+                "before": "CAT",
+                "remove": OP_CODESEPARATOR,
+                "after": "CAT",
+                "err": None
+            },
+
+            {
+                "name": "invalid length (instruction)",
+                "before": "PUSHDATA1",
+                "remove": OP_CODESEPARATOR,
+                "after": None,
+                "err": ScriptError(ErrorCode.ErrMalformedPush)
+            },
+
+            {
+                "name": "invalid length (data)",
+                "before": "PUSHDATA1 0xff 0xfe",
+                "remove": OP_CODESEPARATOR,
+                "after": None,
+                "err": ScriptError(ErrorCode.ErrMalformedPush)
+            },
+
+        ]
+
+        def tstRemoveOpcode(script, opcode):
+            pops = parse_script(script)
+            pops = remove_opcode(pops, opcode)
+            return unparse_script(pops)
+
+        for test in tests:
+            before = must_parse_short_form(test['before'])
+            after = must_parse_short_form(test['after'])
+
+            if test['err']:
+                with self.assertRaises(type(test['err'])) as cm:
+                    tstRemoveOpcode(before, test['remove'])
+                self.assertEqual(cm.exception.c, test['err'].c)
+
+            else:
+                result = tstRemoveOpcode(before, test['remove'])
+                self.assertEqual(result, after)

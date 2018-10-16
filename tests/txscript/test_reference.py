@@ -1,7 +1,6 @@
 from txscript.opcode import *
 from txscript.script_builder import *
 
-
 # shortFormOps holds a map of opcode names to values for use in short form
 # parsing.  It is declared here so it only needs to be created once.
 shortFormOps = {}
@@ -13,6 +12,7 @@ def parse_int(s):
         return num
     except ValueError:
         return None
+
 
 def parse_hex(s):
     try:
@@ -41,7 +41,7 @@ class BadTokenErr(Exception):
 #     0x14 is OP_DATA_20)
 #   - Single quoted strings are pushed as data
 #   - Anything else is an error
-def parse_short_form(script:str):
+def parse_short_form(script: str):
     # Only create the short form opcode map once.
     global shortFormOps
     if not shortFormOps:
@@ -50,7 +50,7 @@ def parse_short_form(script:str):
 
             if "OP_UNKNOWN" not in opcode_name:
                 ops[opcode_name] = opcode_value
-                
+
                 # The opcodes named OP_# can't have the OP_ prefix
                 # stripped or they would conflict with the plain
                 # numbers.  Also, since OP_FALSE and OP_TRUE are
@@ -59,9 +59,12 @@ def parse_short_form(script:str):
                 # allow them.
                 if opcode_name == "OP_FALSE" or opcode_name == "OP_TRUE" or \
                         (opcode_value != OP_0 and (opcode_value < OP_1 or opcode_value > OP_16)):
-                    ops[opcode_name.replace("OP_","",1)] = opcode_value
+                    ops[opcode_name.replace("OP_", "", 1)] = opcode_value
 
         shortFormOps = ops
+
+    if not script:
+        return bytes()
 
     # Split only does one separator so convert all \n and tab into  space.
     script.replace("\n", " ")
@@ -86,10 +89,5 @@ def parse_short_form(script:str):
                 elif tok in shortFormOps:
                     builder.add_op(bytes([shortFormOps[tok]]))
                 else:
-                    print('tok')
-                    print(tok)
                     raise BadTokenErr
     return builder.script
-
-
-

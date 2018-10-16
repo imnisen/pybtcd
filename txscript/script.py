@@ -256,6 +256,12 @@ def _get_witness_sig_op_count(pk_script, witness) -> int:
 
 # removeOpcode will remove any opcode matching ``opcode'' in the pops
 def remove_opcode(pops, opcode):
+    """
+
+    :param []parsedOpcode pops:
+    :param byte opcode:
+    :return:
+    """
     ret_pops = []
     for pop in pops:
         if pop.opcode.value != opcode:
