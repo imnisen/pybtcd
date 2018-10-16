@@ -2,6 +2,11 @@ import unittest
 import copy
 from txscript.script import *
 from txscript.utils import *
+from txscript.script_builder import *
+from tests.txscript.test_reference import *
+
+def must_parse_short_form(script: str):
+    return parse_short_form(script)
 
 
 class TestParseOpcode(unittest.TestCase):
@@ -156,3 +161,66 @@ class TestUnparseScript(unittest.TestCase):
             with self.assertRaises(ScriptError) as cm:
                 unparse_script(c['pops'])
             self.assertEqual(cm.exception.c, c['err'].c)
+
+
+class TestCanonicalPush(unittest.TestCase):
+    def test_canonical_push(self):
+        for i in range(65535):
+            script = ScriptBuilder().add_int64(i).script
+            self.assertTrue(is_push_only_script(script))
+
+            pops = parse_script(script)
+            for pop in pops:
+                self.assertTrue(canonical_push(pop))
+
+        for i in range(MaxScriptElementSize):
+            script = ScriptBuilder().add_data(bytes([0x49]) * i).script
+            self.assertTrue(is_push_only_script(script))
+            pops = parse_script(script)
+            for pop in pops:
+                self.assertTrue(canonical_push(pop))
+
+
+# TestGetPreciseSigOps ensures the more precise signature operation counting
+# mechanism which includes signatures in P2SH scripts works as expected.
+class TestGetPreciseSigOps(unittest.TestCase):
+    # TOCHECK add case that nsigOPs greater than 0
+    def test_get_precise_sig_ops(self):
+        tests = [
+            {
+                "name": "scriptSig doesn't parse",
+                "scriptSig": must_parse_short_form("PUSHDATA1 0x02"),
+                "nSigOps": 0
+            },
+
+            {
+                "name": "scriptSig isn't push only",
+                "scriptSig": must_parse_short_form("1 DUP"),
+                "nSigOps": 0
+            },
+
+            {
+                "name": "scriptSig length 0",
+                "scriptSig": None,
+                "nSigOps": 0
+            },
+
+            {
+                "name": "No script at the end",
+                "scriptSig": must_parse_short_form("1 1"),
+                "nSigOps": 0
+            },
+
+            {
+                "name": "pushed script doesn't parse",
+                "scriptSig": must_parse_short_form("DATA_2 PUSHDATA1 0x02"),
+                "nSigOps": 0
+            },
+
+        ]
+        pkScript = must_parse_short_form("HASH160 DATA_20 0x433ec2ac1ffa1b7b7d0 27f564529c57197f9ae88 EQUAL")
+        for test in tests:
+            count = get_precise_sig_op_count(test['scriptSig'], pkScript, bip16=True)
+            self.assertEqual(count, test['nSigOps'])
+
+

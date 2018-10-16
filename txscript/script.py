@@ -9,6 +9,14 @@ MaxOpsPerScript = 201  # Max number of non-push operations.
 MaxPubKeysPerMultiSig = 20  # Multisig can't have more sigs than this.
 MaxScriptElementSize = 520  # Max bytes pushable to the stack.
 
+# payToWitnessPubKeyHashDataSize is the size of the witness program's
+# data push for a pay-to-witness-pub-key-hash output.
+payToWitnessPubKeyHashDataSize = 20
+
+# payToWitnessScriptHashDataSize is the size of the witness program's
+# data push for a pay-to-witness-script-hash output.
+payToWitnessScriptHashDataSize = 32
+
 
 # SigHashType represents hash type bits at the end of a signature.
 class SigHashType(Enum):
@@ -28,6 +36,35 @@ def is_small_int(op) -> bool:
         return False
 
 
+# isWitnessPubKeyHash returns true if the passed script is a
+# pay-to-witness-pubkey-hash, and false otherwise.
+def is_witness_pub_key_hash(pops) -> bool:
+    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_20
+
+
+# isScriptHash returns true if the script passed is a pay-to-script-hash
+# transaction, false otherwise.
+def is_script_hash(pops) -> bool:
+    return len(pops) == 3 and \
+           pops[0].opcode.value == OP_HASH160 and \
+           pops[1].opcode.value == OP_DATA_20 and \
+           pops[2].opcode.value == OP_EQUAL
+
+
+# IsPayToScriptHash returns true if the script is in the standard
+# pay-to-script-hash (P2SH) format, false otherwise.
+def is_pay_to_script_hash(script) -> bool:
+    try:
+        pops = parse_script(script)
+    except ScriptError:
+        return False
+    return is_script_hash(pops)
+
+
+# isWitnessScriptHash returns true if the passed script is a
+# pay-to-witness-script-hash transaction, false otherwise.
+def is_witness_script_hash(pops) -> bool:
+    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_32
 
 
 # isPushOnly returns true if the script only pushes data, false otherwise.
@@ -104,12 +141,118 @@ def as_small_int(op) -> int:
     return int(op.value - (OP_1 - 1))
 
 
-# TODO
-def get_sig_op_count(pops, precise)->int:
-    pass
+# getSigOpCount is the implementation function for counting the number of
+# signature operations in the script provided by pops. If precise mode is
+# requested then we attempt to count the number of operations for a multisig
+# op. Otherwise we use the maximum.
+def _get_sig_op_count(pops, precise) -> int:
+    nsigs = 0
+    for i, pop in enumerate(pops):
+        value = pop.opcode.value
+        if value in (OP_CHECKSIG, OP_CHECKSIGVERIFY):
+            nsigs += 1
+        elif value in (OP_CHECKMULTISIG, OP_CHECKMULTISIGVERIFY):
+            if precise and i > 0 and OP_1 <= pops[i - 1].opcode.value <= OP_16:
+                nsigs += as_small_int(pops[i - 1].opcode)
+            else:
+                nsigs += MaxPubKeysPerMultiSig
+        else:
+            # not a sigop
+            pass
+    return nsigs
 
-def get_witness_sig_op_count(sig_script, pk_script, witness)->int:
-    pass
+
+# GetSigOpCount provides a quick count of the number of signature operations
+# in a script. a CHECKSIG operations counts for 1, and a CHECK_MULTISIG for 20.
+# If the script fails to parse, then the count up to the point of failure is
+# returned.
+def get_sig_op_count(script: bytes):
+    pops = parse_script_no_err(script)
+    return _get_sig_op_count(pops, False)
+
+
+# GetPreciseSigOpCount returns the number of signature operations in
+# scriptPubKey.  If bip16 is true then scriptSig may be searched for the
+# Pay-To-Script-Hash script in order to find the precise number of signature
+# operations in the transaction.  If the script fails to parse, then the count
+# up to the point of failure is returned.
+def get_precise_sig_op_count(script_sig, script_pub_key, bip16):
+    pops = parse_script_no_err(script_pub_key)
+
+    # Treat non P2SH transactions as normal.
+    if not (bip16 and is_script_hash(pops)):
+        return _get_sig_op_count(pops, precise=True)
+
+    # The public key script is a pay-to-script-hash, so parse the signature
+    # script to get the final item.  Scripts that fail to fully parse count
+    # as 0 signature operations.
+    try:
+        sig_pops = parse_script(script_sig)
+    except ScriptError:
+        return 0
+
+    # The signature script must only push data to the stack for P2SH to be
+    # a valid pair, so the signature operation count is 0 when that is not
+    # the case.
+    if (not is_push_only(sig_pops)) or len(sig_pops) == 0:
+        return 0
+
+    # The P2SH script is the last item the signature script pushes to the
+    # stack.  When the script is empty, there are no signature operations.
+    sh_script = sig_pops[-1].data
+    if len(sh_script) == 0:
+        return 0
+
+    # Parse the P2SH script and don't check the error since parseScript
+    # returns the parsed-up-to-error list of pops and the consensus rules
+    # dictate signature operations are counted up to the first parse
+    # failure.
+    sh_pops = parse_script_no_err(sh_script)
+    return _get_sig_op_count(sh_pops, precise=True)
+
+
+def get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
+    # If this is a regular witness program, then we can proceed directly
+    # to counting its signature operations without any further processing.
+    if is_script_witness_program(pk_script):
+        return _get_witness_sig_op_count(pk_script, witness)
+
+        # Next, we'll check the sigScript to see if this is a nested p2sh
+    # witness program. This is a case wherein the sigScript is actually a
+    # datapush of a p2wsh witness program.
+    try:
+        sig_pops = parse_script(sig_script)
+    except:
+        return 0
+
+    if is_pay_to_script_hash(pk_script) and is_push_only(sig_pops) and is_script_witness_program(sig_script[1:]):
+        return _get_witness_sig_op_count(sig_script[1:], witness)
+
+    return 0
+
+
+# getWitnessSigOps returns the number of signature operations generated by
+# spending the passed witness program wit the passed witness. The exact
+# signature counting heuristic is modified by the version of the passed
+# witness program. If the version of the witness program is unable to be
+# extracted, then 0 is returned for the sig op count.
+def _get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
+    # Attempt to extract the witness program version.
+    try:
+        witness_version, witness_program = extract_witness_program_info(pk_script)
+    except Exception:
+        return 0
+
+    if witness_version == 0:
+        if len(witness_program) == payToWitnessPubKeyHashDataSize:
+            return 1
+        elif len(witness_program) == payToWitnessScriptHashDataSize and len(witness) > 0:
+            witness_script = witness[-1]
+            pops = parse_script_no_err(witness_script)
+            return _get_sig_op_count(pops, precise=True)
+
+    return 0
+
 
 # canonicalPush returns true if the object is either not a push instruction
 # or the push instruction contained wherein is matches the canonical form
@@ -166,7 +309,7 @@ def parse_script_template(script, opcodes):
             if len(script[i:]) < op.length:  # TODO check if this len(script[i+1:]) or len(script[i:]?)
                 desc = "opcode {} requires {} bytes, but script only has {} remaining".format(op.name, op.length,
                                                                                               len(script[i:]))
-                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc)
+                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc, extra_data=return_script)
 
             pop.data = script[i + 1: i + op.length]
             i += op.length
@@ -176,7 +319,7 @@ def parse_script_template(script, opcodes):
             if len(script[off:]) < -op.length:  # TODO check if this len(script[i+1:]) or len(script[i:]?)
                 desc = "opcode {} requires {} bytes, but script only has {} remaining".format(op.name, op.length,
                                                                                               len(script[i:]))
-                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc)
+                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc, extra_data=return_script)
 
             if op.length == -1:
                 l = script[off]
@@ -186,20 +329,28 @@ def parse_script_template(script, opcodes):
                 l = script[off] | (script[off + 1] << 8) | (script[off + 2] << 16) | (script[off + 3] << 24)
             else:
                 desc = "invalid opcode length {}".format(op.length)
-                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc)
+                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc, extra_data=return_script)
 
             off += -op.length
 
             if l < 0 or l > len(script[off:]):  # TOCHANGE Consider to split l<0 error
                 desc = "opcode {} pushes {} bytes, but script only has {} remaining".format(op.name, op.length,
                                                                                             len(script[off:]))
-                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc)
+                raise ScriptError(c=ErrorCode.ErrMalformedPush, desc=desc, extra_data=return_script)
 
             pop.data = script[off: off + l]
             i += (1 - op.length + l)
 
         return_script.append(pop)
     return return_script
+
+
+def parse_script_no_err(script):
+    try:
+        pops = parse_script_template(script, opcode_array)
+    except ScriptError as e:
+        pops = e.extra_data
+    return pops
 
 
 def parse_script(script):

@@ -16,6 +16,7 @@
 * In unitest, use self.assert raise, checkout why not work before
 
 * Refacor the import things
+* txscript/standard txscript/script very messy
 * Finish test case for txscript
 ** engine
 ** error

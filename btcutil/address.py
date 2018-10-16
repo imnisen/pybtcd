@@ -3,7 +3,7 @@ from enum import Enum
 
 # UnsupportedWitnessVerError describes an error where a segwit address being
 # decoded has an unsupported witness version.
-class UnsupportedWitnessVerError(BaseException):
+class UnsupportedWitnessVerError(Exception):
     def __init__(self, data=None):
         self.data = data
 
@@ -13,7 +13,7 @@ class UnsupportedWitnessVerError(BaseException):
 
 # UnsupportedWitnessProgLenError describes an error where a segwit address
 # being decoded has an unsupported witness program length.
-class UnsupportedWitnessProgLenError(BaseException):
+class UnsupportedWitnessProgLenError(Exception):
     def __init__(self, data=None):
         self.data = data
 

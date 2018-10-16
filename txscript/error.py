@@ -269,8 +269,8 @@ class ErrorCode(Enum):
     numErrorCodes = (1 << 50, "numErrorCodes")
 
 
-class ScriptError(BaseException):
-    def __init__(self, c, desc=None):
+class ScriptError(Exception):
+    def __init__(self, c, desc=None, extra_data=None):
         """
 
         :param ErrorCode c:
@@ -279,6 +279,7 @@ class ScriptError(BaseException):
 
         self.c = c
         self.desc = desc or ""
+        self.extra_data = extra_data
 
     def __eq__(self, other):
         return self.c == other.c and self.desc == other.desc
@@ -292,7 +293,7 @@ class ScriptError(BaseException):
 
 
 
-class OtherScriptError(BaseException):
+class OtherScriptError(Exception):
     pass
 
 class NotWitnessProgramError(OtherScriptError):

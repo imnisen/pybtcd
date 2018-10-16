@@ -32,15 +32,15 @@ class ScriptClass(Enum):
 
 # isPubkey returns true if the script passed is a pay-to-pubkey transaction,
 # false otherwise.
-def is_pubkey(pops) -> bool:
-    # Valid pubkeys are either 33 or 65 bytes.
+def is_pub_key(pops) -> bool:
+    # Valid pub_keys are either 33 or 65 bytes.
     return len(pops) == 2 and (len(pops[0].data) == 33 or len(pops[0].data) == 65) and \
            pops[1].opcode.value == OP_CHECKSIG
 
 
-# isPubkeyHash returns true if the script passed is a pay-to-pubkey-hash
+# isPubkeyHash returns true if the script passed is a pay-to-pub_key-hash
 # transaction, false otherwise.
-def is_pubkey_hash(pops) -> bool:
+def is_pub_key_hash(pops) -> bool:
     return len(pops) == 5 and \
            pops[0].opcode.value == OP_DUP and \
            pops[1].opcode.value == OP_HASH160 and \
@@ -49,25 +49,6 @@ def is_pubkey_hash(pops) -> bool:
            pops[4].opcode.value == OP_CHECKSIG
 
 
-# isWitnessPubKeyHash returns true if the passed script is a
-# pay-to-witness-pubkey-hash, and false otherwise.
-def is_witness_pubkey_hash(pops) -> bool:
-    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_20
-
-
-# isScriptHash returns true if the script passed is a pay-to-script-hash
-# transaction, false otherwise.
-def is_script_hash(pops) -> bool:
-    return len(pops) == 3 and \
-           pops[0].opcode.value == OP_HASH160 and \
-           pops[1].opcode.value == OP_DATA_20 and \
-           pops[2].opcode.value == OP_EQUAL
-
-
-# isWitnessScriptHash returns true if the passed script is a
-# pay-to-witness-script-hash transaction, false otherwise.
-def is_witness_script_hash(pops) -> bool:
-    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_32
 
 
 # isMultiSig returns true if the passed script is a multisig transaction, false
@@ -115,11 +96,11 @@ def is_null_data(pops) -> bool:
 # scriptType returns the type of the script being inspected from the known
 # standard types.
 def type_of_script(pops) -> ScriptClass:
-    if is_pubkey(pops):
+    if is_pub_key(pops):
         return ScriptClass.PubKeyTy
-    elif is_pubkey_hash(pops):
+    elif is_pub_key_hash(pops):
         return ScriptClass.PubKeyHashTy
-    elif is_witness_pubkey_hash(pops):
+    elif is_witness_pub_key_hash(pops):
         return ScriptClass.WitnessV0PubKeyHashTy
     elif is_script_hash(pops):
         return ScriptClass.ScriptHashTy
@@ -285,7 +266,7 @@ def calc_multi_sig_stats(script: bytes):
 # payToPubKeyHashScript creates a new script to pay a transaction
 # output to a 20-byte pubkey hash. It is expected that the input is a valid
 # hash.
-def pay_to_pubkey_hash_script(pubkey_hash: bytes) -> bytes:
+def pay_to_pub_key_hash_script(pubkey_hash: bytes) -> bytes:
     return ScriptBuilder().add_op(OP_DUP).add_op(OP_HASH160).add_data(pubkey_hash).add_op(
         OP_EQUALVERIFY).add_op(OP_CHECKSIG).script  # TOCHECK OP_EQUALVERIFY or OP_EUQAL
 
@@ -310,8 +291,8 @@ def pay_to_witness_script_hash_script(script_hash: bytes) -> bytes:
 
 # payToPubkeyScript creates a new script to pay a transaction output to a
 # public key. It is expected that the input is a valid pubkey.
-def pay_to_pubkey_script(serialized_pubkey: bytes) -> bytes:
-    return ScriptBuilder().add_data(serialized_pubkey).add_op(OP_CHECKSIG).script
+def pay_to_pub_key_script(serialized_pub_key: bytes) -> bytes:
+    return ScriptBuilder().add_data(serialized_pub_key).add_op(OP_CHECKSIG).script
 
 
 # PayToAddrScript creates a new script to pay a transaction output to a the
@@ -323,13 +304,13 @@ def pay_to_addr_script(addr):
 
     addr_type = type(addr)
     if addr_type == AddressPubKeyHash:
-        return pay_to_pubkey_hash_script(addr.script_address())
+        return pay_to_pub_key_hash_script(addr.script_address())
     elif addr_type == AddressScriptHash:
         return pay_to_script_hash_script(addr.script_address())
     elif addr_type == AddressPubKey:
-        return pay_to_pubkey_script(addr.script_address())
+        return pay_to_pub_key_script(addr.script_address())
     elif addr_type == AddressWitnessPubKeyHash:
-        return pay_to_witness_pubkey_hash_script(addr.script_address())
+        return pay_to_witness_pub_key_hash_script(addr.script_address())
     elif addr_type == AddressWitnessScriptHash:
         return pay_to_witness_script_hash_script(addr.script_address())
     else:
@@ -350,23 +331,23 @@ def null_data_script(data: bytes):
 # nrequired of the keys in pubkeys are required to have signed the transaction
 # for success.  An Error with the error code ErrTooManyRequiredSigs will be
 # returned if nrequired is larger than the number of keys provided.
-def multi_sig_script(pubkeys, nrequired):
+def multi_sig_script(pub_keys, nrequired):
     """
 
-    :param []btcutil.AddressPubKey pubkeys:
+    :param []btcutil.AddressPubKey pub_keys:
     :param int nrequired:
     :return:
     """
-    if len(pubkeys) < nrequired:
+    if len(pub_keys) < nrequired:
         desc = "unable to generate multisig script with %d required signatures when there are only %d public keys available" % (
-            nrequired, len(pubkeys))
+            nrequired, len(pub_keys))
         raise ScriptError(ErrorCode.ErrTooManyRequiredSigs, desc=desc)
 
     builder = ScriptBuilder().add_int64(nrequired)
-    for key in pubkeys:
+    for key in pub_keys:
         builder.add_data(key.script_address())
 
-    builder.add_int64(len(pubkeys))
+    builder.add_int64(len(pub_keys))
     builder.add_op(OP_CHECKMULTISIG)
     return builder.script
 

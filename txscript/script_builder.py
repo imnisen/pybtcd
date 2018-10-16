@@ -44,7 +44,7 @@ def canonical_data_size(data) -> int:
     return 5 + data_len  # Otherwise , use `OP_PUSHDATA4` + four bytes + data to push data
 
 
-class ErrScriptNotCanonical(BaseException):
+class ErrScriptNotCanonical(Exception):
     def __init__(self, msg=""):
         self.msg = msg
 
@@ -85,7 +85,7 @@ class ScriptBuilder:
     # AddOp pushes the passed opcode to the end of the script.  The script will not
     # be modified if pushing the opcode would cause the script to exceed the
     # maximum allowed script engine size.
-    def add_op(self, opcode):
+    def add_op(self, opcode: bytes()):
         """
 
         :param byte opcode:

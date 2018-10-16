@@ -648,7 +648,7 @@ SimNetParams = Params(
 # ErrDuplicateNet describes an error where the parameters for a Bitcoin
 # network could not be set due to the network already being a standard
 # network or previously-registered into this package.
-class ErrDuplicateNet(BaseException):
+class ErrDuplicateNet(Exception):
     def __init__(self, msg=None):
         self.msg = msg or "duplicate Bitcoin network"
 
@@ -656,7 +656,7 @@ class ErrDuplicateNet(BaseException):
 # ErrUnknownHDKeyID describes an error where the provided id which
 # is intended to identify the network for a hierarchical deterministic
 # private extended key is not registered.
-class ErrUnknownHDKeyID(BaseException):
+class ErrUnknownHDKeyID(Exception):
     def __init__(self, msg=None):
         self.msg = msg or "unknown hd private extended key bytes"
 
