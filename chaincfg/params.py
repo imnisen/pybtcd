@@ -685,7 +685,7 @@ def register(params: Params):
     registerNets[params.net] = True
     pubKeyHashAddrIDs[params.pub_key_hash_addr_id] = True
     scriptHashAddrIDs[params.script_hash_addr_id] = True
-    hdPrivToPubKeyIDs[params.hd_private_key_id] = params.hd_private_key_id
+    hdPrivToPubKeyIDs[params.hd_private_key_id] = params.hd_public_key_id
 
     # A valid Bech32 encoded segwit address always has as prefix the
     # human-readable part for the given net followed by '1'.

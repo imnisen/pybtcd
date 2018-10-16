@@ -15,7 +15,7 @@ mockNetParams = Params(
 
 
 class TestParams(unittest.TestCase):
-    def setUp(self):
+    def test_register(self):
         self.tests = [
             {
                 "name": "default networks",
@@ -197,7 +197,7 @@ class TestParams(unittest.TestCase):
                     },
                     {
                         "magic": mockNetParams.pub_key_hash_addr_id,
-                        "valid": False,
+                        "valid": True,
                     },
                     {
                         "magic": 0xFF,
@@ -223,7 +223,7 @@ class TestParams(unittest.TestCase):
                     },
                     {
                         "magic": mockNetParams.script_hash_addr_id,
-                        "valid": False,
+                        "valid": True,
                     },
                     {
                         "magic": 0xFF,
@@ -254,7 +254,7 @@ class TestParams(unittest.TestCase):
                     },
                     {
                         "prefix": mockNetParams.bech32_hrp_segwit + "1",
-                        "valid": False,
+                        "valid": True,
                     },
                     {
                         "prefix": "abc1",
@@ -441,7 +441,6 @@ class TestParams(unittest.TestCase):
 
         ]
 
-    def test_register(self):
         for test in self.tests:
             for c in test['register']:
                 if c['err']:
@@ -450,15 +449,21 @@ class TestParams(unittest.TestCase):
                 else:
                     register(c['params'])
 
-    def test_is_pub_key_hash_addr_id(self):
-        for test in self.tests:
             for c in test['p2pkhMagics']:
-                print(test['name'])
-                print(c['magic'])
                 self.assertEqual(is_pub_key_hash_addr_id(c['magic']), c['valid'])
 
-    # def test_is_pub_key_hash_addr_id(self):
-    #     for test in self.tests:
-    #         for c in test['p2pkhMagics']:
-    #             self.assertEqual(c['magic'], c['valid'])
+            for c in test['p2shMagics']:
+                self.assertEqual(is_script_hash_addr_id(c['magic']), c['valid'])
+
+            for c in test['segwitPrefixes']:
+                self.assertEqual(is_bech32_segwit_prefix(c['prefix']), c['valid'])
+
+            for c in test['hdMagics']:
+                if c['err']:
+                    with self.assertRaises(c['err']):
+                        hd_private_key_to_public_key_id(c['priv'])
+                else:
+                    self.assertEqual(hd_private_key_to_public_key_id(c['priv']), c['want'])
+
+
 
