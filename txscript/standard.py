@@ -49,8 +49,6 @@ def is_pub_key_hash(pops) -> bool:
            pops[4].opcode.value == OP_CHECKSIG
 
 
-
-
 # isMultiSig returns true if the passed script is a multisig transaction, false
 # otherwise.
 def is_multi_sig(pops) -> bool:
@@ -273,7 +271,7 @@ def pay_to_pub_key_hash_script(pubkey_hash: bytes) -> bytes:
 
 # payToWitnessPubKeyHashScript creates a new script to pay to a version 0
 # pubkey hash witness program. The passed hash is expected to be valid.
-def pay_to_witness_pubkey_hash_script(pubkey_hash: bytes) -> bytes:
+def pay_to_witness_pub_key_hash_script(pubkey_hash: bytes) -> bytes:
     return ScriptBuilder().add_op(OP_0).add_data(pubkey_hash).script
 
 

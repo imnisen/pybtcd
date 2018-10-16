@@ -217,7 +217,7 @@ def get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
     if is_script_witness_program(pk_script):
         return _get_witness_sig_op_count(pk_script, witness)
 
-        # Next, we'll check the sigScript to see if this is a nested p2sh
+    # Next, we'll check the sigScript to see if this is a nested p2sh
     # witness program. This is a case wherein the sigScript is actually a
     # datapush of a p2wsh witness program.
     try:
@@ -236,7 +236,7 @@ def get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
 # signature counting heuristic is modified by the version of the passed
 # witness program. If the version of the witness program is unable to be
 # extracted, then 0 is returned for the sig op count.
-def _get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
+def _get_witness_sig_op_count(pk_script, witness) -> int:
     # Attempt to extract the witness program version.
     try:
         witness_version, witness_program = extract_witness_program_info(pk_script)

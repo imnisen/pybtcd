@@ -51,8 +51,6 @@ maxWitnessItemSize = 11000
 # After Segregated Witness, the max block payload has been raised to 4MB.
 MaxBlockPayload = 4000000
 
-
-
 # minTxPayload is the minimum payload size for a transaction.  Note
 # that any realistically usable transaction must have at least one
 # input or output, but that is a rule enforced at a higher layer, so
@@ -149,6 +147,9 @@ class TxWitness:
 
     def __eq__(self, other):
         return self._data == other._data
+
+    def __getitem__(self, index):
+        return self._data[index]
 
 
 class TxOut:

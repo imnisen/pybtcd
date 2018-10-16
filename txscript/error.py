@@ -268,6 +268,9 @@ class ErrorCode(Enum):
 
     numErrorCodes = (1 << 50, "numErrorCodes")
 
+    def __str__(self):
+        return self.value[1]
+
 
 class ScriptError(Exception):
     def __init__(self, c, desc=None, extra_data=None):
@@ -290,11 +293,13 @@ class ScriptError(Exception):
     def __str__(self):
         return "ScriptError(ErrorCode={}, desc={})".format(str(self.c), self.desc or "\"\"")
 
-
+    def __hash__(self):
+        return hash(str(self.c) + str(self.desc) + str(self.extra_data))
 
 
 class OtherScriptError(Exception):
     pass
+
 
 class NotWitnessProgramError(OtherScriptError):
     pass
