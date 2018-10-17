@@ -522,26 +522,296 @@ class TestRemoveOpcodeByData(unittest.TestCase):
                 result = tstRemoveOpcodeByData(before, test['remove'])
                 self.assertEqual(result, after)
 
-# # scriptClassTests houses several test scripts used to ensure various class
-# # determination is working as expected.
-# class TestTypeOfScriptHash(unittest.TestCase):
-#     def setUp(self):
-#         self.scriptClassTests = [
-#             {
-#                 "name": "Pay Pubkey",
-#                 "script": "DATA_65 0x0411db93e1dcdb8a016b49840f8c53bc1eb68a382e" +
-#                           "97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e16"+
-#                           "0bfa9b8b64f9d4c03f999b8643f656b412a3 CHECKSIG",
-#                 "class": ScriptClass.PubKeyTy
-#             },
-#
-#             # tx 599e47a8114fe098103663029548811d2651991b62397e057f0c863c2bc9f9ea
-#             {
-#                 "name": "Pay PubkeyHash",
-#                 "script": "DUP HASH160 DATA_20 0x660d4ef3a743e3e696ad990364e555" +
-#                           "c271ad504b EQUALVERIFY CHECKSIG" +
-#                           "0bfa9b8b64f9d4c03f999b8643f656b412a3 CHECKSIG",
-#                 "class": ScriptClass.PubKeyHashTy
-#             },
-#
-#         ]
+
+# scriptClassTests houses several test scripts used to ensure various class
+# determination is working as expected.
+class TestTypeOfScriptHash(unittest.TestCase):
+    def setUp(self):
+        self.scriptClassTests = [
+            {
+                "name": "Pay Pubkey",
+                "script": "DATA_65 0x0411db93e1dcdb8a016b49840f8c53bc1eb68a382e" +
+                          "97b1482ecad7b148a6909a5cb2e0eaddfb84ccf9744464f82e16" +
+                          "0bfa9b8b64f9d4c03f999b8643f656b412a3 CHECKSIG",
+                "class": ScriptClass.PubKeyTy
+            },
+
+            # tx 599e47a8114fe098103663029548811d2651991b62397e057f0c863c2bc9f9ea
+            {
+                "name": "Pay PubkeyHash",
+                "script": "DUP HASH160 DATA_20 0x660d4ef3a743e3e696ad990364e555" +
+                          "c271ad504b EQUALVERIFY CHECKSIG",
+                "class": ScriptClass.PubKeyHashTy
+            },
+
+            # part of tx 6d36bc17e947ce00bb6f12f8e7a56a1585c5a36188ffa2b05e10b4743273a74b
+            # codeseparator parts have been elided. (bitcoin core's checks for
+            # multisig type doesn't have codesep either).
+            {
+                "name": "multisig",
+                "script": "1 DATA_33 0x0232abdc893e7f0631364d7fd01cb33d24da4" +
+                          "5329a00357b3a7886211ab414d55a 1 CHECKMULTISIG",
+                "class": ScriptClass.MultiSigTy
+            },
+
+            # tx e5779b9e78f9650debc2893fd9636d827b26b4ddfa6a8172fe8708c924f5c39d
+            {
+                "name": "P2SH",
+                "script": "HASH160 DATA_20 0x433ec2ac1ffa1b7b7d027f564529c57197f" +
+                          "9ae88 EQUAL",
+                "class": ScriptClass.ScriptHashTy
+            },
+
+            # Nulldata with no data at all.
+            {
+                "name": "nulldata no data",
+                "script": "RETURN",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Nulldata with single zero push.
+            {
+                "name": "nulldata zero",
+                "script": "RETURN 0",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Nulldata with max small integer push.
+            {
+                "name": "nulldata max small int",
+                "script": "RETURN 16",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Nulldata with small data push.
+            {
+                "name": "nulldata small data",
+                "script": "RETURN DATA_8 0x046708afdb0fe554",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Canonical nulldata with 60-byte data push.
+            {
+                "name": "canonical nulldata 60-byte push",
+                "script": "RETURN 0x3c 0x046708afdb0fe5548271967f1a67130b7105cd" +
+                          "6a828e03909a67962e0ea1f61deb649f6bc3f4cef3046708afdb" +
+                          "0fe5548271967f1a67130b7105cd6a",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Non-canonical nulldata with 60-byte data push.
+            {
+                "name": "non-canonical nulldata 60-byte push",
+                "script": "RETURN PUSHDATA1 0x3c 0x046708afdb0fe5548271967f1a67" +
+                          "130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef3" +
+                          "046708afdb0fe5548271967f1a67130b7105cd6a",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Nulldata with max allowed data to be considered standard.
+            {
+                "name": "nulldata max standard push",
+                "script": "RETURN PUSHDATA1 0x50 0x046708afdb0fe5548271967f1a67" +
+                          "130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef3" +
+                          "046708afdb0fe5548271967f1a67130b7105cd6a828e03909a67" +
+                          "962e0ea1f61deb649f6bc3f4cef3",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Nulldata with more than max allowed data to be considered
+            # standard (so therefore nonstandard)
+            {
+                "name": "nulldata exceed max standard push",
+                "script": "RETURN PUSHDATA1 0x51 0x046708afdb0fe5548271967f1a67" +
+                          "130b7105cd6a828e03909a67962e0ea1f61deb649f6bc3f4cef3" +
+                          "046708afdb0fe5548271967f1a67130b7105cd6a828e03909a67" +
+                          "962e0ea1f61deb649f6bc3f4cef308",
+                "class": ScriptClass.NullDataTy
+            },
+
+            # Almost nulldata, but add an additional opcode after the data
+            # to make it nonstandard.
+            {
+                "name": "almost nulldata",
+                "script": "RETURN 4 TRUE",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # The next few are almost multisig (it is the more complex script type)
+            # but with various changes to make it fail.
+
+            # Multisig but invalid nsigs.
+            {
+                "name": "strange 1",
+                "script": "DUP DATA_33 0x0232abdc893e7f0631364d7fd01cb33d24da45" +
+                          "329a00357b3a7886211ab414d55a 1 CHECKMULTISIG",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # Multisig but invalid pubkey.
+            {
+                "name": "strange 2",
+                "script": "1 1 1 CHECKMULTISIG",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # Multisig but no matching npubkeys opcode.
+            {
+                "name": "strange 3",
+                "script": "1 DATA_33 0x0232abdc893e7f0631364d7fd01cb33d24da4532" +
+                          "9a00357b3a7886211ab414d55a DATA_33 0x0232abdc893e7f0" +
+                          "631364d7fd01cb33d24da45329a00357b3a7886211ab414d55a " +
+                          "CHECKMULTISIG",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # Multisig but with multisigverify.
+            {
+                "name": "strange 4",
+                "script": "1 DATA_33 0x0232abdc893e7f0631364d7fd01cb33d24da4532" +
+                          "9a00357b3a7886211ab414d55a 1 CHECKMULTISIGVERIFY",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # Multisig but wrong length.
+            {
+                "name": "strange 5",
+                "script": "1 CHECKMULTISIG",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            {
+                "name": "doesn't parse",
+                "script": "DATA_5 0x01020304",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            {
+                "name": "multisig script with wrong number of pubkeys",
+                "script": "2 " +
+                          "DATA_33 " +
+                          "0x027adf5df7c965a2d46203c781bd4dd8" +
+                          "21f11844136f6673af7cc5a4a05cd29380 " +
+                          "DATA_33 " +
+                          "0x02c08f3de8ee2de9be7bd770f4c10eb0" +
+                          "d6ff1dd81ee96eedd3a9d4aeaf86695e80 " +
+                          "3 CHECKMULTISIG",
+                "class": ScriptClass.NonStandardTy
+            },
+
+            # New standard segwit script templates.
+
+            # A pay to witness pub key hash pk script.
+            {
+                "name": "Pay To Witness PubkeyHash",
+                "script": "0 DATA_20 0x1d0f172a0ecb48aee1be1f2687d2963ae33f71a1",
+                "class": ScriptClass.WitnessV0PubKeyHashTy
+            },
+
+            # A pay to witness scripthash pk script.
+            {
+                "name": "Pay To Witness Scripthash",
+                "script": "0 DATA_32 0x9f96ade4b41d5433f4eda31e1738ec2b36f6e7d1420d94a6af99801a88f7f7ff",
+                "class": ScriptClass.WitnessV0ScriptHashTy
+            },
+
+        ]
+
+    def is_pay_to_script_hash(self):
+        # TOADD parallel
+
+        for test in self.scriptClassTests:
+            script = must_parse_short_form(test['script'])
+            self.assertEqual(is_pay_to_script_hash(script), test['class'] == ScriptClass.ScriptHashTy)
+
+    def is_pay_to_witness_script_hash(self):
+        # TOADD parallel
+
+        for test in self.scriptClassTests:
+            script = must_parse_short_form(test['script'])
+            self.assertEqual(is_pay_to_witness_script_hash(script), test['class'] == ScriptClass.WitnessV0ScriptHashTy)
+
+    def test_is_pay_to_witness_pub_key_hash(self):
+        # TOADD parallel
+
+        for test in self.scriptClassTests:
+            script = must_parse_short_form(test['script'])
+            self.assertEqual(is_pay_to_witness_pub_key_hash(script), test['class'] == ScriptClass.WitnessV0PubKeyHashTy)
+
+
+# TestHasCanonicalPushes ensures the canonicalPush function properly determines
+# what is considered a canonical push for the purposes of removeOpcodeByData.
+class TestHasCanonicalPushes(unittest.TestCase):
+    def test_canonical_push(self):
+        # TOADD parallel
+
+        tests = [
+            {
+                "name": "does not parse",
+                "script": "0x046708afdb0fe5548271967f1a67130b7105cd6a82" +
+                          "8e03909a67962e0ea1f61d",
+                "expected": False
+            },
+
+            {
+                "name": "non-canonical push",
+                "script": "PUSHDATA1 0x04 0x01020304",
+                "expected": False
+            }
+        ]
+
+        for test in tests:
+            script = must_parse_short_form(test['script'])
+            try:
+                pops = parse_script(script)
+            except ScriptError:
+                self.assertFalse(test['expected'])
+            else:
+                for pop in pops:
+                    self.assertEqual(canonical_push(pop), test['expected'])
+
+
+class TestIsPushOnlyScript(unittest.TestCase):
+    def test_is_push_only_script(self):
+        # TOADD parallel
+
+        tests = [
+            {
+                "name": "does not parse",
+                "script": must_parse_short_form("0x046708afdb0fe5548271967f1a67130" +
+                                                "b7105cd6a828e03909a67962e0ea1f61d"),
+                "expected": False
+            },
+
+        ]
+
+        for test in tests:
+            self.assertEqual(is_push_only_script(test['script']), test['expected'])
+
+
+# TestIsUnspendable ensures the IsUnspendable function returns the expected
+# results.
+class TestIsUnspendable(unittest.TestCase):
+    def test_is_unspendable(self):
+        # TOADD parallel
+        tests = [
+
+            # Unspendable
+            {
+                "pkScript": bytes([0x6a, 0x04, 0x74, 0x65, 0x73, 0x74]),
+                "expected": True
+            },
+
+            # Spendable
+            {
+                "pkScript": bytes([0x76, 0xa9, 0x14, 0x29, 0x95, 0xa0,
+                                   0xfe, 0x68, 0x43, 0xfa, 0x9b, 0x95, 0x45,
+                                   0x97, 0xf0, 0xdc, 0xa7, 0xa4, 0x4d, 0xf6,
+                                   0xfa, 0x0b, 0x5c, 0x88, 0xac]),
+                "expected": False
+            }
+
+        ]
+
+        for test in tests:
+            self.assertEqual(is_unspendabe(test['pkScript']), test['expected'])

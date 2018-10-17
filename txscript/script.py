@@ -36,11 +36,23 @@ def is_small_int(op) -> bool:
         return False
 
 
+# --------
+
 # isWitnessPubKeyHash returns true if the passed script is a
 # pay-to-witness-pubkey-hash, and false otherwise.
 def is_witness_pub_key_hash(pops) -> bool:
     return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_20
 
+
+def is_pay_to_witness_pub_key_hash(script) -> bool:
+    try:
+        pops = parse_script(script)
+    except ScriptError:
+        return False
+    return is_witness_pub_key_hash(pops)
+
+
+# --------
 
 # isScriptHash returns true if the script passed is a pay-to-script-hash
 # transaction, false otherwise.
@@ -61,11 +73,25 @@ def is_pay_to_script_hash(script) -> bool:
     return is_script_hash(pops)
 
 
+# --------
+
 # isWitnessScriptHash returns true if the passed script is a
 # pay-to-witness-script-hash transaction, false otherwise.
 def is_witness_script_hash(pops) -> bool:
     return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_32
 
+
+# IsPayToWitnessScriptHash returns true if the is in the standard
+# pay-to-witness-script-hash (P2WSH) format, false otherwise.
+def is_pay_to_witness_script_hash(script) -> bool:
+    try:
+        pops = parse_script(script)
+    except ScriptError:
+        return False
+    return is_witness_script_hash(pops)
+
+
+# --------
 
 # isPushOnly returns true if the script only pushes data, false otherwise.
 def is_push_only(pops) -> bool:
@@ -83,7 +109,10 @@ def is_push_only(pops) -> bool:
 #
 # False will be returned when the script does not parse
 def is_push_only_script(script: bytes) -> bool:
-    pops = parse_script(script)
+    try:
+        pops = parse_script(script)
+    except ScriptError:
+        return False
     return is_push_only(pops)
 
 
@@ -449,3 +478,15 @@ def calc_hash_outputs(tx: MsgTx):
         write_tx_out(buffer, 0, 0, tx_out)
 
     return double_hash_h(buffer.getvalue())
+
+
+# IsUnspendable returns whether the passed public key script is unspendable, or
+# guaranteed to fail at execution.  This allows inputs to be pruned instantly
+# when entering the UTXO set.
+def is_unspendabe(pk_script) -> bool:
+    try:
+        pops = parse_script(pk_script)
+    except ScriptError:
+        return True
+
+    return len(pops) > 0 and pops[0].opcode.value == OP_RETURN
