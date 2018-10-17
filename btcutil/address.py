@@ -1,4 +1,8 @@
 from enum import Enum
+import btcec
+import chaincfg
+from .error import *
+import copy
 
 
 # UnsupportedWitnessVerError describes an error where a segwit address being
@@ -65,15 +69,38 @@ class AddressPubKeyHash(Address):
         self.net_id = net_id
 
 
+def new_address_pub_key_hash(pk_hash, net):
+    """
 
-def new_address_pubkey_hash(pk_hash, net):
-    pass
+    :param []byte pk_hash:
+    :param chaincfg.Params net:
+    :return:
+    """
+    if len(pk_hash) != 20:
+        raise PubKeyHashSizeErr
+    return AddressPubKeyHash(hash=copy.deepcopy(pk_hash), net_id=net.pub_key_hash_addr_id)
 
 
 class AddressScriptHash(Address):
     def __init__(self, hash, net_id):
         self.hash = hash
         self.net_id = net_id
+
+
+
+def new_address_script_hash_from_hash(script_hash, net):
+    """
+
+    :param []byte script_hash:
+    :param chaincfg.Params net:
+    :return:
+    """
+    if len(script_hash) != 20:
+        raise ScriptHashSizeErr
+
+    return AddressScriptHash(hash=copy.deepcopy(script_hash), net_id=net.script_hash_addr_id)
+
+
 
 
 # PubKeyFormat describes what format to use for a pay-to-pubkey address.
@@ -92,23 +119,43 @@ class PubKeyFormat(Enum):
 
 
 class AddressPubKey(Address):
-    def __init__(self, pubkey_format, pubkey, pubkey_hash_id):
+    def __init__(self, pub_key_format, pub_key, pub_key_hash_id):
         """
 
-        :param PubKeyFormat pubkey_format:
-        :param TODO pubkey:
-        :param byte pubkey_hash_id:
+        :param PubKeyFormat pub_key_format:
+        :param TODO pub_key:
+        :param byte pub_key_hash_id:
         """
-        self.pubkey_format = pubkey_format
-        self.pubkey = pubkey
-        self.pubkey_hash_id = pubkey_hash_id
+        self.pub_key_format = pub_key_format
+        self.pub_key = pub_key
+        self.pub_key_hash_id = pub_key_hash_id
+
 
 # NewAddressPubKey returns a new AddressPubKey which represents a pay-to-pubkey
 # address.  The serializedPubKey parameter must be a valid pubkey and can be
 # uncompressed, compressed, or hybrid.
-def new_address_pub_key(serialized_pub_key, net):
-    pass
+def new_address_pub_key(serialized_pub_key: bytes, net: chaincfg.Params):
+    """
 
+    :param []byte serialized_pub_key:
+    :param chaincfg.Params net:
+    :return:
+    """
+    pub_key = btcec.parse_pub_key(serialized_pub_key, btcec.s256())
+
+    # Set the format of the pubkey.  This probably should be returned
+    # from btcec, but do it here to avoid API churn.  We already know the
+    # pubkey is valid since it parsed above, so it's safe to simply examine
+    # the leading byte to get the format
+    if serialized_pub_key[0] in (0x02, 0x03):
+        pk_format = PubKeyFormat.PKFCompressed
+    elif serialized_pub_key[0] in (0x06, 0x07):
+        pk_format = PubKeyFormat.PKFHybrid
+    else:
+        pk_format = PubKeyFormat.PKFUncompressed
+    return AddressPubKey(pub_key_format=pk_format,
+                         pub_key=pub_key,
+                         pub_key_hash_id=net.pub_key_hash_addr_id)
 
 
 class AddressWitnessPubKeyHash(Address):

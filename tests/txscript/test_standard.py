@@ -2,6 +2,8 @@ import unittest
 from tests.txscript.test_reference import *
 from txscript.standard import *
 from tests.txscript.test_script_num import hex_to_bytes
+import btcutil
+import chaincfg
 
 
 def must_parse_short_form(script: str):
@@ -9,7 +11,6 @@ def must_parse_short_form(script: str):
 
 
 class TestStandard(unittest.TestCase):
-
     def test_PushedData(self):
         tests = [
             {
@@ -20,7 +21,7 @@ class TestStandard(unittest.TestCase):
 
             {
                 "script": "16777216 10000000",
-                "out": [bytes([0x00, 0x00, 0x00, 0x01]),   # 16777216
+                "out": [bytes([0x00, 0x00, 0x00, 0x01]),  # 16777216
                         bytes([0x80, 0x96, 0x98, 0x00])],  # 10000000
                 "valid": True
             },
@@ -55,8 +56,32 @@ class TestStandard(unittest.TestCase):
                     pushed_data(script)
 
 
+def newAddressPubKey(serializedPubKey):
+    """
 
-# def newAddressPubKey(serializedPubKey):
+    :param []byte serializedPubKey:
+    :return:
+    """
+    return btcutil.new_address_pub_key(serializedPubKey, chaincfg.MainNetParams)
+
+
+def newAddressPubKeyHash(pkHash):
+    """
+
+    :param []byte pkHash:
+    :return:
+    """
+    return btcutil.new_address_pub_key_hash(pkHash, chaincfg.MainNetParams)
+
+
+def newAddressScriptHash(scriptHash):
+    """
+
+    :param scriptHash:
+    :return:
+    """
+    return btcutil.new_address_script_hash_from_hash(scriptHash, chaincfg.MainNetParams)
+
 
 
 
@@ -64,9 +89,9 @@ class TestExtractPkScriptAddrs(unittest.TestCase):
     tests = [
         {
             "name": "standard p2pk with compressed pubkey (0x02)",
-            "script": hex_to_bytes("2102192d74d0cb94344c9569c2e779015"+
+            "script": hex_to_bytes("2102192d74d0cb94344c9569c2e779015" +
                                    "73d8d7903c3ebec3a957724895dca52c6b4ac"),
-            "addrs":[
+            "addrs": [
 
             ]
         }

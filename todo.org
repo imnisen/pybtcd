@@ -17,6 +17,7 @@
 
 * Refacor the import things
 * txscript/standard txscript/script very messy
+* Change the mix ecdsa cryptools thing in btcec to ecdsa methods
 * Finish test case for txscript
 ** engine
 ** error
