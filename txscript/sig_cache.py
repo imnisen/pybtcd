@@ -1,5 +1,4 @@
 import secrets
-from .btcec import *
 from .read_write_lock import RWLock
 
 

@@ -103,6 +103,13 @@ class AddressPubKey(Address):
         self.pubkey = pubkey
         self.pubkey_hash_id = pubkey_hash_id
 
+# NewAddressPubKey returns a new AddressPubKey which represents a pay-to-pubkey
+# address.  The serializedPubKey parameter must be a valid pubkey and can be
+# uncompressed, compressed, or hybrid.
+def new_address_pub_key(serialized_pub_key, net):
+    pass
+
+
 
 class AddressWitnessPubKeyHash(Address):
     def __init__(self, hrp, witness_version, witness_program):

@@ -1,6 +1,7 @@
 import unittest
 from tests.txscript.test_reference import *
 from txscript.standard import *
+from tests.txscript.test_script_num import hex_to_bytes
 
 
 def must_parse_short_form(script: str):
@@ -8,8 +9,6 @@ def must_parse_short_form(script: str):
 
 
 class TestStandard(unittest.TestCase):
-    def test_mustParseShortForm(self):  # Refer to script_test
-        pass
 
     def test_PushedData(self):
         tests = [
@@ -57,3 +56,18 @@ class TestStandard(unittest.TestCase):
 
 
 
+# def newAddressPubKey(serializedPubKey):
+
+
+
+class TestExtractPkScriptAddrs(unittest.TestCase):
+    tests = [
+        {
+            "name": "standard p2pk with compressed pubkey (0x02)",
+            "script": hex_to_bytes("2102192d74d0cb94344c9569c2e779015"+
+                                   "73d8d7903c3ebec3a957724895dca52c6b4ac"),
+            "addrs":[
+
+            ]
+        }
+    ]

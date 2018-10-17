@@ -1,13 +1,14 @@
 import unittest
 import hashlib
 import copy
-from chainhash.hash import *
+import chainhash
 from txscript.sig_cache import *
+import btcec
 
 
 def gen_random_sig():
-    msg_hash = Hash(secrets.token_bytes(HashSize))
-    private_key = SigningKey.generate(curve=SECP256k1)
+    msg_hash = chainhash.Hash(secrets.token_bytes(chainhash.HashSize))
+    private_key = btcec.SigningKey.generate(curve=btcec.SECP256k1)
 
     sig = private_key.sign(data=msg_hash.to_bytes(), hashfunc=hashlib.sha256)  # TODO need hashfunc ?
 
@@ -26,7 +27,7 @@ def copy_private_key():
 
 def copy_public_key(key):
     key_string = key.to_string()
-    return PublicKey.from_string(key_string, curve=SECP256k1)  # TODO need hashfunc ?
+    return btcec.PublicKey.from_string(key_string, curve=btcec.SECP256k1)  # TODO need hashfunc ?
 
 
 # def gen_random_sig2():
