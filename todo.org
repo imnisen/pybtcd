@@ -57,5 +57,9 @@
    :LOGBOOK:
    - State "DONE"       from              [2018-10-11 Thu 17:42]
    :END:
-** TODO standard
+** DONE standard
+   CLOSED: [2018-10-18 Thu 16:52]
+   :LOGBOOK:
+   - State "DONE"       from "TODO"       [2018-10-18 Thu 16:52]
+   :END:
 

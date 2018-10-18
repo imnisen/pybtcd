@@ -58,15 +58,20 @@ class Address:
     def is_for_net(self):
         pass
 
-    @classmethod
-    def new_from_params(cls, pk_hash, net):
-        pass
+        # @classmethod
+        # def new_from_params(cls, pk_hash, net):
+        #     pass
 
 
 class AddressPubKeyHash(Address):
     def __init__(self, hash, net_id):
+        # TOCHECK here hash use []byte or Hash() type
         self.hash = hash
         self.net_id = net_id
+
+    def __eq__(self, other):
+        return self.hash == other.hash and \
+               self.net_id == other.net_id
 
 
 def new_address_pub_key_hash(pk_hash, net):
@@ -86,6 +91,8 @@ class AddressScriptHash(Address):
         self.hash = hash
         self.net_id = net_id
 
+    def __eq__(self, other):
+        return self.hash == other.hash and self.net_id == other.net_id
 
 
 def new_address_script_hash_from_hash(script_hash, net):
@@ -99,8 +106,6 @@ def new_address_script_hash_from_hash(script_hash, net):
         raise ScriptHashSizeErr
 
     return AddressScriptHash(hash=copy.deepcopy(script_hash), net_id=net.script_hash_addr_id)
-
-
 
 
 # PubKeyFormat describes what format to use for a pay-to-pubkey address.
@@ -129,6 +134,11 @@ class AddressPubKey(Address):
         self.pub_key_format = pub_key_format
         self.pub_key = pub_key
         self.pub_key_hash_id = pub_key_hash_id
+
+    def __eq__(self, other):
+        return self.pub_key_format == other.pub_key_format and \
+               self.pub_key == other.pub_key and \
+               self.pub_key_hash_id == other.pub_key_hash_id
 
 
 # NewAddressPubKey returns a new AddressPubKey which represents a pay-to-pubkey
@@ -171,6 +181,16 @@ class AddressWitnessPubKeyHash(Address):
         self.witness_program = witness_program
 
 
+def new_address_witness_pub_key_hash(witness_prog, net):
+    """
+
+    :param []byte witness_prog:
+    :param net:
+    :return:
+    """
+    pass
+
+
 class AddressWitnessScriptHash(Address):
     def __init__(self, hrp, witness_version, witness_program):
         """
@@ -182,3 +202,13 @@ class AddressWitnessScriptHash(Address):
         self.hrp = hrp
         self.witness_version = witness_version
         self.witness_program = witness_program
+
+
+def new_address_witness_script_hash(witness_prog, net):
+    """
+
+    :param []byte witness_prog:
+    :param net:
+    :return:
+    """
+    pass

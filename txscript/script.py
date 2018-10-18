@@ -174,7 +174,7 @@ def as_small_int(op) -> int:
 # signature operations in the script provided by pops. If precise mode is
 # requested then we attempt to count the number of operations for a multisig
 # op. Otherwise we use the maximum.
-def _get_sig_op_count(pops, precise) -> int:
+def get_sig_op_count_inner(pops, precise) -> int:
     nsigs = 0
     for i, pop in enumerate(pops):
         value = pop.opcode.value
@@ -197,7 +197,7 @@ def _get_sig_op_count(pops, precise) -> int:
 # returned.
 def get_sig_op_count(script: bytes):
     pops = parse_script_no_err(script)
-    return _get_sig_op_count(pops, False)
+    return get_sig_op_count_inner(pops, False)
 
 
 # GetPreciseSigOpCount returns the number of signature operations in
@@ -210,7 +210,7 @@ def get_precise_sig_op_count(script_sig, script_pub_key, bip16):
 
     # Treat non P2SH transactions as normal.
     if not (bip16 and is_script_hash(pops)):
-        return _get_sig_op_count(pops, precise=True)
+        return get_sig_op_count_inner(pops, precise=True)
 
     # The public key script is a pay-to-script-hash, so parse the signature
     # script to get the final item.  Scripts that fail to fully parse count
@@ -237,7 +237,7 @@ def get_precise_sig_op_count(script_sig, script_pub_key, bip16):
     # dictate signature operations are counted up to the first parse
     # failure.
     sh_pops = parse_script_no_err(sh_script)
-    return _get_sig_op_count(sh_pops, precise=True)
+    return get_sig_op_count_inner(sh_pops, precise=True)
 
 
 def get_witness_sig_op_count(sig_script, pk_script, witness) -> int:
@@ -278,7 +278,7 @@ def _get_witness_sig_op_count(pk_script, witness) -> int:
         elif len(witness_program) == payToWitnessScriptHashDataSize and len(witness) > 0:
             witness_script = witness[-1]
             pops = parse_script_no_err(witness_script)
-            return _get_sig_op_count(pops, precise=True)
+            return get_sig_op_count_inner(pops, precise=True)
 
     return 0
 

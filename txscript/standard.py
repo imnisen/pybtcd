@@ -2,7 +2,7 @@ from enum import Enum
 from .opcode import *
 from .script import *
 from .script_builder import *
-from btcutil.address import *
+import btcutil
 
 # MaxDataCarrierSize is the maximum number of bytes allowed in pushed
 # data to be considered a nulldata transaction
@@ -58,10 +58,10 @@ def is_multi_sig(pops) -> bool:
     if l < 4:
         return False
 
-    if not is_small_int(pops[0]):
+    if not is_small_int(pops[0].opcode):
         return False
 
-    if not is_small_int(pops[-2]):
+    if not is_small_int(pops[-2].opcode):
         return False
 
     if pops[-1].opcode.value != OP_CHECKMULTISIG:
@@ -87,7 +87,8 @@ def is_null_data(pops) -> bool:
     if l == 1 and pops[0].opcode.value == OP_RETURN:
         return True
 
-    return l == 2 and (is_small_int(pops[1].opcode) or pops[1].opcode.value <= OP_PUSHDATA4) and \
+    return l == 2 and pops[0].opcode.value == OP_RETURN and \
+           (is_small_int(pops[1].opcode) or pops[1].opcode.value <= OP_PUSHDATA4) and \
            len(pops[1].data) <= MaxDataCarrierSize
 
 
@@ -184,7 +185,7 @@ def cacl_script_info(sig_script, pk_script, witness, bip16: bool, segwit: bool):
         else:
             si.expected_inputs += sh_inputs
 
-        si.sig_ops = get_sig_op_count(sh_pops, precise=True)
+        si.sig_ops = get_sig_op_count_inner(sh_pops, precise=True)
 
         # All entries pushed to stack (or are OP_RESERVED and exec
         # will fail).
@@ -231,7 +232,7 @@ def cacl_script_info(sig_script, pk_script, witness, bip16: bool, segwit: bool):
         si.sig_ops = get_witness_sig_op_count(sig_script, pk_script, witness)
         si.num_inputs = len(witness)
     else:
-        si.sig_ops = get_sig_op_count(pk_pops, precise=True)
+        si.sig_ops = get_sig_op_count_inner(pk_pops, precise=True)
 
         # All entries pushed to stack (or are OP_RESERVED and exec
         # will fail).
@@ -301,15 +302,15 @@ def pay_to_addr_script(addr):
         raise ScriptError(ErrorCode.ErrUnsupportedAddress, desc=desc)
 
     addr_type = type(addr)
-    if addr_type == AddressPubKeyHash:
+    if addr_type == btcutil.AddressPubKeyHash:
         return pay_to_pub_key_hash_script(addr.script_address())
-    elif addr_type == AddressScriptHash:
+    elif addr_type == btcutil.AddressScriptHash:
         return pay_to_script_hash_script(addr.script_address())
-    elif addr_type == AddressPubKey:
+    elif addr_type == btcutil.AddressPubKey:
         return pay_to_pub_key_script(addr.script_address())
-    elif addr_type == AddressWitnessPubKeyHash:
+    elif addr_type == btcutil.AddressWitnessPubKeyHash:
         return pay_to_witness_pub_key_hash_script(addr.script_address())
-    elif addr_type == AddressWitnessScriptHash:
+    elif addr_type == btcutil.AddressWitnessScriptHash:
         return pay_to_witness_script_hash_script(addr.script_address())
     else:
         desc = "unable to generate payment script for unsupported address type %s" % addr_type
@@ -375,7 +376,10 @@ def extract_pk_script_addrs(pk_script, chain_params):
     addrs = []
     required_sigs = 0
 
-    pops = parse_script(pk_script)
+    try:
+        pops = parse_script(pk_script)
+    except ScriptError:
+        return ScriptClass.NonStandardTy, [], 0
 
     script_class = type_of_script(pops)
 
@@ -385,40 +389,55 @@ def extract_pk_script_addrs(pk_script, chain_params):
         # Therefore the pubkey hash is the 3rd item on the stack.
         # Skip the pubkey hash if it's invalid for some reason.
         required_sigs = 1
-        addr = AddressPubKeyHash.new_from_params(pops[2].data, chain_params)
-        addrs.append(addr)
+        try:
+            addr = btcutil.new_address_pub_key_hash(pops[2].data, chain_params)
+            addrs.append(addr)
+        except Exception:
+            pass
     elif script_class == ScriptClass.WitnessV0PubKeyHashTy:
         # A pay-to-witness-pubkey-hash script is of the form:
         #  OP_0 <20-byte hash>
         # Therefore, the pubkey hash is the second item on the stack.
         # Skip the pubkey hash if it's invalid for some reason.
         required_sigs = 1
-        addr = AddressWitnessPubKeyHash.new_from_params(pops[1].data, chain_params)
-        addrs.append(addr)
+        try:
+            addr = btcutil.new_address_witness_pub_key_hash(pops[1].data, chain_params)
+            addrs.append(addr)
+        except Exception:
+            pass
     elif script_class == ScriptClass.PubKeyTy:
         # A pay-to-pubkey script is of the form:
         #  <pubkey> OP_CHECKSIG
         # Therefore the pubkey is the first item on the stack.
         # Skip the pubkey if it's invalid for some reason.
         required_sigs = 1
-        addr = AddressPubKey.new_from_params(pops[0].data, chain_params)
-        addrs.append(addr)
+        try:
+            addr = btcutil.new_address_pub_key(pops[0].data, chain_params)
+            addrs.append(addr)
+        except Exception:
+            pass
     elif script_class == ScriptClass.ScriptHashTy:
         # A pay-to-script-hash script is of the form:
         #  OP_HASH160 <scripthash> OP_EQUAL
         # Therefore the script hash is the 2nd item on the stack.
         # Skip the script hash if it's invalid for some reason.
         required_sigs = 1
-        addr = AddressScriptHash.new_from_params(pops[1].data, chain_params)
-        addrs.append(addr)
+        try:
+            addr = btcutil.new_address_script_hash_from_hash(pops[1].data, chain_params)
+            addrs.append(addr)
+        except Exception:
+            pass
     elif script_class == ScriptClass.WitnessV0ScriptHashTy:
         # A pay-to-witness-script-hash script is of the form:
         #  OP_0 <32-byte hash>
         # Therefore, the script hash is the second item on the stack.
         # Skip the script hash if it's invalid for some reason.
         required_sigs = 1
-        addr = AddressWitnessScriptHash.new_from_params(pops[1].data, chain_params)
-        addrs.append(addr)
+        try:
+            addr = btcutil.new_address_witness_script_hash(pops[1].data, chain_params)
+            addrs.append(addr)
+        except Exception:
+            pass
     elif script_class == ScriptClass.MultiSigTy:
         # A multi-signature script is of the form:
         #  <numsigs> <pubkey> <pubkey> <pubkey>... <numpubkeys> OP_CHECKMULTISIG
@@ -428,8 +447,11 @@ def extract_pk_script_addrs(pk_script, chain_params):
         required_sigs = as_small_int(pops[0].opcode)
         num_pubkeys = as_small_int(pops[-2].opcode)
         for i in range(num_pubkeys):
-            addr = AddressPubKey.new_from_params(pops[i + 1].data, chain_params)
-            addrs.append(addr)
+            try:
+                addr = btcutil.new_address_pub_key(pops[i + 1].data, chain_params)
+                addrs.append(addr)
+            except Exception:
+                pass
     elif script_class == ScriptClass.NullDataTy:
         # Null data transactions have no addresses or required
         # signatures.

@@ -74,9 +74,9 @@ class PublicKey(VerifyingKey):
 
 
 def decompress_point(curve, x, ybit: bool):
-    p = curve.p
-    b = curve.b
-    y = pow(((pow_mod(x, 3, p) + b) % p), (p+1)//4, p)
+    p = curve.curve.p()
+    b = curve.curve.b()
+    y = pow(((pow_mod(x, 3, p) + b) % p), (p + 1) // 4, p)
 
     if ybit != ((y % 2) != 0):
         y = -y % p
@@ -108,7 +108,7 @@ def parse_pub_key(pub_key_str, curve):
     ybit = ((prefix & 0x1) == 0x1)
     prefix &= ~0x1
 
-    if pub_key_len == PubKeyBytesLenCompressed:
+    if pub_key_len == PubKeyBytesLenUncompressed:
         if prefix not in (PubkeyUncompressed, PubkeyHybrid):
             msg = "invalid magic in pubkey str %s" % pub_key_str[0]
             raise PubKeyInValidMagicErr(msg)
