@@ -77,3 +77,15 @@ def btc_to_satoshi(value: float):
     value = float(value * 10**8)
     assert value.is_integer(), 'The smallest denomination is 1 satoshi or 10^-8 BTC'
     return int(value)
+
+
+# customise
+def pow_mod(x, y, z):
+    "Calculate (x ** y) % z efficiently."
+    number = 1
+    while y:
+        if y & 1:
+            number = number * x % z
+        y >>= 1
+        x = x * x % z
+    return number

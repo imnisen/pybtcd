@@ -73,7 +73,18 @@ class PublicKey(VerifyingKey):
         return bytes([prefix]) + self.to_string()
 
 
-def decompress_point(curve, x, y):
+def decompress_point(curve, x, ybit: bool):
+    p = curve.p
+    b = curve.b
+    y = pow(((pow_mod(x, 3, p) + b) % p), (p+1)//4, p)
+
+    if ybit != ((y % 2) != 0):
+        y = -y % p
+
+    if ybit != ((y % 2) != 0):
+        msg = "ybit doesn't match oddness"
+        raise PubKeyYbitOddnessErr(msg)
+    return y
 
 
 # ParsePubKey parses a public key for a koblitz curve from a bytestring into a
@@ -82,11 +93,11 @@ def decompress_point(curve, x, y):
 def parse_pub_key(pub_key_str, curve):
     """
 
-    :param str pub_key_str:
+    :param bytes pub_key_str:
     :param curve:
     :return:
     """
-    pub_key_str = pub_key_str.encode()
+    # pub_key_str = pub_key_str.encode()
 
     pub_key_len = len(pub_key_str)
     if pub_key_len == 0:
@@ -127,4 +138,4 @@ def parse_pub_key(pub_key_str, curve):
 
 
 def s256():
-    pass
+    return SECP256k1
