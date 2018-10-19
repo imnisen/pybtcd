@@ -1,5 +1,6 @@
-from .error import *
 from .utils import *
+from .script_num import *
+from .script_flag import *
 
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
@@ -568,13 +569,23 @@ def opcode1Negate(pop, vm):
 def opcodeReserved(pop, vm):
     pass
 
-
+# opcodeN is a common handler for the small integer data push opcodes.  It
+# pushes the numeric value the opcode represents (which will be from 1 to 16)
+# onto the data stack.
 def opcodeN(pop, vm):
-    pass
+    # The opcodes are all defined consecutively, so the numeric value is
+	# the difference.
+    vm.dstack.push_int(ScriptNum(pop.opcode.value - (OP_1 - 1)))
 
 
+# opcodeNop is a common handler for the NOP family of opcodes.  As the name
+# implies it generally does nothing, however, it will return an error when
+# the flag to discourage use of NOPs is set for select opcodes.
 def opcodeNop(pop, vm):
-    pass
+    if pop.opcode.value in (OP_NOP1, OP_NOP4, OP_NOP5, OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10) and \
+            vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+        desc = "OP_NOP%d reserved for soft-fork upgrades" % (pop.opcode.value -(OP_NOP1-1))
+        raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
 
 
 def opcodeIf(pop, vm):

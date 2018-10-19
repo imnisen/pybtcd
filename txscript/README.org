@@ -2,7 +2,9 @@
 
 First : constant , error , utils, read_write_lock
 
-Second: opcode, hash_cache, sig_cache, script_num
+1.5th  : script_num, hash_cache, sig_cache, script_flag
+
+Second: opcode,
 
 Third: script, stack
 
