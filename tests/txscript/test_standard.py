@@ -1,10 +1,10 @@
 import unittest
+import chaincfg
+import btcutil
 from tests.txscript.test_reference import *
 from txscript.standard import *
 from tests.txscript.test_script_num import hex_to_bytes
 from tests.utils import *
-import btcutil
-import chaincfg
 
 
 def must_parse_short_form(script: str):
@@ -371,7 +371,6 @@ class TestExtractPkScriptAddrs(unittest.TestCase):
                 "reqSigs": 0,
                 "class": ScriptClass.NonStandardTy
             },
-
 
         ]
 

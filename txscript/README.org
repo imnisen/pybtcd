@@ -1,0 +1,13 @@
+* Dependence Path
+
+First : constant , error , utils, read_write_lock
+
+Second: opcode, hash_cache, sig_cache, script_num
+
+Third: script, stack
+
+Fourth: script_builder
+
+Fifth: standard
+
+Sixth: engine

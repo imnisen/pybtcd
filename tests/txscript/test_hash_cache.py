@@ -1,20 +1,19 @@
 import unittest
 import random
 import os
-from wire.msg_tx import OutPoint, TxIn, TxOut
-from txscript.hash_cache import *
 from txscript.constant import *
+from txscript.hash_cache import *
 
 
 def get_random_tx():
-    tx = MsgTx()
+    tx = wire.MsgTx()
 
     # make num_tx_ins tx_ins
     num_tx_ins = random.randrange(0, 11)
     for _ in range(num_tx_ins):
-        tx_in = TxIn(
-            previous_out_point=OutPoint(
-                hash=Hash(data=os.urandom(HashSize)),
+        tx_in = wire.TxIn(
+            previous_out_point=wire.OutPoint(
+                hash=wire.Hash(data=os.urandom(wire.HashSize)),
                 index=random.randrange(0, MaxInt32)
             ),
             sequence=random.randrange(0, MaxInt32)
@@ -24,7 +23,7 @@ def get_random_tx():
     # make num_yx_outs tx_outs
     num_tx_outs = random.randrange(0, 11)
     for _ in range(num_tx_outs):
-        tx_out = TxOut(
+        tx_out = wire.TxOut(
             value=random.randrange(0, MaxInt32),
             pk_script=os.urandom(30)
         )

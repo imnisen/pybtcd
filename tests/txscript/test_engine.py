@@ -1,5 +1,4 @@
 # import unittest
-# import wire
 # from txscript.engine import *
 # from tests.txscript.test_reference import *
 #
@@ -19,7 +18,7 @@
 #                         tx_ins=[
 #                             wire.TxIn(
 #                                 previous_out_point=wire.OutPoint(
-#                                     hash=Hash(bytes([
+#                                     hash=chainhash.Hash(bytes([
 #                                         0xc9, 0x97, 0xa5, 0xe5,
 #                                         0x6e, 0x10, 0x41, 0x02,
 #                                         0xfa, 0x20, 0x9c, 0x6a,

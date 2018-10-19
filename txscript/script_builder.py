@@ -1,7 +1,11 @@
-from .engine import *
+from .script import *
+from .script_num import *
 
 
 # TOCHANGE Consider to make the err pass to raise
+
+# MaxScriptSize is the maximum allowed length of a raw script.
+MaxScriptSize = 10000
 
 def canonical_data_size(data) -> int:
     """

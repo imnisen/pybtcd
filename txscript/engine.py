@@ -1,7 +1,7 @@
 import copy
 import logging
 import hashlib
-from .script import *
+import wire
 from .stack import *
 from .sig_cache import *
 from .hash_cache import *
@@ -14,8 +14,7 @@ _logger = logging.getLogger(__name__)
 # during execution.
 MaxStackSize = 1000
 
-# MaxScriptSize is the maximum allowed length of a raw script.
-MaxScriptSize = 10000
+
 
 
 
@@ -149,7 +148,7 @@ class Engine:
         self.last_code_sep = last_code_sep or 0
         self.dstack = dstack or Stack()
         self.astack = astack or Stack()
-        self.tx = tx or MsgTx()
+        self.tx = tx or wire.MsgTx()
         self.tx_idx = tx_idx or 0
         self.cond_stack = cond_stack or []
         self.num_ops = num_ops or 0

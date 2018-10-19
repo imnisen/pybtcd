@@ -1,8 +1,5 @@
-from enum import Enum
-from .opcode import *
-from .script import *
-from .script_builder import *
 import btcutil
+from .script_builder import *
 
 # MaxDataCarrierSize is the maximum number of bytes allowed in pushed
 # data to be considered a nulldata transaction

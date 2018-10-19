@@ -1,9 +1,4 @@
-from enum import Enum
-import io
 from .opcode import *
-from .error import *
-from wire.msg_tx import MsgTx, write_tx_out
-from chainhash import *
 
 MaxOpsPerScript = 201  # Max number of non-push operations.
 MaxPubKeysPerMultiSig = 20  # Multisig can't have more sigs than this.
@@ -418,66 +413,6 @@ def unparse_script(pops):
     return script
 
 
-# calcHashPrevOuts calculates a single hash of all the previous outputs
-# (txid:index) referenced within the passed transaction. This calculated hash
-# can be re-used when validating all inputs spending segwit outputs, with a
-# signature hash type of SigHashAll. This allows validation to re-use previous
-# hashing computation, reducing the complexity of validating SigHashAll inputs
-# from  O(N^2) to O(N).
-def calc_hash_prevouts(tx: MsgTx):
-    """
-
-    :param wire.MsgTx tx:
-    :return:
-    """
-    buffer = io.BytesIO()
-    for tx_in in tx.tx_ins:
-        # First write out the 32-byte transaction ID one of whose
-        # outputs are being referenced by this input.
-        buffer.write(tx_in.previous_out_point.hash.to_bytes())
-
-        # Next, we'll encode the index of the referenced output as a
-        # little endian integer.
-        buffer.write(tx_in.previous_out_point.index.to_bytes(4, byteorder="little"))
-
-    return double_hash_h(buffer.getvalue())
-
-
-# calcHashSequence computes an aggregated hash of each of the sequence numbers
-# within the inputs of the passed transaction. This single hash can be re-used
-# when validating all inputs spending segwit outputs, which include signatures
-# using the SigHashAll sighash type. This allows validation to re-use previous
-# hashing computation, reducing the complexity of validating SigHashAll inputs
-# from O(N^2) to O(N).
-def calc_hash_sequence(tx: MsgTx):
-    """
-
-    :param wire.MsgTx tx:
-    :return:
-    """
-    buffer = io.BytesIO()
-    for tx_in in tx.tx_ins:
-        buffer.write(tx_in.sequence.to_bytes(4, byteorder="little"))
-
-    return double_hash_h(buffer.getvalue())
-
-
-# calcHashOutputs computes a hash digest of all outputs created by the
-# transaction encoded using the wire format. This single hash can be re-used
-# when validating all inputs spending witness programs, which include
-# signatures using the SigHashAll sighash type. This allows computation to be
-# cached, reducing the total hashing complexity from O(N^2) to O(N).
-def calc_hash_outputs(tx: MsgTx):
-    """
-
-    :param wire.MsgTx tx:
-    :return:
-    """
-    buffer = io.BytesIO()
-    for tx_out in tx.tx_outs:
-        write_tx_out(buffer, 0, 0, tx_out)
-
-    return double_hash_h(buffer.getvalue())
 
 
 # IsUnspendable returns whether the passed public key script is unspendable, or

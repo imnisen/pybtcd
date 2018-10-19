@@ -1,4 +1,3 @@
-from txscript.opcode import *
 from txscript.script_builder import *
 
 # shortFormOps holds a map of opcode names to values for use in short form

@@ -2,8 +2,8 @@ import unittest
 import hashlib
 import copy
 import chainhash
-from txscript.sig_cache import *
 import btcec
+from txscript.sig_cache import *
 
 
 def gen_random_sig():

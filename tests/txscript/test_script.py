@@ -1,9 +1,7 @@
 import unittest
 import copy
 import wire
-from txscript.script import *
-from txscript.utils import *
-from txscript.script_builder import *
+from txscript.standard import ScriptClass
 from tests.txscript.test_script_num import hex_to_bytes
 from tests.txscript.test_reference import *
 
