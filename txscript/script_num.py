@@ -48,6 +48,71 @@ class ScriptNum:
         else:
             return False
 
+    def __add__(self, other):
+        if type(other) is int:
+            return ScriptNum(self.value+other)
+        elif type(other) is ScriptNum:
+            return ScriptNum(self.value + other.value)
+        else:
+            raise TypeError('Cannot add ScriptNum with %s' % type(other))\
+
+
+    def __sub__(self, other):
+        if type(other) is int:
+            return ScriptNum(self.value - other)
+        elif type(other) is ScriptNum:
+            return ScriptNum(self.value - other.value)
+        else:
+            raise TypeError('Cannot sub ScriptNum with %s' % type(other))
+
+    def __mul__(self, other):
+        if type(other) is int:
+            return ScriptNum(self.value * other)
+        elif type(other) is ScriptNum:
+            return ScriptNum(self.value * other.value)
+        else:
+            raise TypeError('Cannot multiply ScriptNum with %s' % type(other))
+
+    def __truediv__(self, other):
+        if type(other) is int:
+            return ScriptNum(self.value / other)
+        elif type(other) is ScriptNum:
+            return ScriptNum(self.value / other.value)
+        else:
+            raise TypeError('Cannot division ScriptNum with %s' % type(other))
+
+    def __lt__(self, other):
+        if type(other) is int:
+            return self.value < other
+        elif type(other) is ScriptNum:
+            return self.value < other.value
+        else:
+            raise TypeError('Cannot compare ScriptNum with %s' % type(other))
+
+    def __gt__(self, other):
+        if type(other) is int:
+            return self.value > other
+        elif type(other) is ScriptNum:
+            return self.value > other.value
+        else:
+            raise TypeError('Cannot compare ScriptNum with %s' % type(other))
+
+    def __le__(self, other):
+        if type(other) is int:
+            return self.value <= other
+        elif type(other) is ScriptNum:
+            return self.value <= other.value
+        else:
+            raise TypeError('Cannot compare ScriptNum with %s' % type(other))
+
+    def __ge__(self, other):
+        if type(other) is int:
+            return self.value >= other
+        elif type(other) is ScriptNum:
+            return self.value >= other.value
+        else:
+            raise TypeError('Cannot compare ScriptNum with %s' % type(other))
+
     # Bytes returns the number serialized as a little endian with a sign bit.
     #
     # Example encodings:

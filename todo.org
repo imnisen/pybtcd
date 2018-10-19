@@ -3,6 +3,7 @@
 # TOCHECK
 # TOCLEAN
 # TOADD
+# TOCONSIDER
 
 * Questions
 ** Consider read_element differs from int32 vs uint32
@@ -18,6 +19,7 @@
 * Refacor the import things
 * txscript/standard txscript/script very messy
 * Change the mix ecdsa cryptools thing in btcec to ecdsa methods
+* Change the ScriptNum to subclass int? and other same class can also do so.
 * Finish test case for txscript
 ** engine
 ** error

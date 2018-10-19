@@ -8,7 +8,6 @@ from .hash_cache import *
 from .standard import *
 from .script_flag import *
 
-
 _logger = logging.getLogger(__name__)
 
 # MaxStackSize is the maximum combined height of stack and alt stack
@@ -319,7 +318,6 @@ class Engine:
                 desc = "end of script reached in conditional execution"
                 raise ScriptError(ErrorCode.ErrUnbalancedConditional, desc=desc)
 
-
             # Alt stack doesn't persists
             # TOCONSIDER maybe we can first check self.astack.depth()
             # then decide whether to use drop, not the try catch style
@@ -338,9 +336,9 @@ class Engine:
             elif self.script_idx == 1 and self.bip16:
                 # Put us past the end for check_error_condition()
                 self.script_idx += 1
-                
+
                 # Check script ran successfully and pull the script
-			    # out of the first stack and execute that.
+                # out of the first stack and execute that.
                 self.check_error_condition(final_script=False)
 
                 script = self.saved_first_stack[-1]
@@ -348,10 +346,10 @@ class Engine:
                 self.scripts.append(pops)
 
                 # Set stack to be the stack from first script minus the
-			    # script itself
+                # script itself
                 self.set_stack(self.saved_first_stack[:-1])
-            elif self.script_idx ==1 and self.witness_program or (
-                self.script_idx == 2 and self.witness_program and self.bip16
+            elif self.script_idx == 1 and self.witness_program or (
+                                self.script_idx == 2 and self.witness_program and self.bip16
             ):
                 self.script_idx += 1
                 witness = self.tx.tx_ins[self.tx_idx].witness
@@ -371,7 +369,6 @@ class Engine:
                 return True
 
         return False
-
 
     # Execute will execute all scripts in the script engine and return either nil
     # for successful validation or an error if one occurred.
@@ -433,6 +430,36 @@ class Engine:
     # provided array where the last item in the array will be the top of the stack.
     def set_alt_stack(self, data):
         set_stack(self.astack, data)
+
+    # popIfBool enforces the "minimal if" policy during script execution if the
+    # particular flag is set.  If so, in order to eliminate an additional source
+    # of nuisance malleability, post-segwit for version 0 witness programs, we now
+    # require the following: for OP_IF and OP_NOT_IF, the top stack item MUST
+    # either be an empty byte slice, or [0x01]. Otherwise, the item at the top of
+    # the stack will be popped and interpreted as a boolean.
+    def pop_if_pool(self):
+        # When not in witness execution mode, not executing a v0 witness
+        # program, or the minimal if flag isn't set pop the top stack item as
+        # a normal bool.
+        if not self.is_witness_version_active(0) or not self.has_flag(ScriptFlag.ScriptVerifyMinimalIf):
+            return self.dstack.pop_bool()
+
+        # At this point, a v0 witness program is being executed and the minimal
+        # if flag is set, so enforce additional constraints on the top stack
+        # item.
+        so = self.dstack.pop_byte_array()
+
+        # The top element MUST have a length of at least one.
+        if len(so) > 1:
+            desc = "minimal if is active, top element MUST have a length of at least, instead length is %s" % len(so)
+            raise ScriptError(ErrorCode.ErrMinimalIf, desc=desc)
+
+        # Additionally, if the length is one, then the value MUST be 0x01.
+        if len(so) == 1 and so[0] != 0x01:
+            desc = "minimal if is active, top stack item MUST be an empty byte array or 0x01, is instead: %s" % so[0]
+            raise ScriptError(ErrorCode.ErrMinimalIf, desc=desc)
+
+        return as_bool(so)
 
 
 # getStack returns the contents of stack as a byte array bottom up

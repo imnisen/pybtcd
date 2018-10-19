@@ -1,6 +1,9 @@
+import wire
+import btcec
+import chainhash
 from .utils import *
-from .script_num import *
 from .script_flag import *
+from .stack import *
 
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
@@ -539,6 +542,13 @@ class ParsedOpcode:
         return script
 
 
+# LockTimeThreshold is the number below which a lock time is
+# interpreted to be a block number.  Since an average of one block
+# is generated per 10 minutes, this allows blocks for about 9,512
+# years.
+LockTimeThreshold = 5e8  # Tue Nov 5 00:53:20 1985 UTC
+
+
 # *******************************************
 # Opcode implementation functions start here.
 # *******************************************
@@ -550,32 +560,53 @@ class ParsedOpcode:
 # dictate the script doesn't fail until the program counter passes over a
 # disabled opcode (even when they appear in a branch that is not executed).
 def opcodeDisabled(pop, vm):
-    desc = "attempt to execute disabled opcode {}".format(pop.opcode.name)
+    desc = "attempt to execute disabled opcode %s" % pop.opcode.name
     raise ScriptError(c=ErrorCode.ErrDisabledOpcode, desc=desc)
 
 
-def opcodeFalse(pop, vm):
-    pass
-
-
-def opcodePushData(pop, vm):
-    pass
-
-
-def opcode1Negate(pop, vm):
-    pass
-
-
+# opcodeReserved is a common handler for all reserved opcodes.  It returns an
+# appropriate error indicating the opcode is reserved.
 def opcodeReserved(pop, vm):
-    pass
+    desc = "attempt to execute reserved opcode %s" % pop.opcode.name
+    raise ScriptError(c=ErrorCode.ErrReservedOpcode, desc=desc)
+
+
+# opcodeInvalid is a common handler for all invalid opcodes.  It returns an
+# appropriate error indicating the opcode is invalid.
+def opcodeInvalid(pop, vm):
+    desc = "attempt to execute invalid opcode %s" % pop.opcode.name
+    raise ScriptError(c=ErrorCode.ErrReservedOpcode, desc=desc)
+
+
+# opcodeFalse pushes an empty array to the data stack to represent false.  Note
+# that 0, when encoded as a number according to the numeric encoding consensus
+# rules, is an empty array.
+def opcodeFalse(pop, vm):
+    vm.dstack.push_byte_array(bytes())
+    return
+
+
+# opcodePushData is a common handler for the vast majority of opcodes that push
+# raw data (bytes) to the data stack.
+def opcodePushData(pop, vm):
+    vm.dstack.push_byte_array(pop.data)
+    return
+
+
+# opcode1Negate pushes -1, encoded as a number, to the data stack.
+def opcode1Negate(pop, vm):
+    vm.dstack.push_int(ScriptNum(-1))
+    return
+
 
 # opcodeN is a common handler for the small integer data push opcodes.  It
 # pushes the numeric value the opcode represents (which will be from 1 to 16)
 # onto the data stack.
 def opcodeN(pop, vm):
     # The opcodes are all defined consecutively, so the numeric value is
-	# the difference.
+    # the difference.
     vm.dstack.push_int(ScriptNum(pop.opcode.value - (OP_1 - 1)))
+    return
 
 
 # opcodeNop is a common handler for the NOP family of opcodes.  As the name
@@ -584,232 +615,812 @@ def opcodeN(pop, vm):
 def opcodeNop(pop, vm):
     if pop.opcode.value in (OP_NOP1, OP_NOP4, OP_NOP5, OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10) and \
             vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
-        desc = "OP_NOP%d reserved for soft-fork upgrades" % (pop.opcode.value -(OP_NOP1-1))
+        desc = "OP_NOP%d reserved for soft-fork upgrades" % (pop.opcode.value - (OP_NOP1 - 1))
         raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
+    return
 
 
+# opcodeIf treats the top item on the data stack as a boolean and removes it.
+#
+# An appropriate entry is added to the conditional stack depending on whether
+# the boolean is true and whether this if is on an executing branch in order
+# to allow proper execution of further opcodes depending on the conditional
+# logic.  When the boolean is true, the first branch will be executed (unless
+# this opcode is nested in a non-executed branch).
+#
+# <expression> if [statements] [else [statements]] endif
+#
+# Note that, unlike for all non-conditional opcodes, this is executed even when
+# it is on a non-executing branch so proper nesting is maintained.
+#
+# Data stack transformation: [... bool] -> [...]
+# Conditional stack transformation: [...] -> [... OpCondValue]
 def opcodeIf(pop, vm):
-    pass
+    cond_val = OpCondFalse
+    if vm.is_branch_executing():
+        ok = vm.pop_if_pool()
+
+        if ok:
+            cond_val = OpCondTrue
+    else:
+        cond_val = OpCondSkip
+
+    vm.cond_stack.append(cond_val)
+    return
 
 
+# opcodeNotIf treats the top item on the data stack as a boolean and removes
+# it.
+#
+# An appropriate entry is added to the conditional stack depending on whether
+# the boolean is true and whether this if is on an executing branch in order
+# to allow proper execution of further opcodes depending on the conditional
+# logic.  When the boolean is false, the first branch will be executed (unless
+# this opcode is nested in a non-executed branch).
+#
+# <expression> notif [statements] [else [statements]] endif
+#
+# Note that, unlike for all non-conditional opcodes, this is executed even when
+# it is on a non-executing branch so proper nesting is maintained.
+#
+# Data stack transformation: [... bool] -> [...]
+# Conditional stack transformation: [...] -> [... OpCondValue]
 def opcodeNotIf(pop, vm):
-    pass
+    cond_val = OpCondFalse
+    if vm.is_branch_executing():
+        ok = vm.pop_if_pool()
+
+        if not ok:
+            cond_val = OpCondTrue
+    else:
+        cond_val = OpCondSkip
+
+    vm.cond_stack.append(cond_val)
+    return
 
 
+# opcodeElse inverts conditional execution for other half of if/else/endif.
+#
+# An error is returned if there has not already been a matching OP_IF.
+#
+# Conditional stack transformation: [... OpCondValue] -> [... !OpCondValue]
 def opcodeElse(pop, vm):
-    pass
+    if len(vm.cond_stack) == 0:
+        desc = "encountered opcode %s with no matching opcode to begin conditional execution" % pop.opcode.name
+        raise ScriptError(ErrorCode.ErrUnbalancedConditional, desc=desc)
+
+    if vm.cond_stack[-1] == OpCondTrue:
+        vm.cond_stack[-1] = OpCondFalse
+    elif vm.cond_stack[-1] == OpCondFalse:
+        vm.cond_stack[-1] = OpCondTrue
+    elif vm.cond_stack[-1] == OpCondSkip:
+        # Value doesn't change in skip since it indicates this opcode
+        # is nested in a non-executed branch.
+        pass
+
+    return
 
 
+# opcodeEndif terminates a conditional block, removing the value from the
+# conditional execution stack.
+#
+# An error is returned if there has not already been a matching OP_IF.
+#
+# Conditional stack transformation: [... OpCondValue] -> [...]
 def opcodeEndif(pop, vm):
-    pass
+    if len(vm.cond_stack) == 0:
+        desc = "encountered opcode %s with no matching opcode to begin conditional execution" % pop.opcode.name
+        raise ScriptError(ErrorCode.ErrUnbalancedConditional, desc=desc)
+
+    vm.cond_stack = vm.cond_stack[:-1]
+    return
 
 
+# abstractVerify examines the top item on the data stack as a boolean value and
+# verifies it evaluates to true.  An error is returned either when there is no
+# item on the stack or when that item evaluates to false.  In the latter case
+# where the verification fails specifically due to the top item evaluating
+# to false, the returned error will use the passed error code.
+def abstract_verify(pop, vm, error_code):
+    verified = vm.dstack.pop_bool()
+    if not verified:
+        desc = "%s failed" % pop.opcode.name
+        raise ScriptError(c=error_code, desc=desc)
+    return
+
+
+# opcodeVerify examines the top item on the data stack as a boolean value and
+# verifies it evaluates to true.  An error is returned if it does not.
 def opcodeVerify(pop, vm):
-    pass
+    abstract_verify(pop, vm, ErrorCode.ErrVerify)
+    return
 
 
+# opcodeReturn returns an appropriate error since it is always an error to
+# return early from a script.
 def opcodeReturn(pop, vm):
-    pass
+    desc = "script returned early"
+    raise ScriptError(ErrorCode.ErrEarlyReturn, desc=desc)
 
 
+# verifyLockTime is a helper function used to validate locktimes.
+def verify_lock_time(tx_lock_time, threshold, lock_time):
+    # The lockTimes in both the script and transaction must be of the same
+    # type.
+    if not ((tx_lock_time < threshold and lock_time < threshold) or
+                (tx_lock_time >= threshold and lock_time >= threshold)):
+        desc = "mismatched locktime types -- tx locktime %d, stack locktime %d" % (tx_lock_time, lock_time)
+        raise ScriptError(ErrorCode.ErrUnsatisfiedLockTime, desc=desc)
+
+    if lock_time > tx_lock_time:
+        desc = "locktime requirement not satisfied -- locktime is greater than the transaction locktime: %d > %d" % (
+            lock_time, tx_lock_time)
+        raise ScriptError(ErrorCode.ErrUnsatisfiedLockTime, desc=desc)
+
+    return
+
+
+# opcodeCheckLockTimeVerify compares the top item on the data stack to the
+# LockTime field of the transaction containing the script signature
+# validating if the transaction outputs are spendable yet.  If flag
+# ScriptVerifyCheckLockTimeVerify is not set, the code continues as if OP_NOP2
+# were executed.
 def opcodeCheckLockTimeVerify(pop, vm):
-    pass
+    # If the ScriptVerifyCheckLockTimeVerify script flag is not set, treat
+    # opcode as OP_NOP2 instead.
+    if not vm.hash_flag(ScriptFlag.ScriptVerifyCheckLockTimeVerify):
+        if vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+            desc = "OP_NOP2 reserved for soft-fork upgrades"
+            raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
+        else:
+            return
+
+    # The current transaction locktime is a uint32 resulting in a maximum
+    # locktime of 2^32-1 (the year 2106).  However, scriptNums are signed
+    # and therefore a standard 4-byte scriptNum would only support up to a
+    # maximum of 2^31-1 (the year 2038).  Thus, a 5-byte scriptNum is used
+    # here since it will support up to 2^39-1 which allows dates beyond the
+    # current locktime limit.
+    #
+    # PeekByteArray is used here instead of PeekInt because we do not want
+    # to be limited to a 4-byte integer for reasons specified above.
+    so = vm.dstack.peek_byte_array(idx=0)
+    lock_time = make_script_num(so, vm.dstack.verify_minimal_data, script_num_len=5)
+
+    # In the rare event that the argument needs to be < 0 due to some
+    # arithmetic being done first, you can always use
+    # 0 OP_MAX OP_CHECKLOCKTIMEVERIFY.
+    if lock_time < 0:
+        desc = "negative lock time: %d" % lock_time
+        raise ScriptError(ErrorCode.ErrNegativeLockTime, desc=desc)
+
+    # The lock time field of a transaction is either a block height at
+    # which the transaction is finalized or a timestamp depending on if the
+    # value is before the txscript.LockTimeThreshold.  When it is under the
+    # threshold it is a block height.
+    verify_lock_time(vm.tx.lock_time, LockTimeThreshold, lock_time)
+
+    # TOCHECK why
+    # The lock time feature can also be disabled, thereby bypassing
+    # OP_CHECKLOCKTIMEVERIFY, if every transaction input has been finalized by
+    # setting its sequence to the maximum value (wire.MaxTxInSequenceNum).  This
+    # condition would result in the transaction being allowed into the blockchain
+    # making the opcode ineffective.
+    #
+    # This condition is prevented by enforcing that the input being used by
+    # the opcode is unlocked (its sequence number is less than the max
+    # value).  This is sufficient to prove correctness without having to
+    # check every input.
+    #
+    # NOTE: This implies that even if the transaction is not finalized due to
+    # another input being unlocked, the opcode execution will still fail when the
+    # input being used by the opcode is locked.
+    if vm.tx.tx_ins[vm.tx_idx].sequence == wire.MaxTxInSequenceNum:
+        raise ScriptError(ErrorCode.ErrUnsatisfiedLockTime, desc="transaction input is finalized")
+
+    return
 
 
+# TOCONSIDER Why
+# opcodeCheckSequenceVerify compares the top item on the data stack to the
+# LockTime field of the transaction containing the script signature
+# validating if the transaction outputs are spendable yet.  If flag
+# ScriptVerifyCheckSequenceVerify is not set, the code continues as if OP_NOP3
+# were executed.
 def opcodeCheckSequenceVerify(pop, vm):
-    pass
+    # If the ScriptVerifyCheckSequenceVerify script flag is not set, treat
+    # opcode as OP_NOP3 instead.
+    if not vm.hash_flag(ScriptFlag.ScriptVerifyCheckSequenceVerify):
+        if vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+            desc = "OP_NOP3 reserved for soft-fork upgrades"
+            raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
+        else:
+            return
+
+    # The current transaction sequence is a uint32 resulting in a maximum
+    # sequence of 2^32-1.  However, scriptNums are signed and therefore a
+    # standard 4-byte scriptNum would only support up to a maximum of
+    # 2^31-1.  Thus, a 5-byte scriptNum is used here since it will support
+    # up to 2^39-1 which allows sequences beyond the current sequence
+    # limit.
+    #
+    # PeekByteArray is used here instead of PeekInt because we do not want
+    # to be limited to a 4-byte integer for reasons specified above.
+    so = vm.dstack.peek_byte_array(idx=0)
+    stack_sequence = make_script_num(so, vm.dstack.verify_minimal_data, script_num_len=5)
+
+    # In the rare event that the argument needs to be < 0 due to some
+    # arithmetic being done first, you can always use
+    # 0 OP_MAX OP_CHECKSEQUENCEVERIFY.
+    if stack_sequence < 0:
+        desc = "negative sequence: %d" % stack_sequence
+        raise ScriptError(ErrorCode.ErrNegativeLockTime, desc=desc)
+
+    sequence = stack_sequence
+
+    # To provide for future soft-fork extensibility, if the
+    # operand has the disabled lock-time flag set,
+    # CHECKSEQUENCEVERIFY behaves as a NOP.
+    if stack_sequence & wire.SequenceLockTimeDisabled != 0:
+        return
+
+    # Transaction version numbers not high enough to trigger CSV rules must
+    # fail.
+    if vm.tx.version < 2:
+        desc = "invalid transaction version: %d" % vm.tx.version
+        raise ScriptError(ErrorCode.ErrUnsatisfiedLockTime, desc=desc)
+
+    # Sequence numbers with their most significant bit set are not
+    # consensus constrained. Testing that the transaction's sequence
+    # number does not have this bit set prevents using this property
+    # to get around a CHECKSEQUENCEVERIFY check.
+    tx_sequence = vm.tx.tx_ins[vm.tx_idx].sequence
+    if tx_sequence & wire.SequenceLockTimeDisabled != 0:
+        desc = "transaction sequence has sequence locktime disabled bit set: %s" % tx_sequence
+        raise ScriptError(ErrorCode.ErrUnsatisfiedLockTime, desc=desc)
+
+    # Mask off non-consensus bits before doing comparisons.
+    lock_time_mask = wire.SequenceLockTimeIsSeconds | wire.SequenceLockTimeMask
+    return verify_lock_time(tx_sequence & lock_time_mask, wire.SequenceLockTimeIsSeconds, sequence & lock_time_mask)
 
 
+# opcodeToAltStack removes the top item from the main data stack and pushes it
+# onto the alternate data stack.
+#
+# Main data stack transformation: [... x1 x2 x3] -> [... x1 x2]
+# Alt data stack transformation:  [... y1 y2 y3] -> [... y1 y2 y3 x3]
 def opcodeToAltStack(pop, vm):
-    pass
+    so = vm.dstack.pop_byte_array()
+    vm.astack.push_byte_array(so)
+    return
 
 
+# opcodeFromAltStack removes the top item from the alternate data stack and
+# pushes it onto the main data stack.
+#
+# Main data stack transformation: [... x1 x2 x3] -> [... x1 x2 x3 y3]
+# Alt data stack transformation:  [... y1 y2 y3] -> [... y1 y2]
 def opcodeFromAltStack(pop, vm):
-    pass
+    so = vm.astack.pop_byte_array()
+    vm.dstack.push_byte_array(so)
+    return
 
 
+# opcode2Drop removes the top 2 items from the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1]
 def opcode2Drop(pop, vm):
-    pass
+    vm.dstack.dropN(n=2)
+    return
 
 
+# opcode2Dup duplicates the top 2 items on the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x2 x3 x2 x3]
 def opcode2Dup(pop, vm):
-    pass
+    vm.dstack.dupN(n=2)
+    return
 
 
+# opcode3Dup duplicates the top 3 items on the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x2 x3 x1 x2 x3]
 def opcode3Dup(pop, vm):
-    pass
+    vm.dstack.dupN(n=3)
+    return
 
 
+# opcode2Over duplicates the 2 items before the top 2 items on the data stack.
+#
+# Stack transformation: [... x1 x2 x3 x4] -> [... x1 x2 x3 x4 x1 x2]
 def opcode2Over(pop, vm):
-    pass
+    vm.dstack.overN(n=2)
+    return
 
 
+# opcode2Rot rotates the top 6 items on the data stack to the left twice.
+#
+# Stack transformation: [... x1 x2 x3 x4 x5 x6] -> [... x3 x4 x5 x6 x1 x2]
 def opcode2Rot(pop, vm):
-    pass
+    vm.dstack.rotN(n=2)
+    return
 
 
+# opcode2Swap swaps the top 2 items on the data stack with the 2 that come
+# before them.
+#
+# Stack transformation: [... x1 x2 x3 x4] -> [... x3 x4 x1 x2]
 def opcode2Swap(pop, vm):
-    pass
+    vm.dstack.swapN(n=2)
+    return
 
 
+# opcodeIfDup duplicates the top item of the stack if it is not zero.
+#
+# Stack transformation (x1==0): [... x1] -> [... x1]
+# Stack transformation (x1!=0): [... x1] -> [... x1 x1]
 def opcodeIfDup(pop, vm):
-    pass
+    so = vm.dstack.peek_byte_array(idx=0)
+    if as_bool(so):
+        vm.dstack.push_byte_array(so)
+    return
 
 
+# opcodeDepth pushes the depth of the data stack prior to executing this
+# opcode, encoded as a number, onto the data stack.
+#
+# Stack transformation: [...] -> [... <num of items on the stack>]
+# Example with 2 items: [x1 x2] -> [x1 x2 2]
+# Example with 3 items: [x1 x2 x3] -> [x1 x2 x3 3]
 def opcodeDepth(pop, vm):
-    pass
+    vm.dstack.push_int(ScriptNum(vm.dstack.depth()))
+    return
 
 
+# opcodeDrop removes the top item from the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x2]
 def opcodeDrop(pop, vm):
-    pass
+    vm.dstack.dropN(n=1)
+    return
 
 
+# opcodeDup duplicates the top item on the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x2 x3 x3]
 def opcodeDup(pop, vm):
-    pass
+    vm.dstack.dupN(n=1)
+    return
 
 
+# opcodeNip removes the item before the top item on the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x3]
 def opcodeNip(pop, vm):
-    pass
+    vm.dstack.nipN(idx=1)
+    return
 
 
+# opcodeOver duplicates the item before the top item on the data stack.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x1 x2 x3 x2]
 def opcodeOver(pop, vm):
-    pass
+    vm.dstack.overN(idx=1)
+    return
 
 
+# opcodePick treats the top item on the data stack as an integer and duplicates
+# the item on the stack that number of items back to the top.
+#
+# Stack transformation: [xn ... x2 x1 x0 n] -> [xn ... x2 x1 x0 xn]
+# Example with n=1: [x2 x1 x0 1] -> [x2 x1 x0 x1]
+# Example with n=2: [x2 x1 x0 2] -> [x2 x1 x0 x2]
 def opcodePick(pop, vm):
-    pass
+    val = vm.dstack.pop_int()
+    vm.dstack.pickN(val)
+    return
 
 
+# opcodeRoll treats the top item on the data stack as an integer and moves
+# the item on the stack that number of items back to the top.
+#
+# Stack transformation: [xn ... x2 x1 x0 n] -> [... x2 x1 x0 xn]
+# Example with n=1: [x2 x1 x0 1] -> [x2 x0 x1]
+# Example with n=2: [x2 x1 x0 2] -> [x1 x0 x2]
 def opcodeRoll(pop, vm):
-    pass
+    val = vm.dstack.pop_int()
+    vm.dstack.rollN(val)
+    return
 
 
+# opcodeRot rotates the top 3 items on the data stack to the left.
+#
+# Stack transformation: [... x1 x2 x3] -> [... x2 x3 x1]
 def opcodeRot(pop, vm):
-    pass
+    vm.dstack.rotN(n=1)
+    return
 
 
+# opcodeSwap swaps the top two items on the stack.
+#
+# Stack transformation: [... x1 x2] -> [... x2 x1]
 def opcodeSwap(pop, vm):
-    pass
+    vm.dstack.swapN(n=1)
+    return
 
 
+# opcodeTuck inserts a duplicate of the top item of the data stack before the
+# second-to-top item.
+#
+# Stack transformation: [... x1 x2] -> [... x2 x1 x2]
 def opcodeTuck(pop, vm):
-    pass
+    vm.dstack.tuck()
+    return
 
 
+# opcodeSize pushes the size of the top item of the data stack onto the data
+# stack.
+#
+# Stack transformation: [... x1] -> [... x1 len(x1)]
 def opcodeSize(pop, vm):
-    pass
+    so = vm.dstack.peek_byte_array(idx=0)
+    vm.dstack.push_int(ScriptNum(len(so)))
+    return
 
 
+# opcodeEqual removes the top 2 items of the data stack, compares them as raw
+# bytes, and pushes the result, encoded as a boolean, back to the stack.
+#
+# Stack transformation: [... x1 x2] -> [... bool]
 def opcodeEqual(pop, vm):
-    pass
+    a = vm.dstack.pop_byte_array()
+    b = vm.dstack.pop_byte_array()
+    vm.dstack.push_bool(a == b)
+    return
 
 
+# opcodeEqualVerify is a combination of opcodeEqual and opcodeVerify.
+# Specifically, it removes the top 2 items of the data stack, compares them,
+# and pushes the result, encoded as a boolean, back to the stack.  Then, it
+# examines the top item on the data stack as a boolean value and verifies it
+# evaluates to true.  An error is returned if it does not.
+#
+# Stack transformation: [... x1 x2] -> [... bool] -> [...]
 def opcodeEqualVerify(pop, vm):
-    pass
+    opcodeEqual(pop, vm)
+    abstract_verify(pop, vm, ErrorCode.ErrEqualVerify)
+    return
 
 
+# opcode1Add treats the top item on the data stack as an integer and replaces
+# it with its incremented value (plus 1).
+#
+# Stack transformation: [... x1 x2] -> [... x1 x2+1]
 def opcode1Add(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    vm.dstack.push_int(m + 1)
+    return
 
 
+# opcode1Sub treats the top item on the data stack as an integer and replaces
+# it with its decremented value (minus 1).
+#
+# Stack transformation: [... x1 x2] -> [... x1 x2-1]
 def opcode1Sub(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    vm.dstack.push_int(m - 1)
+    return
 
 
+# opcodeNegate treats the top item on the data stack as an integer and replaces
+# it with its negation.
+#
+# Stack transformation: [... x1 x2] -> [... x1 -x2]
 def opcodeNegate(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    vm.dstack.push_int(-m)
+    return
 
 
+# opcodeAbs treats the top item on the data stack as an integer and replaces it
+# it with its absolute value.
+#
+# Stack transformation: [... x1 x2] -> [... x1 abs(x2)]
 def opcodeAbs(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    if m < 0:
+        m = - m
+    vm.dstack.push_int(m)
+    return
 
 
+# opcodeNot treats the top item on the data stack as an integer and replaces
+# it with its "inverted" value (0 becomes 1, non-zero becomes 0).
+#
+# NOTE: While it would probably make more sense to treat the top item as a
+# boolean, and push the opposite, which is really what the intention of this
+# opcode is, it is extremely important that is not done because integers are
+# interpreted differently than booleans and the consensus rules for this opcode
+# dictate the item is interpreted as an integer.
+#
+# Stack transformation (x2==0): [... x1 0] -> [... x1 1]
+# Stack transformation (x2!=0): [... x1 1] -> [... x1 0]
+# Stack transformation (x2!=0): [... x1 17] -> [... x1 0]
 def opcodeNot(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    if m == 0:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
 
+# opcode0NotEqual treats the top item on the data stack as an integer and
+# replaces it with either a 0 if it is zero, or a 1 if it is not zero.
+#
+# Stack transformation (x2==0): [... x1 0] -> [... x1 0]
+# Stack transformation (x2!=0): [... x1 1] -> [... x1 1]
+# Stack transformation (x2!=0): [... x1 17] -> [... x1 1]
 def opcode0NotEqual(pop, vm):
-    pass
+    m = vm.dstack.pop_int()
+    if m != 0:
+        m = ScriptNum(1)
+    vm.dstack.push_int(m)
+    return
 
 
+# opcodeAdd treats the top two items on the data stack as integers and replaces
+# them with their sum.
+#
+# Stack transformation: [... x1 x2] -> [... x1+x2]
 def opcodeAdd(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    vm.dstack.push_int(a + b)
+    return
 
 
+# opcodeSub treats the top two items on the data stack as integers and replaces
+# them with the result of subtracting the top entry from the second-to-top
+# entry.
+#
+# Stack transformation: [... x1 x2] -> [... x1-x2]
 def opcodeSub(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    vm.dstack.push_int(b - a)
+    return
 
 
+# opcodeBoolAnd treats the top two items on the data stack as integers.  When
+# both of them are not zero, they are replaced with a 1, otherwise a 0.
+#
+# Stack transformation (x1==0, x2==0): [... 0 0] -> [... 0]
+# Stack transformation (x1!=0, x2==0): [... 5 0] -> [... 0]
+# Stack transformation (x1==0, x2!=0): [... 0 7] -> [... 0]
+# Stack transformation (x1!=0, x2!=0): [... 4 8] -> [... 1]
 def opcodeBoolAnd(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a != 0 and b != 0:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeBoolOr treats the top two items on the data stack as integers.  When
+# either of them are not zero, they are replaced with a 1, otherwise a 0.
+#
+# Stack transformation (x1==0, x2==0): [... 0 0] -> [... 0]
+# Stack transformation (x1!=0, x2==0): [... 5 0] -> [... 1]
+# Stack transformation (x1==0, x2!=0): [... 0 7] -> [... 1]
+# Stack transformation (x1!=0, x2!=0): [... 4 8] -> [... 1]
 def opcodeBoolOr(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a != 0 or b != 0:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeNumEqual treats the top two items on the data stack as integers.  When
+# they are equal, they are replaced with a 1, otherwise a 0.
+#
+# Stack transformation (x1==x2): [... 5 5] -> [... 1]
+# Stack transformation (x1!=x2): [... 5 7] -> [... 0]
 def opcodeNumEqual(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a == b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeNumEqualVerify is a combination of opcodeNumEqual and opcodeVerify.
+#
+# Specifically, treats the top two items on the data stack as integers.  When
+# they are equal, they are replaced with a 1, otherwise a 0.  Then, it examines
+# the top item on the data stack as a boolean value and verifies it evaluates
+# to true.  An error is returned if it does not.
+#
+# Stack transformation: [... x1 x2] -> [... bool] -> [...]
 def opcodeNumEqualVerify(pop, vm):
-    pass
+    opcodeNumEqual(pop, vm)
+    abstract_verify(pop, vm, ErrorCode.ErrNumEqualVerify)
+    return
 
-
+# opcodeNumNotEqual treats the top two items on the data stack as integers.
+# When they are NOT equal, they are replaced with a 1, otherwise a 0.
+#
+# Stack transformation (x1==x2): [... 5 5] -> [... 0]
+# Stack transformation (x1!=x2): [... 5 7] -> [... 1]
 def opcodeNumNotEqual(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a != b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeLessThan treats the top two items on the data stack as integers.  When
+# the second-to-top item is less than the top item, they are replaced with a 1,
+# otherwise a 0.
+#
+# Stack transformation: [... x1 x2] -> [... bool]
 def opcodeLessThan(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a < b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeGreaterThan treats the top two items on the data stack as integers.
+# When the second-to-top item is greater than the top item, they are replaced
+# with a 1, otherwise a 0.
+#
+# Stack transformation: [... x1 x2] -> [... bool]
 def opcodeGreaterThan(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a > b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeLessThanOrEqual treats the top two items on the data stack as integers.
+# When the second-to-top item is less than or equal to the top item, they are
+# replaced with a 1, otherwise a 0.
+#
+# Stack transformation: [... x1 x2] -> [... bool]
 def opcodeLessThanOrEqual(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a <= b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
 
+# opcodeGreaterThanOrEqual treats the top two items on the data stack as
+# integers.  When the second-to-top item is greater than or equal to the top
+# item, they are replaced with a 1, otherwise a 0.
+#
+# Stack transformation: [... x1 x2] -> [... bool]
 def opcodeGreaterThanOrEqual(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if a >= b:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
-
+# opcodeMin treats the top two items on the data stack as integers and replaces
+# them with the minimum of the two.
+#
+# Stack transformation: [... x1 x2] -> [... min(x1, x2)]
 def opcodeMin(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if b < a:
+        vm.dstack.push_int(ScriptNum(b))
+    else:
+        vm.dstack.push_int(ScriptNum(a))
+    return
 
-
+# opcodeMax treats the top two items on the data stack as integers and replaces
+# them with the maximum of the two.
+#
+# Stack transformation: [... x1 x2] -> [... max(x1, x2)]
 def opcodeMax(pop, vm):
-    pass
+    a = vm.dstack.pop_int()
+    b = vm.dstack.pop_int()
+    if b > a:
+        vm.dstack.push_int(ScriptNum(b))
+    else:
+        vm.dstack.push_int(ScriptNum(a))
+    return
 
 
+# opcodeWithin treats the top 3 items on the data stack as integers.  When the
+# value to test is within the specified range (left inclusive), they are
+# replaced with a 1, otherwise a 0.
+#
+# The top item is the max value, the second-top-item is the minimum value, and
+# the third-to-top item is the value to test.
+#
+# Stack transformation: [... x1 min max] -> [... bool]
 def opcodeWithin(pop, vm):
-    pass
+    max_val = vm.dstack.pop_int()
+    min_val = vm.dstack.pop_int()
+    x = vm.dstack.pop_int()
+    if min_val <= x < max_val:
+        vm.dstack.push_int(ScriptNum(1))
+    else:
+        vm.dstack.push_int(ScriptNum(0))
+    return
 
 
+# opcodeRipemd160 treats the top item of the data stack as raw bytes and
+# replaces it with ripemd160(data).
+#
+# Stack transformation: [... x1] -> [... ripemd160(x1)]
 def opcodeRipemd160(pop, vm):
-    pass
+    buf = vm.dstack.pop_byte_array()
+    vm.dstack.push_byte_array(btcec.ripemd160(buf))
+    return
 
-
+# opcodeSha1 treats the top item of the data stack as raw bytes and replaces it
+# with sha1(data).
+#
+# Stack transformation: [... x1] -> [... sha1(x1)]
 def opcodeSha1(pop, vm):
-    pass
+    buf = vm.dstack.pop_byte_array()
+    vm.dstack.push_byte_array(btcec.sha1(buf))
+    return
 
-
+# opcodeSha256 treats the top item of the data stack as raw bytes and replaces
+# it with sha256(data).
+#
+# Stack transformation: [... x1] -> [... sha256(x1)]
 def opcodeSha256(pop, vm):
-    pass
+    buf = vm.dstack.pop_byte_array()
+    vm.dstack.push_byte_array(btcec.sha256(buf))
+    return
 
-
+# opcodeHash160 treats the top item of the data stack as raw bytes and replaces
+# it with ripemd160(sha256(data)).
+#
+# Stack transformation: [... x1] -> [... ripemd160(sha256(x1))]
 def opcodeHash160(pop, vm):
-    pass
+    buf = vm.dstack.pop_byte_array()
+    vm.dstack.push_byte_array(btcec.hash160(buf))
+    return
 
-
+# opcodeHash256 treats the top item of the data stack as raw bytes and replaces
+# it with sha256(sha256(data)).
+#
+# Stack transformation: [... x1] -> [... sha256(sha256(x1))]
 def opcodeHash256(pop, vm):
-    pass
+    buf = vm.dstack.pop_byte_array()
+    vm.dstack.push_byte_array(chainhash.double_hash_b(buf))
+    return
 
 
+# opcodeCodeSeparator stores the current script offset as the most recently
+# seen OP_CODESEPARATOR which is used during signature checking.
+#
+# This opcode does not change the contents of the data stack.
 def opcodeCodeSeparator(pop, vm):
-    pass
+    vm.last_code_sep = vm.script_off
+    return
 
 
 def opcodeCheckSig(pop, vm):
@@ -825,10 +1436,6 @@ def opcodeCheckMultiSig(pop, vm):
 
 
 def opcodeCheckMultiSigVerify(pop, vm):
-    pass
-
-
-def opcodeInvalid(pop, vm):
     pass
 
 

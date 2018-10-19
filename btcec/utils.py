@@ -3,8 +3,11 @@
 
 import hashlib
 
+sha1 = lambda x: hashlib.sha1(x).digest()
 sha256 = lambda x: hashlib.sha256(x).digest()
 ripemd160 = lambda x: hashlib.new('ripemd160', x).digest()
+
+
 hash160 = lambda x: ripemd160(sha256(x))
 
 

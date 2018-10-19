@@ -4,9 +4,11 @@ First : constant , error , utils, read_write_lock
 
 1.5th  : script_num, hash_cache, sig_cache, script_flag
 
+1.6th :stack
+
 Second: opcode,
 
-Third: script, stack
+Third: script,
 
 Fourth: script_builder
 
