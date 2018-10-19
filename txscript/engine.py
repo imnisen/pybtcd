@@ -154,7 +154,7 @@ class Engine:
         self.num_ops = num_ops or 0
         self.flags = flags or ScriptFlags()
         self.sig_cache = sig_cache or SigCache()
-        self.hash_cache = hash_cache or HashCache
+        self.hash_cache = hash_cache or HashCache()
         self.bip16 = bip16 or False
         self.saved_first_stack = saved_first_stack or []
         self.witness_version = witness_version or 0
@@ -420,11 +420,16 @@ class Engine:
 
 
             # Alt stack doesn't persists
-            self.astack.dropN(self.astack.depth())
+            # TOCONSIDER maybe we can first check self.astack.depth()
+            # then decide whether to use drop, not the try catch style
+            try:
+                self.astack.dropN(self.astack.depth())
+            except ScriptError as e:
+                _logger.debug("dropN cause ScriptError: %s" % e)
+                pass
 
             self.num_ops = 0  # number of ops is per script.
             self.script_off = 0
-
 
             if self.script_idx == 0 and self.bip16:
                 self.script_idx += 1

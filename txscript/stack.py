@@ -124,7 +124,7 @@ class Stack:
     # DropN(2): [... x1 x2] -> [...]
     def dropN(self, n: int):
         if n < 1:
-            desc = "attempt to drop %d items from stack".format(n)
+            desc = "attempt to drop %d items from stack" % n
             raise ScriptError(c=ErrorCode.ErrInvalidStackOperation, desc=desc)
 
         for _ in range(n):
