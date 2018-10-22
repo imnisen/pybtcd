@@ -1,8 +1,5 @@
 from .opcode import *
 
-MaxOpsPerScript = 201  # Max number of non-push operations.
-MaxPubKeysPerMultiSig = 20  # Multisig can't have more sigs than this.
-MaxScriptElementSize = 520  # Max bytes pushable to the stack.
 
 # payToWitnessPubKeyHashDataSize is the size of the witness program's
 # data push for a pay-to-witness-pub-key-hash output.
@@ -11,9 +8,6 @@ payToWitnessPubKeyHashDataSize = 20
 # payToWitnessScriptHashDataSize is the size of the witness program's
 # data push for a pay-to-witness-script-hash output.
 payToWitnessScriptHashDataSize = 32
-
-
-
 
 
 # is_small_int returns whether or not the opcode is considered a small integer,

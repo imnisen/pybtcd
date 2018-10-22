@@ -704,13 +704,13 @@ def calc_witness_signature_hash(sub_script, sig_hashes, hash_type, tx, idx, amt)
         # The script code for a p2wkh is a length prefix varint for
         # the next 25 bytes, followed by a re-creation of the original
         # p2pkh pk script.
-        sig_hashes.write(bytes([0x19]))
-        sig_hashes.write(bytes([OP_DUP]))
-        sig_hashes.write(bytes([OP_HASH160]))
-        sig_hashes.write(bytes([OP_DATA_20]))
-        sig_hashes.write(sub_script[1].data)
-        sig_hashes.write(bytes([OP_EQUALVERIFY]))
-        sig_hashes.write(bytes([OP_CHECKSIG]))
+        sig_hash.write(bytes([0x19]))
+        sig_hash.write(bytes([OP_DUP]))
+        sig_hash.write(bytes([OP_HASH160]))
+        sig_hash.write(bytes([OP_DATA_20]))
+        sig_hash.write(sub_script[1].data)
+        sig_hash.write(bytes([OP_EQUALVERIFY]))
+        sig_hash.write(bytes([OP_CHECKSIG]))
     else:
         # For p2wsh outputs, and future outputs, the script code is
         # the original script, with all code separators removed,
@@ -772,7 +772,7 @@ def shadow_copy_tx(tx):
 # calcSignatureHash will, given a script and hash type for the current script
 # engine instance, calculate the signature hash to be used for signing and
 # verification.
-def calc_signatire_hash(script, hash_type, tx, idx):
+def calc_signatire_hash(script, hash_type, tx, idx):  # TODO refactor the func name
     """
 
     :param []parsedOpcode script:
@@ -854,6 +854,10 @@ def calc_signatire_hash(script, hash_type, tx, idx):
     wire.write_element(wbuf, "uint32", hash_type)
     return chainhash.double_hash_b(wbuf.getvalue())
 
+
+MaxOpsPerScript = 201  # Max number of non-push operations.
+MaxPubKeysPerMultiSig = 20  # Multisig can't have more sigs than this.
+MaxScriptElementSize = 520  # Max bytes pushable to the stack.
 
 # *******************************************
 #  End from
@@ -1870,13 +1874,210 @@ def opcodeCheckSigVerify(pop, vm):
     return
 
 
-# TODO latter
+class ParsedSigInfo:
+    def __init__(self, signature=None, parsed_signature=None, parsed=None):
+        """
+
+        :param []byte signature:
+        :param *btcec.Signature parsed_signature:
+        :param bool parsed:
+        """
+        self.signature = signature or bytes()
+        self.parsed_signature = parsed_signature or None  # TOCHECK the type, should be btcec.Signature
+        self.parsed = parsed or False
+
+
+# opcodeCheckMultiSig treats the top item on the stack as an integer number of
+# public keys, followed by that many entries as raw data representing the public
+# keys, followed by the integer number of signatures, followed by that many
+# entries as raw data representing the signatures.
+#
+# Due to a bug in the original Satoshi client implementation, an additional
+# dummy argument is also required by the consensus rules, although it is not
+# used.  The dummy value SHOULD be an OP_0, although that is not required by
+# the consensus rules.  When the ScriptStrictMultiSig flag is set, it must be
+# OP_0.
+#
+# All of the aforementioned stack items are replaced with a bool which
+# indicates if the requisite number of signatures were successfully verified.
+#
+# See the opcodeCheckSigVerify documentation for more details about the process
+# for verifying each signature.
+#
+# Stack transformation:
+# [... dummy [sig ...] numsigs [pubkey ...] numpubkeys] -> [... bool]
 def opcodeCheckMultiSig(pop, vm):
-    pass
+    # Get pub keys
+    num_keys = vm.dstack.pop_int()
+    num_pub_keys = num_keys.int32()
+
+    if num_pub_keys < 0:
+        msg = "number of pubkeys %d is negative" % num_pub_keys
+        raise ScriptError(ErrorCode.ErrInvalidPubKeyCount, msg)
+
+    if num_pub_keys > MaxPubKeysPerMultiSig:
+        msg = "too many pubkeys: %d > %d" % (num_pub_keys, MaxPubKeysPerMultiSig)
+        raise ScriptError(ErrorCode.ErrInvalidPubKeyCount, msg)
+
+    vm.num_ops += num_pub_keys
+    if vm.num_ops > MaxOpsPerScript:
+        msg = "exceeded max operation limit of %d" % MaxOpsPerScript
+        raise ScriptError(ErrorCode.ErrTooManyOperations, msg)
+
+    pub_keys = []
+    for i in range(num_pub_keys):
+        pub_key = vm.dstack.pop_byte_array()
+        pub_keys.append(pub_key)
+
+    # Get Signatures
+    num_sigs = vm.dstack.pop_int()
+    num_signatures = num_sigs.int32()
+
+    if num_signatures < 0:
+        msg = "number of signatures %d is negative" % num_signatures
+        raise ScriptError(ErrorCode.ErrInvalidSignatureCount, msg)
+
+    if num_signatures > num_pub_keys:
+        msg = "more signatures than pubkeys: %d > %d" % (num_signatures, num_pub_keys)
+        raise ScriptError(ErrorCode.ErrInvalidSignatureCount, msg)
+
+    signatures = []
+    for i in range(num_signatures):
+        signature = vm.dstack.pop_byte_array()
+        sig_info = ParsedSigInfo(signature=signature)
+        signatures.append(sig_info)
+
+        # A bug in the original Satoshi client implementation means one more
+    # stack value than should be used must be popped.  Unfortunately, this
+    # buggy behavior is now part of the consensus and a hard fork would be
+    # required to fix it.
+    dummy = vm.dstack.pop_byte_array()
+
+    # Since the dummy argument is otherwise not checked, it could be any
+    # value which unfortunately provides a source of malleability.  Thus,
+    # there is a script flag to force an error when the value is NOT 0.
+    if vm.has_flag(ScriptFlag.ScriptStrictMultiSig) and len(dummy) != 0:
+        msg = "multisig dummy argument has length %d instead of 0" % len(dummy)
+        raise ScriptError(ErrorCode.ErrSigNullDummy, msg)
+
+    # Get script starting from the most recent OP_CODESEPARATOR.
+    script = vm.sub_script()
+
+    # Remove the signature in pre version 0 segwit scripts since there is
+    # no way for a signature to sign itself.
+    if not vm.is_witness_version_active(version=0):
+        for sig_info in signatures:
+            script = remove_opcode_by_data(script, sig_info)
+
+    success = True
+    num_pub_keys += 1
+    pub_key_idx = -1
+    signature_idx = 0
+    while num_signatures > 0:
+        # When there are more signatures than public keys remaining,
+        # there is no way to succeed since too many signatures are
+        # invalid, so exit early.
+        pub_key_idx += 1
+        num_pub_keys -= 1
+        if num_signatures > num_pub_keys:
+            success = False
+            break
+
+        sig_info = signatures[signature_idx]
+        pub_key = pub_keys[pub_key_idx]
+
+        # The order of the signature and public key evaluation is
+        # important here since it can be distinguished by an
+        # OP_CHECKMULTISIG NOT when the strict encoding flag is set.
+        raw_sig = sig_info.signature
+        if len(raw_sig) == 0:
+            # Skip to the next pubkey if signature is empty.
+            continue
+
+        # Split the signature into hash type and signature components.
+        hash_type = SigHashType(raw_sig[-1])
+        signature = raw_sig[:-1]
+
+        # Only parse and check the signature encoding once.
+        if not sig_info.parsed:
+            vm.check_hash_type_encoding(hash_type)
+            vm.check_signatire_encoding(signature)
+
+            try:
+                if vm.has_flag(ScriptFlag.ScriptVerifyStrictEncoding) or vm.has_flag(
+                        ScriptFlag.ScriptVerifyDERSignatures):
+                    parsed_sig = btcec.parse_der_signature(signature, btcec.s256())
+                else:
+                    parsed_sig = btcec.parse_signature(signature, btcec.s256())
+            except:
+                sig_info.parsed = True
+                continue
+
+            sig_info.parsed = True
+            sig_info.parsed_signature = parsed_sig
+        else:
+            # Skip to the next pubkey if the signature is invalid.
+            if not sig_info.parsed_signature:
+                continue
+
+            # Use the already parsed signature.
+            parsed_sig = sig_info.parsed_signature
+
+        vm.check_pub_key_encoding(pub_key)
+        # parse pub key
+        try:
+            parsed_pub_key = btcec.parse_pub_key(pub_key, btcec.s256())
+        except:
+            continue
+
+        # Generate the signature hash based on the signature hash type.
+        if vm.is_witness_version_active(version=0):
+            if vm.hash_cache:
+                sig_hashes = vm.hash_cache
+            else:
+                sig_hashes = TxSigHashes.from_msg_tx(vm.tx)
+
+            hash = calc_witness_signature_hash(script, sig_hashes, hash_type,
+                                               vm.tx, vm.tx_idx, vm.input_amout)
+        else:
+            # Remove the signature since there is no way for a signature
+            # to sign itself.
+            hash = calc_signatire_hash(script, hash_type, vm.tx, vm.tx_idx)
+
+        if vm.sig_cache:
+            sig_hash = chainhash.Hash(hash)
+            valid = vm.sig_cache.exists(sig_hash, parsed_sig, parsed_pub_key)
+            if not valid and parsed_sig.verify(hash, parsed_pub_key):
+                vm.sig_cache.add(sig_hash, parsed_sig, pub_key)
+                valid = True
+        else:
+            valid = parsed_sig.verify(hash, parsed_pub_key)
+
+        if valid:
+            # PubKey verified, move on to the next signature.
+            signature_idx += 1
+            num_signatures -= 1
+
+    if not success and vm.hash_flag(ScriptFlag.ScriptVerifyNullFail):
+        for sig in signatures:
+            if len(sig.signatire) > 0:
+                msg = "not all signatures empty on failed checkmultisig"
+                raise ScriptError(ErrorCode.ErrNullFail, msg)
+
+    vm.dstack.push_bool(success)
+    return
 
 
+# opcodeCheckMultiSigVerify is a combination of opcodeCheckMultiSig and
+# opcodeVerify.  The opcodeCheckMultiSig is invoked followed by opcodeVerify.
+# See the documentation for each of those opcodes for more details.
+#
+# Stack transformation:
+# [... dummy [sig ...] numsigs [pubkey ...] numpubkeys] -> [... bool] -> [...]
 def opcodeCheckMultiSigVerify(pop, vm):
-    pass
+    opcodeCheckMultiSig(pop, vm)
+    abstract_verify(pop, vm, ErrorCode.ErrCheckMultiSigVerify)
+    return
 
 
 opcode_array = [
