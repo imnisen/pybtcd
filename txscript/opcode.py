@@ -561,6 +561,7 @@ def remove_opcode_by_data(pops, data):
             ret_pops.append(pop)
     return ret_pops
 
+
 # removeOpcode will remove any opcode matching ``opcode'' in the pops
 def remove_opcode(pops, opcode):
     """
@@ -574,6 +575,7 @@ def remove_opcode(pops, opcode):
         if pop.opcode.value != opcode:
             ret_pops.append(pop)
     return ret_pops
+
 
 # canonicalPush returns true if the object is either not a push instruction
 # or the push instruction contained wherein is matches the canonical form
@@ -617,6 +619,20 @@ def unparse_script(pops):
     script = bytearray()
     for pop in pops:
         script.extend(pop.bytes())
+    return script
+
+
+def unparse_script_no_error(pops):
+    script = bytearray()
+    for pop in pops:
+        try:
+            script.extend(pop.bytes())
+        except ScriptError as e:
+            e.extra_data = script
+            raise e
+        except Exception:
+            raise ScriptError(ErrorCode.ErrInternal, extra_data=script)
+
     return script
 
 
@@ -733,10 +749,30 @@ def calc_witness_signature_hash(sub_script, sig_hashes, hash_type, tx, idx, amt)
     return chainhash.double_hash_b(sig_hash.getvalue())
 
 
+# shallowCopyTx creates a shallow copy of the transaction for use when
+# calculating the signature hash.  It is used over the Copy method on the
+# transaction itself since that is a deep copy and therefore does more work and
+# allocates much more space than needed.
+def shadow_copy_tx(tx):
+    tx_copy = wire.MsgTx(
+        version=tx.version,
+        tx_ins=[],
+        tx_outs=[],
+        lock_time=tx.lock_time
+    )
+
+    for i, old_tx_in in enumerate(tx.tx_ins):
+        tx_copy.tx_ins[i] = old_tx_in
+
+    for i, old_tx_out in enumerate(tx.tx_outs):
+        tx_copy.tx_outs[i] = old_tx_out
+    return tx_copy
+
+
 # calcSignatureHash will, given a script and hash type for the current script
 # engine instance, calculate the signature hash to be used for signing and
 # verification.
-def calc_signatire_hash(script, hash_type, tx,idx):
+def calc_signatire_hash(script, hash_type, tx, idx):
     """
 
     :param []parsedOpcode script:
@@ -767,24 +803,56 @@ def calc_signatire_hash(script, hash_type, tx,idx):
     # they can reuse signatures.
     if hash_type & sigHashMask == SigHashType.SigHashSingle and \
                     idx < len(tx.tx_outs):
-        hash = chainhash.Hash(bytes([0x01]) + bytes(chainhash.HashSize -1))
+        hash = chainhash.Hash(bytes([0x01]) + bytes(chainhash.HashSize - 1))
         return hash
 
     # Remove all instances of OP_CODESEPARATOR from the script.
     script = remove_opcode(script, OP_CODESEPARATOR)
 
     # Make a shallow copy of the transaction, zeroing out the script for
-	# all inputs that are not currently being processed.
-    tx_copy = shadow_copy(tx)
-    for i in tx_copy.tx_ins:
+    # all inputs that are not currently being processed.
+    tx_copy = shadow_copy_tx(tx)
+    for i in range(len(tx_copy.tx_ins)):
         if i == idx:
             # UnparseScript cannot fail here because removeOpcode
-			# above only returns a valid script.
-            sig_script = unparse_script(script)
-            #TODO
+            # above only returns a valid script.
+            sig_script = unparse_script_no_error(script)
+            tx_copy.tx_ins[idx].signature_script = sig_script
+        else:
+            tx_copy.tx_ins[i].signature_script = bytes()
 
-    
+    v = hash_type & sigHashMask
+    if v == SigHashType.SigHashNone:
+        tx_copy.tx_outs = tx_copy.tx_outs[0:0]
+        for i in range(len(tx_copy.tx_ins)):
+            if i != idx:
+                tx_copy.tx_ins[i].sequence = 0
+    elif v == SigHashType.SigHashSingle:
+        # Resize output array to up to and including requested index.
+        tx_copy.tx_outs = tx_copy.tx_outs[:idx + 1]
 
+        # All but current output get zeroed out.
+        for i in range(idx):
+            tx_copy.tx_outs[i].value = -1
+            tx_copy.tx_outs[i].pk_script = bytes()
+
+        # Sequence on all other inputs is 0, too.
+        for i in range(len(tx_copy.tx_ins)):
+            if i != idx:
+                tx_copy.tx_ins[i].sequence = 0
+    elif v in (SigHashType.SigHashOld, SigHashType.SigHashAll):
+        pass
+
+    if hash_type & SigHashType.SigHashAnyOneCanPay != 0:
+        tx_copy.tx_ins = tx_copy.tx_ins[idx:idx + 1]
+
+    # The final hash is the double sha256 of both the serialized modified
+    # transaction and the hash type (encoded as a 4-byte little-endian
+    # value) appended.
+    wbuf = io.BytesIO()
+    tx_copy.serialize_no_witness(wbuf)
+    wire.write_element(wbuf, "uint32", hash_type)
+    return chainhash.double_hash_b(wbuf.getvalue())
 
 
 # *******************************************
@@ -1696,11 +1764,6 @@ class SigHashType(Enum):
     SigHashAnyOneCanPay = 0x80
 
 
-# sigHashMask defines the number of bits of the hash type which is used
-# to identify which outputs are signed.
-sigHashMask = 0x1f
-
-
 # opcodeCheckSig treats the top 2 items on the stack as a public key and a
 # signature and replaces them with a bool which indicates if the signature was
 # successfully verified.
@@ -1796,10 +1859,18 @@ def opcodeCheckSig(pop, vm):
     return
 
 
+# opcodeCheckSigVerify is a combination of opcodeCheckSig and opcodeVerify.
+# The opcodeCheckSig function is invoked followed by opcodeVerify.  See the
+# documentation for each of those opcodes for more details.
+#
+# Stack transformation: signature pubkey] -> [... bool] -> [...]
 def opcodeCheckSigVerify(pop, vm):
-    pass
+    opcodeCheckSig(pop, vm)
+    abstract_verify(pop, vm, ErrorCode.ErrCheckSigVerify)
+    return
 
 
+# TODO latter
 def opcodeCheckMultiSig(pop, vm):
     pass
 
