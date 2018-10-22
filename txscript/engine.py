@@ -18,6 +18,7 @@ MaxStackSize = 1000
 # halforder is used to tame ECDSA malleability (see BIP0062).
 halfOrder = btcec.s256().order >> 1
 
+
 # Engine is the virtual machine that executes scripts.
 class Engine:
     def __init__(self, scripts=None, script_idx=None, script_off=None, last_code_sep=None,
@@ -503,7 +504,7 @@ class Engine:
         # The signature must adhere to the minimum and maximum allowed length.
         sig_len = len(sig)
         if sig_len < minSigLen:
-            desc="malformed signature: too short: %d < %d" % (sig_len, minSigLen)
+            desc = "malformed signature: too short: %d < %d" % (sig_len, minSigLen)
             raise ScriptError(ErrorCode.ErrSigTooShort, desc=desc)
 
         if sig_len > maxSigLen:
@@ -516,12 +517,11 @@ class Engine:
             raise ScriptError(ErrorCode.ErrSigInvalidSeqID, desc=desc)
 
         # The signature must indicate the correct amount of data for all elements
-	    # related to R and S.
+        # related to R and S.
         if int(sig[dataLenOffset]) != sig_len - 2:
             desc = "malformed signature: bad length: %d != %d" % (sig[dataLenOffset], sig_len - 2)
             raise ScriptError(ErrorCode.ErrSigInvalidDataLen, desc=desc)
 
-        
         # Calculate the offsets of the elements related to S and ensure S is inside
         # the signature.
         #
@@ -533,7 +533,7 @@ class Engine:
         #
         # sLenOffset and sOffset are the byte offsets within the signature of the
         # length of S and S itself, respectively.
-        r_len = sig(rLenOffset)
+        r_len = sig[rLenOffset]
 
         sTypeOffset = rOffset + r_len
 
@@ -551,7 +551,7 @@ class Engine:
         # sLen specifies the length of the big-endian encoded number which
         # represents the S value of the signature.
         sOffset = sLenOffset + 1
-        s_len = int(sig[sOffset])
+        s_len = int(sig[sLenOffset])
         if sOffset + s_len != sig_len:
             desc = "malformed signature: invalid S length"
             raise ScriptError(ErrorCode.ErrSigInvalidSLen, desc=desc)
@@ -571,10 +571,10 @@ class Engine:
             desc = "malformed signature: R is negative"
             raise ScriptError(ErrorCode.ErrSigNegativeR, desc=desc)
 
-        # Null bytes at the start of R are not allowed, unless R would otherwise be
-	    # interpreted as a negative number.
-        if r_len > 1 and sig[rOffset]  == 0x00 and sig[rOffset+1 ] &0x80 ==0:
-            desc= "malformed signature: R value has too much padding"
+            # Null bytes at the start of R are not allowed, unless R would otherwise be
+            # interpreted as a negative number.
+        if r_len > 1 and sig[rOffset] == 0x00 and sig[rOffset + 1] & 0x80 == 0:
+            desc = "malformed signature: R value has too much padding"
             raise ScriptError(ErrorCode.ErrSigTooMuchRPadding, desc=desc)
 
         # S elements must be ASN.1 integers.
@@ -597,7 +597,7 @@ class Engine:
         if s_len > 1 and sig[sOffset] == 0x00 and sig[sOffset + 1] & 0x80 == 0:
             desc = "malformed signature: S value has too much padding"
             raise ScriptError(ErrorCode.ErrSigTooMuchSPadding, desc=desc)
-        
+
         # TOCONSIDER why
         # Verify the S value is <= half the order of the curve.  This check is done
         # because when it is higher, the complement modulo the order can be used
@@ -607,34 +607,12 @@ class Engine:
         # verifies.  This would result in changing the transaction hash and thus is
         # a source of malleability.
         if self.has_flag(ScriptFlag.ScriptVerifyLowS):
-            s_value = btcec.bytes_to_int(sig[sOffset: sOffset+ s_len])
+            s_value = btcec.bytes_to_int(sig[sOffset: sOffset + s_len])
             if s_value > halfOrder:
                 desc = "signature is not canonical due to unnecessarily high S value"
                 raise ScriptError(ErrorCode.ErrSigHighS, desc=desc)
 
         return
-
-
-        
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     # GetStack returns the contents of the primary stack as an array. where the
     # last item in the array is the top of the stack.
