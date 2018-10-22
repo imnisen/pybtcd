@@ -303,3 +303,6 @@ class OtherScriptError(Exception):
 
 class NotWitnessProgramError(OtherScriptError):
     pass
+
+class IdxTxInptsLenNotMatchError(Exception):
+    pass

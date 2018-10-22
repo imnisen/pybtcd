@@ -13,13 +13,7 @@ payToWitnessPubKeyHashDataSize = 20
 payToWitnessScriptHashDataSize = 32
 
 
-# SigHashType represents hash type bits at the end of a signature.
-class SigHashType(Enum):
-    SigHashOld = 0x0
-    SigHashAll = 0x1
-    SigHashNone = 0x2
-    SigHashSingle = 0x3
-    SigHashAnyOneCanPay = 0x80
+
 
 
 # is_small_int returns whether or not the opcode is considered a small integer,
@@ -32,11 +26,6 @@ def is_small_int(op) -> bool:
 
 
 # --------
-
-# isWitnessPubKeyHash returns true if the passed script is a
-# pay-to-witness-pubkey-hash, and false otherwise.
-def is_witness_pub_key_hash(pops) -> bool:
-    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_20
 
 
 def is_pay_to_witness_pub_key_hash(script) -> bool:
@@ -278,61 +267,10 @@ def _get_witness_sig_op_count(pk_script, witness) -> int:
     return 0
 
 
-# removeOpcode will remove any opcode matching ``opcode'' in the pops
-def remove_opcode(pops, opcode):
-    """
-
-    :param []parsedOpcode pops:
-    :param byte opcode:
-    :return:
-    """
-    ret_pops = []
-    for pop in pops:
-        if pop.opcode.value != opcode:
-            ret_pops.append(pop)
-    return ret_pops
 
 
-# removeOpcodeByData will return the script minus any opcodes that would push
-# the passed data to the stack.
-def remove_opcode_by_data(pops, data):
-    ret_pops = []
-    for pop in pops:
-        if not canonical_push(pop) or data not in pop.data:
-            ret_pops.append(pop)
-    return ret_pops
 
 
-# canonicalPush returns true if the object is either not a push instruction
-# or the push instruction contained wherein is matches the canonical form
-# or using the smallest instruction to do the job. False otherwise.
-def canonical_push(pop):
-    opcode = pop.opcode.value
-    data = pop.data
-    data_len = len(pop.data)
-
-    # opcode > OP_16 don't worry about canonical push
-    if opcode > OP_16:
-        return True
-
-    # if you have one byte to push and it's value <= 16, use OP_2 - OP_16 to push
-    # don't use OP_DATA_1 - OP_DATA_75
-    if OP_0 < opcode < OP_PUSHDATA1 and data_len == 1 and data[0] <= 16:
-        return False
-
-    # if data_len < OP_PUSHDATA1, no need to use OP_PUSHDATA1, use OP_DATA1-OP_DATA_75
-    if opcode == OP_PUSHDATA1 and data_len < OP_PUSHDATA1:
-        return False
-
-    # if push data len <= 0xffff(1 bytes max), no need to use OP_PUSHDATA2
-    if opcode == OP_PUSHDATA2 and data_len <= 0xff:
-        return False
-
-    # if push data len <= 0xffff(2 bytes max), no need to use OP_PUSHDATA4
-    if opcode == OP_PUSHDATA4 and data_len <= 0xffff:
-        return False
-
-    return True
 
 
 def parse_script_template(script, opcodes):
@@ -406,11 +344,7 @@ def parse_script(script):
     return parse_script_template(script, opcode_array)
 
 
-def unparse_script(pops):
-    script = bytearray()
-    for pop in pops:
-        script.extend(pop.bytes())
-    return script
+
 
 
 

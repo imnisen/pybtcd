@@ -4,6 +4,7 @@ import chainhash
 from .utils import *
 from .script_flag import *
 from .stack import *
+from .hash_cache import *
 
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
@@ -540,6 +541,256 @@ class ParsedOpcode:
             raise ScriptError(c=ErrorCode.ErrInternal, desc=desc)
 
         return script
+
+
+# *******************************************
+#  From script
+# *******************************************
+
+# sigHashMask defines the number of bits of the hash type which is used
+# to identify which outputs are signed.
+sigHashMask = 0x1f
+
+
+#  removeOpcodeByData will return the script minus any opcodes that would push
+# the passed data to the stack.
+def remove_opcode_by_data(pops, data):
+    ret_pops = []
+    for pop in pops:
+        if not canonical_push(pop) or data not in pop.data:
+            ret_pops.append(pop)
+    return ret_pops
+
+# removeOpcode will remove any opcode matching ``opcode'' in the pops
+def remove_opcode(pops, opcode):
+    """
+
+    :param []parsedOpcode pops:
+    :param byte opcode:
+    :return:
+    """
+    ret_pops = []
+    for pop in pops:
+        if pop.opcode.value != opcode:
+            ret_pops.append(pop)
+    return ret_pops
+
+# canonicalPush returns true if the object is either not a push instruction
+# or the push instruction contained wherein is matches the canonical form
+# or using the smallest instruction to do the job. False otherwise.
+def canonical_push(pop):
+    opcode = pop.opcode.value
+    data = pop.data
+    data_len = len(pop.data)
+
+    # opcode > OP_16 don't worry about canonical push
+    if opcode > OP_16:
+        return True
+
+    # if you have one byte to push and it's value <= 16, use OP_2 - OP_16 to push
+    # don't use OP_DATA_1 - OP_DATA_75
+    if OP_0 < opcode < OP_PUSHDATA1 and data_len == 1 and data[0] <= 16:
+        return False
+
+    # if data_len < OP_PUSHDATA1, no need to use OP_PUSHDATA1, use OP_DATA1-OP_DATA_75
+    if opcode == OP_PUSHDATA1 and data_len < OP_PUSHDATA1:
+        return False
+
+    # if push data len <= 0xffff(1 bytes max), no need to use OP_PUSHDATA2
+    if opcode == OP_PUSHDATA2 and data_len <= 0xff:
+        return False
+
+    # if push data len <= 0xffff(2 bytes max), no need to use OP_PUSHDATA4
+    if opcode == OP_PUSHDATA4 and data_len <= 0xffff:
+        return False
+
+    return True
+
+
+# isWitnessPubKeyHash returns true if the passed script is a
+# pay-to-witness-pubkey-hash, and false otherwise.
+def is_witness_pub_key_hash(pops) -> bool:
+    return len(pops) == 2 and pops[0].opcode.value == OP_0 and pops[1].opcode.value == OP_DATA_20
+
+
+def unparse_script(pops):
+    script = bytearray()
+    for pop in pops:
+        script.extend(pop.bytes())
+    return script
+
+
+# calcWitnessSignatureHash computes the sighash digest of a transaction's
+# segwit input using the new, optimized digest calculation algorithm defined
+# in BIP0143: https:#github.com/bitcoin/bips/blob/master/bip-0143.mediawiki.
+# This function makes use of pre-calculated sighash fragments stored within
+# the passed HashCache to eliminate duplicate hashing computations when
+# calculating the final digest, reducing the complexity from O(N^2) to O(N).
+# Additionally, signatures now cover the input value of the referenced unspent
+# output. This allows offline, or hardware wallets to compute the exact amount
+# being spent, in addition to the final transaction fee. In the case the
+# wallet if fed an invalid input amount, the real sighash will differ causing
+# the produced signature to be invalid.
+def calc_witness_signature_hash(sub_script, sig_hashes, hash_type, tx, idx, amt):
+    # TODO check use of  hash_type type
+    """
+
+    :param []parsedOpcode sub_script:
+    :param *TxSigHashes sig_hashes:
+    :param SigHashType hash_type:
+    :param *wire.MsgTx tx:
+    :param int idx:
+    :param int64 amt:
+    :return:
+    """
+
+    # As a sanity check, ensure the passed input index for the transaction
+    # is valid.
+    if idx > len(tx.tx_ins) - 1:
+        msg = "idx %d but %d txins" % (idx, len(tx.tx_ins))
+        raise IdxTxInptsLenNotMatchError(msg)
+
+    # We'll utilize this buffer throughout to incrementally calculate
+    # the signature hash for this transaction.
+    sig_hash = io.BytesIO()
+
+    # First write out, then encode the transaction's version number.
+    wire.write_element(sig_hash, "uint32", tx.version)
+
+    # Next write out the possibly pre-calculated hashes for the sequence
+    # numbers of all inputs, and the hashes of the previous outs for all
+    # outputs.
+
+    # If anyone can pay isn't active, then we can use the cached
+    # hashPrevOuts, otherwise we just write zeroes for the prev outs.
+    if hash_type & SigHashType.SigHashAnyOneCanPay == 0:
+        wire.write_element(sig_hash, "chainhash.Hash", sig_hashes.hash_prev_outs)
+    else:
+        wire.write_element(sig_hash, "chainhash.Hash", chainhash.Hash())
+
+    # If the sighash isn't anyone can pay, single, or none, the use the
+    # cached hash sequences, otherwise write all zeroes for the
+    # hashSequence.
+    if hash_type & SigHashType.SigHashAnyOneCanPay == 0 and \
+                            hash_type & sigHashMask != SigHashType.SigHashSingle and \
+                            hash_type & sigHashMask != SigHashType.SigHashNone:
+        wire.write_element(sig_hash, "chainhash.Hash", sig_hashes.hash_sequence)
+    else:
+        wire.write_element(sig_hash, "chainhash.Hash", chainhash.Hash())
+
+    tx_in = tx.tx_ins[idx]
+
+    # Next, write the outpoint being spent.
+    wire.write_element(sig_hash, "chainhash.Hash", tx_in.previsous_out_point.hash)
+    wire.write_element(sig_hash, "uint32", tx_in.previsous_out_point.index)
+
+    if is_witness_pub_key_hash(sub_script):
+        # The script code for a p2wkh is a length prefix varint for
+        # the next 25 bytes, followed by a re-creation of the original
+        # p2pkh pk script.
+        sig_hashes.write(bytes([0x19]))
+        sig_hashes.write(bytes([OP_DUP]))
+        sig_hashes.write(bytes([OP_HASH160]))
+        sig_hashes.write(bytes([OP_DATA_20]))
+        sig_hashes.write(sub_script[1].data)
+        sig_hashes.write(bytes([OP_EQUALVERIFY]))
+        sig_hashes.write(bytes([OP_CHECKSIG]))
+    else:
+        # For p2wsh outputs, and future outputs, the script code is
+        # the original script, with all code separators removed,
+        # serialized with a var int length prefix
+        try:
+            raw_script = unparse_script(sub_script)
+        except ScriptError:
+            raw_script = bytes()  # TOCHECK origin here use the script parsed not error before, here I use empty script
+        wire.write_var_bytes(sig_hash, 0, raw_script)
+
+    # Next, add the input amount, and sequence number of the input being
+    # signed.
+    wire.write_element(sig_hash, "uint64", amt)
+    wire.write_element(sig_hash, "uint32", tx_in.sequence)
+
+    # If the current signature mode isn't single, or none, then we can
+    # re-use the pre-generated hashoutputs sighash fragment. Otherwise,
+    # we'll serialize and add only the target output index to the signature
+    # pre-image.
+    if hash_type & SigHashType.SigHashSingle != SigHashType.SigHashSingle and \
+                            hash_type & SigHashType.SigHashNone != SigHashType.SigHashNone:
+        wire.write_element(sig_hash, "chainhash.Hash", sig_hashes.hash_outputs)
+    elif hash_type & sigHashMask == SigHashType.SigHashSingle and \
+                    idx < len(tx.tx_outs):
+        b = io.BytesIO()
+        wire.write_tx_out(b, 0, 0, tx.tx_outs[idx])
+        sig_hash.write(chainhash.double_hash_b(b.getvalue()))
+    else:
+        wire.write_element(sig_hash, "chainhash.Hash", chainhash.Hash())
+
+    # Finally, write out the transaction's locktime, and the sig hash
+    # type.
+    wire.write_element(sig_hash, "uint32", tx.lock_time)
+    wire.write_element(sig_hash, "uint32", hash_type)
+
+    return chainhash.double_hash_b(sig_hash.getvalue())
+
+
+# calcSignatureHash will, given a script and hash type for the current script
+# engine instance, calculate the signature hash to be used for signing and
+# verification.
+def calc_signatire_hash(script, hash_type, tx,idx):
+    """
+
+    :param []parsedOpcode script:
+    :param SigHashType hash_type:
+    :param *wire.MsgTx tx:
+    :param int idx:
+    :return:
+    """
+    # The SigHashSingle signature type signs only the corresponding input
+    # and output (the output with the same index number as the input).
+    #
+    # Since transactions can have more inputs than outputs, this means it
+    # is improper to use SigHashSingle on input indices that don't have a
+    # corresponding output.
+    #
+    # A bug in the original Satoshi client implementation means specifying
+    # an index that is out of range results in a signature hash of 1 (as a
+    # uint256 little endian).  The original intent appeared to be to
+    # indicate failure, but unfortunately, it was never checked and thus is
+    # treated as the actual signature hash.  This buggy behavior is now
+    # part of the consensus and a hard fork would be required to fix it.
+    #
+    # Due to this, care must be taken by software that creates transactions
+    # which make use of SigHashSingle because it can lead to an extremely
+    # dangerous situation where the invalid inputs will end up signing a
+    # hash of 1.  This in turn presents an opportunity for attackers to
+    # cleverly construct transactions which can steal those coins provided
+    # they can reuse signatures.
+    if hash_type & sigHashMask == SigHashType.SigHashSingle and \
+                    idx < len(tx.tx_outs):
+        hash = chainhash.Hash(bytes([0x01]) + bytes(chainhash.HashSize -1))
+        return hash
+
+    # Remove all instances of OP_CODESEPARATOR from the script.
+    script = remove_opcode(script, OP_CODESEPARATOR)
+
+    # Make a shallow copy of the transaction, zeroing out the script for
+	# all inputs that are not currently being processed.
+    tx_copy = shadow_copy(tx)
+    for i in tx_copy.tx_ins:
+        if i == idx:
+            # UnparseScript cannot fail here because removeOpcode
+			# above only returns a valid script.
+            sig_script = unparse_script(script)
+            #TODO
+
+    
+
+
+
+# *******************************************
+#  End from
+# *******************************************
+
 
 
 # LockTimeThreshold is the number below which a lock time is
@@ -1208,6 +1459,7 @@ def opcodeBoolAnd(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeBoolOr treats the top two items on the data stack as integers.  When
 # either of them are not zero, they are replaced with a 1, otherwise a 0.
 #
@@ -1224,6 +1476,7 @@ def opcodeBoolOr(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeNumEqual treats the top two items on the data stack as integers.  When
 # they are equal, they are replaced with a 1, otherwise a 0.
 #
@@ -1238,6 +1491,7 @@ def opcodeNumEqual(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeNumEqualVerify is a combination of opcodeNumEqual and opcodeVerify.
 #
 # Specifically, treats the top two items on the data stack as integers.  When
@@ -1250,6 +1504,7 @@ def opcodeNumEqualVerify(pop, vm):
     opcodeNumEqual(pop, vm)
     abstract_verify(pop, vm, ErrorCode.ErrNumEqualVerify)
     return
+
 
 # opcodeNumNotEqual treats the top two items on the data stack as integers.
 # When they are NOT equal, they are replaced with a 1, otherwise a 0.
@@ -1265,6 +1520,7 @@ def opcodeNumNotEqual(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeLessThan treats the top two items on the data stack as integers.  When
 # the second-to-top item is less than the top item, they are replaced with a 1,
 # otherwise a 0.
@@ -1279,6 +1535,7 @@ def opcodeLessThan(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeGreaterThan treats the top two items on the data stack as integers.
 # When the second-to-top item is greater than the top item, they are replaced
 # with a 1, otherwise a 0.
@@ -1292,6 +1549,7 @@ def opcodeGreaterThan(pop, vm):
     else:
         vm.dstack.push_int(ScriptNum(0))
     return
+
 
 # opcodeLessThanOrEqual treats the top two items on the data stack as integers.
 # When the second-to-top item is less than or equal to the top item, they are
@@ -1322,6 +1580,7 @@ def opcodeGreaterThanOrEqual(pop, vm):
         vm.dstack.push_int(ScriptNum(0))
     return
 
+
 # opcodeMin treats the top two items on the data stack as integers and replaces
 # them with the minimum of the two.
 #
@@ -1334,6 +1593,7 @@ def opcodeMin(pop, vm):
     else:
         vm.dstack.push_int(ScriptNum(a))
     return
+
 
 # opcodeMax treats the top two items on the data stack as integers and replaces
 # them with the maximum of the two.
@@ -1377,6 +1637,7 @@ def opcodeRipemd160(pop, vm):
     vm.dstack.push_byte_array(btcec.ripemd160(buf))
     return
 
+
 # opcodeSha1 treats the top item of the data stack as raw bytes and replaces it
 # with sha1(data).
 #
@@ -1385,6 +1646,7 @@ def opcodeSha1(pop, vm):
     buf = vm.dstack.pop_byte_array()
     vm.dstack.push_byte_array(btcec.sha1(buf))
     return
+
 
 # opcodeSha256 treats the top item of the data stack as raw bytes and replaces
 # it with sha256(data).
@@ -1395,6 +1657,7 @@ def opcodeSha256(pop, vm):
     vm.dstack.push_byte_array(btcec.sha256(buf))
     return
 
+
 # opcodeHash160 treats the top item of the data stack as raw bytes and replaces
 # it with ripemd160(sha256(data)).
 #
@@ -1403,6 +1666,7 @@ def opcodeHash160(pop, vm):
     buf = vm.dstack.pop_byte_array()
     vm.dstack.push_byte_array(btcec.hash160(buf))
     return
+
 
 # opcodeHash256 treats the top item of the data stack as raw bytes and replaces
 # it with sha256(sha256(data)).
@@ -1423,8 +1687,113 @@ def opcodeCodeSeparator(pop, vm):
     return
 
 
+# SigHashType represents hash type bits at the end of a signature.
+class SigHashType(Enum):
+    SigHashOld = 0x0
+    SigHashAll = 0x1
+    SigHashNone = 0x2
+    SigHashSingle = 0x3
+    SigHashAnyOneCanPay = 0x80
+
+
+# sigHashMask defines the number of bits of the hash type which is used
+# to identify which outputs are signed.
+sigHashMask = 0x1f
+
+
+# opcodeCheckSig treats the top 2 items on the stack as a public key and a
+# signature and replaces them with a bool which indicates if the signature was
+# successfully verified.
+#
+# The process of verifying a signature requires calculating a signature hash in
+# the same way the transaction signer did.  It involves hashing portions of the
+# transaction based on the hash type byte (which is the final byte of the
+# signature) and the portion of the script starting from the most recent
+# OP_CODESEPARATOR (or the beginning of the script if there are none) to the
+# end of the script (with any other OP_CODESEPARATORs removed).  Once this
+# "script hash" is calculated, the signature is checked using standard
+# cryptographic methods against the provided public key.
+#
+# Stack transformation: [... signature pubkey] -> [... bool]
 def opcodeCheckSig(pop, vm):
-    pass
+    pk_bytes = vm.dstak.pop_byte_array()
+    full_sig_bytes = vm.dstak.pop_byte_array()
+
+    # The signature actually needs needs to be longer than this, but at
+    # least 1 byte is needed for the hash type below.  The full length is
+    # checked depending on the script flags and upon parsing the signature.
+    if len(full_sig_bytes) < 1:
+        vm.dstack.push_bool(False)
+        return
+
+    # Trim off hashtype from the signature string and check if the
+    # signature and pubkey conform to the strict encoding requirements
+    # depending on the flags.
+    #
+    # NOTE: When the strict encoding flags are set, any errors in the
+    # signature or public encoding here result in an immediate script error
+    # (and thus no result bool is pushed to the data stack).  This differs
+    # from the logic below where any errors in parsing the signature is
+    # treated as the signature failure resulting in false being pushed to
+    # the data stack.  This is required because the more general script
+    # validation consensus rules do not have the new strict encoding
+    # requirements enabled by the flags.
+    hash_type = SigHashType(full_sig_bytes[-1])
+    sig_bytes = full_sig_bytes[:-1]
+
+    vm.check_hash_type_encoding(hash_type)
+    vm.check_signature_encoding(sig_bytes)
+    vm.check_pub_key_encoding(pk_bytes)
+
+    # Get script starting from the most recent OP_CODESEPARATOR.
+    sub_script = vm.sub_script()
+
+    # Generate the signature hash based on the signature hash type.
+    if vm.is_witness_version_active(version=0):
+        if vm.hash_cache:
+            sig_hashes = vm.hash_cache
+        else:
+            sig_hashes = TxSigHashes.from_msg_tx(vm.tx)
+
+        hash = calc_witness_signature_hash(sub_script, sig_hashes, hash_type,
+                                           vm.tx, vm.tx_idx, vm.input_amout)
+    else:
+        # Remove the signature since there is no way for a signature
+        # to sign itself.
+        sub_script = remove_opcode_by_data(sub_script, full_sig_bytes)
+        hash = calc_signatire_hash(sub_script, hash_type, vm.tx, vm.tx_idx)
+
+    try:
+        pub_key = btcec.parse_pub_key(pk_bytes, btcec.s256())
+    except Exception:
+        vm.dstak.push_bool(False)
+        return
+
+    try:
+        if vm.has_flag(ScriptFlag.ScriptVerifyStrictEncoding) or vm.has_flag(ScriptFlag.ScriptVerifyDERSignatures):
+            signature = btcec.parse_der_signature(sig_bytes, btcec.s256())
+        else:
+            signature = btcec.parse_signature(sig_bytes, btcec.s256())
+    except Exception:
+        vm.dstak.push_bool(False)
+        return
+
+    if vm.sig_cache:
+        sig_hash = chainhash.Hash(hash)
+        valid = vm.sig_cache.exists(sig_hash, signature, pub_key)
+        if not valid and signature.verify(hash, pub_key):
+            vm.sig_cache.add(sig_hash, signature, pub_key)
+            valid = True
+    else:
+        valid = signature.verify(hash, pub_key)
+
+    if not valid and vm.has_flag(ScriptFlag.ScriptVerifyNullFail) and len(sig_bytes) > 0:
+        desc = "signature not empty on failed checksig"
+        raise ScriptError(ErrorCode.ErrNullFail, desc=desc)
+
+    vm.dstak.push_bool(valid)
+
+    return
 
 
 def opcodeCheckSigVerify(pop, vm):

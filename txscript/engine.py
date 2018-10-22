@@ -2,6 +2,7 @@ import copy
 import logging
 import hashlib
 import wire
+import btcec
 from .stack import *
 from .sig_cache import *
 from .hash_cache import *
@@ -14,6 +15,8 @@ _logger = logging.getLogger(__name__)
 # during execution.
 MaxStackSize = 1000
 
+# halforder is used to tame ECDSA malleability (see BIP0062).
+halfOrder = btcec.s256().order >> 1
 
 # Engine is the virtual machine that executes scripts.
 class Engine:
@@ -403,13 +406,235 @@ class Engine:
     # checkHashTypeEncoding returns whether or not the passed hashtype adheres to
     # the strict encoding requirements if enabled.
     def check_hash_type_encoding(self, hash_type):
-        pass
+        if not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+            return
 
+        sig_hash_type = hash_type & (~SigHashType.SigHashAnyOneCanPay.value)
+        if sig_hash_type < SigHashType.SigHashAll.value or sig_hash_type > ~SigHashType.SigHashSingle.value:
+            desc = "invalid hash type %s" % hash_type
+            raise ScriptError(ErrorCode.ErrInvalidSigHashType, desc=desc)
+        return
+
+    # checkPubKeyEncoding returns whether or not the passed public key adheres to
+    # the strict encoding requirements if enabled.
     def check_pub_key_encoding(self, pub_key):
-        pass
 
+        if self.has_flag(ScriptFlag.ScriptVerifyWitnessPubKeyType) and self.is_witness_version_active(0) and \
+                not btcec.is_compress_pub_key(pub_key):
+            desc = "only uncompressed keys are accepted post-segwit"
+            raise ScriptError(ErrorCode.ErrWitnessPubKeyType, desc=desc)
+
+        if not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+            return
+
+        if len(pub_key) == 33 and pub_key[0] in (0x02, 0x03):
+            return
+
+        if len(pub_key) == 65 and pub_key[0] == 0x04:
+            return
+
+        desc = "unsupported public key type"
+        raise ScriptError(ErrorCode.ErrPubKeyType, desc=desc)
+
+    # checkSignatureEncoding returns whether or not the passed signature adheres to
+    # the strict encoding requirements if enabled.
     def check_signature_encoding(self, sig):
-        pass
+        if not self.has_flag(ScriptFlag.ScriptVerifyDERSignatures) and \
+                not self.has_flag(ScriptFlag.ScriptVerifyLowS) and \
+                not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+            return
+
+        # The format of a DER encoded signature is as follows:
+        #
+        # 0x30 <total length> 0x02 <length of R> <R> 0x02 <length of S> <S>
+        #   - 0x30 is the ASN.1 identifier for a sequence
+        #   - Total length is 1 byte and specifies length of all remaining data
+        #   - 0x02 is the ASN.1 identifier that specifies an integer follows
+        #   - Length of R is 1 byte and specifies how many bytes R occupies
+        #   - R is the arbitrary length big-endian encoded number which
+        #     represents the R value of the signature.  DER encoding dictates
+        #     that the value must be encoded using the minimum possible number
+        #     of bytes.  This implies the first byte can only be null if the
+        #     highest bit of the next byte is set in order to prevent it from
+        #     being interpreted as a negative number.
+        #   - 0x02 is once again the ASN.1 integer identifier
+        #   - Length of S is 1 byte and specifies how many bytes S occupies
+        #   - S is the arbitrary length big-endian encoded number which
+        #     represents the S value of the signature.  The encoding rules are
+        #     identical as those for R.
+
+        # Constant for  check_signature_encoding method
+        asn1SequenceID = 0x30
+        asn1IntegerID = 0x02
+
+        # minSigLen is the minimum length of a DER encoded signature and is
+        # when both R and S are 1 byte each.
+        #
+        # 0x30 + <1-byte> + 0x02 + 0x01 + <byte> + 0x2 + 0x01 + <byte>
+        minSigLen = 8
+
+        # maxSigLen is the maximum length of a DER encoded signature and is
+        # when both R and S are 33 bytes each.  It is 33 bytes because a
+        # 256-bit integer requires 32 bytes and an additional leading null byte
+        # might required if the high bit is set in the value.
+        #
+        # 0x30 + <1-byte> + 0x02 + 0x21 + <33 bytes> + 0x2 + 0x21 + <33 bytes>
+        maxSigLen = 72
+
+        # sequenceOffset is the byte offset within the signature of the
+        # expected ASN.1 sequence identifier.
+        sequenceOffset = 0
+
+        # dataLenOffset is the byte offset within the signature of the expected
+        # total length of all remaining data in the signature.
+        dataLenOffset = 1
+
+        # rTypeOffset is the byte offset within the signature of the ASN.1
+        # identifier for R and is expected to indicate an ASN.1 integer.
+        rTypeOffset = 2
+
+        # rLenOffset is the byte offset within the signature of the length of
+        # R.
+        rLenOffset = 3
+
+        # rOffset is the byte offset within the signature of R.
+        rOffset = 4
+
+        # The signature must adhere to the minimum and maximum allowed length.
+        sig_len = len(sig)
+        if sig_len < minSigLen:
+            desc="malformed signature: too short: %d < %d" % (sig_len, minSigLen)
+            raise ScriptError(ErrorCode.ErrSigTooShort, desc=desc)
+
+        if sig_len > maxSigLen:
+            desc = "malformed signature: too long: %d < %d" % (sig_len, maxSigLen)
+            raise ScriptError(ErrorCode.ErrSigTooShort, desc=desc)
+
+        # The signature must start with the ASN.1 sequence identifier.
+        if sig[sequenceOffset] != asn1SequenceID:
+            desc = "malformed signature: format has wrong type: %#x" % sig[sequenceOffset]
+            raise ScriptError(ErrorCode.ErrSigInvalidSeqID, desc=desc)
+
+        # The signature must indicate the correct amount of data for all elements
+	    # related to R and S.
+        if int(sig[dataLenOffset]) != sig_len - 2:
+            desc = "malformed signature: bad length: %d != %d" % (sig[dataLenOffset], sig_len - 2)
+            raise ScriptError(ErrorCode.ErrSigInvalidDataLen, desc=desc)
+
+        
+        # Calculate the offsets of the elements related to S and ensure S is inside
+        # the signature.
+        #
+        # rLen specifies the length of the big-endian encoded number which
+        # represents the R value of the signature.
+        #
+        # sTypeOffset is the offset of the ASN.1 identifier for S and, like its R
+        # counterpart, is expected to indicate an ASN.1 integer.
+        #
+        # sLenOffset and sOffset are the byte offsets within the signature of the
+        # length of S and S itself, respectively.
+        r_len = sig(rLenOffset)
+
+        sTypeOffset = rOffset + r_len
+
+        if sTypeOffset > sig_len:
+            desc = "malformed signature: S type indicator missing"
+            raise ScriptError(ErrorCode.ErrSigMissingSTypeID, desc=desc)
+
+        sLenOffset = sTypeOffset + 1
+        if sLenOffset > sig_len:
+            desc = "malformed signature: S length missing"
+            raise ScriptError(ErrorCode.ErrSigMissingSLen, desc=desc)
+
+        # The lengths of R and S must match the overall length of the signature.
+        #
+        # sLen specifies the length of the big-endian encoded number which
+        # represents the S value of the signature.
+        sOffset = sLenOffset + 1
+        s_len = int(sig[sOffset])
+        if sOffset + s_len != sig_len:
+            desc = "malformed signature: invalid S length"
+            raise ScriptError(ErrorCode.ErrSigInvalidSLen, desc=desc)
+
+        # R elements must be ASN.1 integers.
+        if sig[rTypeOffset] != asn1IntegerID:
+            desc = "malformed signature: R integer marker: %#x != %#x" % (sig[rTypeOffset], asn1IntegerID)
+            raise ScriptError(ErrorCode.ErrSigInvalidRIntID, desc=desc)
+
+        # R elements must be ASN.1 integers.
+        if r_len == 0:
+            desc = "malformed signature: R length is zero"
+            raise ScriptError(ErrorCode.ErrSigZeroRLen, desc=desc)
+
+        # R must not be negative.
+        if sig[rOffset] & 0x80 != 0:
+            desc = "malformed signature: R is negative"
+            raise ScriptError(ErrorCode.ErrSigNegativeR, desc=desc)
+
+        # Null bytes at the start of R are not allowed, unless R would otherwise be
+	    # interpreted as a negative number.
+        if r_len > 1 and sig[rOffset]  == 0x00 and sig[rOffset+1 ] &0x80 ==0:
+            desc= "malformed signature: R value has too much padding"
+            raise ScriptError(ErrorCode.ErrSigTooMuchRPadding, desc=desc)
+
+        # S elements must be ASN.1 integers.
+        if sig[sTypeOffset] != asn1IntegerID:
+            desc = "malformed signature: S integer marker: %#x != %#x" % (sig[sTypeOffset], asn1IntegerID)
+            raise ScriptError(ErrorCode.ErrSigInvalidSIntID, desc=desc)
+
+        # s elements must be ASN.1 integers.
+        if s_len == 0:
+            desc = "malformed signature: S length is zero"
+            raise ScriptError(ErrorCode.ErrSigZeroSLen, desc=desc)
+
+        # S must not be negative.
+        if sig[sOffset] & 0x80 != 0:
+            desc = "malformed signature: S is negative"
+            raise ScriptError(ErrorCode.ErrSigNegativeS, desc=desc)
+
+            # Null bytes at the start of S are not allowed, unless S would otherwise be
+            # interpreted as a negative number.
+        if s_len > 1 and sig[sOffset] == 0x00 and sig[sOffset + 1] & 0x80 == 0:
+            desc = "malformed signature: S value has too much padding"
+            raise ScriptError(ErrorCode.ErrSigTooMuchSPadding, desc=desc)
+        
+        # TOCONSIDER why
+        # Verify the S value is <= half the order of the curve.  This check is done
+        # because when it is higher, the complement modulo the order can be used
+        # instead which is a shorter encoding by 1 byte.  Further, without
+        # enforcing this, it is possible to replace a signature in a valid
+        # transaction with the complement while still being a valid signature that
+        # verifies.  This would result in changing the transaction hash and thus is
+        # a source of malleability.
+        if self.has_flag(ScriptFlag.ScriptVerifyLowS):
+            s_value = btcec.bytes_to_int(sig[sOffset: sOffset+ s_len])
+            if s_value > halfOrder:
+                desc = "signature is not canonical due to unnecessarily high S value"
+                raise ScriptError(ErrorCode.ErrSigHighS, desc=desc)
+
+        return
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # GetStack returns the contents of the primary stack as an array. where the
     # last item in the array is the top of the stack.

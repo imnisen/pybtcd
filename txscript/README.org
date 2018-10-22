@@ -15,3 +15,5 @@ Fourth: script_builder
 Fifth: standard
 
 Sixth: engine
+
+opcode_funcs

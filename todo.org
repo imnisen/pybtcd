@@ -17,7 +17,7 @@
 * In unitest, use self.assert raise, checkout why not work before
 
 * Refacor the import things
-* txscript/standard txscript/script very messy
+* txscript/standard txscript/script very messy, Change the structure of whole txscript
 * Change the mix ecdsa cryptools thing in btcec to ecdsa methods
 * Change the ScriptNum to subclass int? and other same class can also do so.
 * Finish test case for txscript

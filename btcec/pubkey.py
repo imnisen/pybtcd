@@ -14,6 +14,15 @@ PubKeyBytesLenUncompressed = 65
 PubKeyBytesLenHybrid = 65
 
 
+# IsCompressedPubKey returns true the the passed serialized public key has
+# been encoded in compressed format, and false otherwise.
+def is_compress_pub_key(pub_key: bytes) -> bool:
+    # The public key is only compressed if it is the correct length and
+    # the format (first byte) is one of the compressed pubkey values.
+    return len(pub_key) == PubKeyBytesLenCompressed \
+           and (pub_key[0] & (~0x01)) == PubkeyCompressed
+
+
 class PublicKey(VerifyingKey):
     def __init__(self, _error__please_use_generate=None):
         super(PublicKey, self).__init__(_error__please_use_generate=_error__please_use_generate)
