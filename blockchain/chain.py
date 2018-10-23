@@ -1,3 +1,61 @@
+import chainhash
+import chaincfg
+import wire
+import btcutil
+import database
+import txscript
+
+
+# orphanBlock represents a block that we don't yet have the parent for.  It
+# is a normal block plus an expiration time to prevent caching the orphan
+# forever.
+class OrphanBlock:
+    def __init__(self, block, expiration):
+        self.block = block
+        self.expiration = expiration
+
+
+# BlockLocator is used to help locate a specific block.  The algorithm for
+# building the block locator is to add the hashes in reverse order until
+# the genesis block is reached.  In order to keep the list of locator hashes
+# to a reasonable number of entries, first the most recent previous 12 block
+# hashes are added, then the step is doubled each loop iteration to
+# exponentially decrease the number of hashes as a function of the distance
+# from the block being located.
+#
+# For example, assume a block chain with a side chain as depicted below:
+# 	genesis -> 1 -> 2 -> ... -> 15 -> 16  -> 17  -> 18
+# 	                              \-> 16a -> 17a
+#
+# The block locator for block 17a would be the hashes of blocks:
+# [17a 16a 15 14 13 12 11 10 9 8 7 6 4 genesis]
+class BlockLocator(list):
+    pass
+
+
+class BestState:
+    def __init__(self, hash, height, bits, block_size, block_weight, num_txns, total_txns, media_time):
+        """
+
+        :param chainhash.Hash hash:
+        :param int32 height:
+        :param uint32 bits:
+        :param uint64 block_size:
+        :param uint64 block_weight:
+        :param uint64 num_txns:
+        :param uint64 total_txns:
+        :param time.Time media_time:
+        """
+        self.hash = hash  # The hash of the block.
+        self.height = height  # The height of the block.
+        self.bits = bits  # The difficulty bits of the block.
+        self.block_size = block_size  # The size of the block.
+        self.block_weight = block_weight  # The weight of the block.
+        self.num_txns = num_txns  # The number of txns in the block.
+        self.total_txns = total_txns  # The total number of txns in the chain.
+        self.media_time = media_time  # Median time as per CalcPastMedianTime.
+
+
 # SequenceLock represents the converted relative lock-time in seconds, and
 # absolute block-height for a transaction input's relative lock-times.
 # According to SequenceLock, after the referenced input has been confirmed
@@ -13,6 +71,111 @@ class SequenceLock:
         """
         self.seconds = seconds
         self.block_height = block_height
+
+
+# This is a interface
+# IndexManager provides a generic interface that the is called when blocks are
+# connected and disconnected to and from the tip of the main chain for the
+# purpose of supporting optional indexes.
+class IndexManager:
+    # TODO
+    # Init is invoked during chain initialize in order to allow the index
+    # manager to initialize itself and any indexes it is managing.  The
+    # channel parameter specifies a channel the caller can close to signal
+    # that the process should be interrupted.  It can be nil if that
+    # behavior is not desired.
+    def __init__(self):
+        pass
+
+    # ConnectBlock is invoked when a new block has been connected to the
+    # main chain. The set of output spent within a block is also passed in
+    # so indexers can access the previous output scripts input spent if
+    # required.
+    def connect_block(self):
+        pass
+
+    # DisconnectBlock is invoked when a block has been disconnected from
+    # the main chain. The set of outputs scripts that were spent within
+    # this block is also returned so indexers can clean up the prior index
+    # state for this block.
+    def disconnect_block(self):
+        pass
+
+
+# Config is a descriptor which specifies the blockchain instance configuration.
+class Config:
+    def __init__(self, db, interrupt, chain_params, checkpoints, time_source, sig_cache, index_manager, hash_cache):
+        """
+
+        :param database.DB db:
+        :param <-chan struct{} interrupt:
+        :param *chaincfg.Params chain_params:
+        :param []chaincfg.Checkpoint checkpoints:
+        :param MedianTimeSource time_source:
+        :param *txscript.SigCache sig_cache:
+        :param IndexManager index_manager:
+        :param *txscript.HashCache hash_cache:
+        """
+        # DB defines the database which houses the blocks and will be used to
+        # store all metadata created by this package such as the utxo set.
+        #
+        # This field is required.
+        self.db = db
+
+        # Interrupt specifies a channel the caller can close to signal that
+        # long running operations, such as catching up indexes or performing
+        # database migrations, should be interrupted.
+        #
+        # This field can be nil if the caller does not desire the behavior.
+        self.interrupt = interrupt
+
+        # ChainParams identifies which chain parameters the chain is associated
+        # with.
+        #
+        # This field is required.
+        self.chain_params = chain_params
+
+        # Checkpoints hold caller-defined checkpoints that should be added to
+        # the default checkpoints in ChainParams.  Checkpoints must be sorted
+        # by height.
+        #
+        # This field can be nil if the caller does not wish to specify any
+        # checkpoints.
+        self.checkpoints = checkpoints
+
+        # TimeSource defines the median time source to use for things such as
+        # block processing and determining whether or not the chain is current.
+        #
+        # The caller is expected to keep a reference to the time source as well
+        # and add time samples from other peers on the network so the local
+        # time is adjusted to be in agreement with other peers.
+        self.time_source = time_source
+
+        # SigCache defines a signature cache to use when when validating
+        # signatures.  This is typically most useful when individual
+        # transactions are already being validated prior to their inclusion in
+        # a block such as what is usually done via a transaction memory pool.
+        #
+        # This field can be nil if the caller is not interested in using a
+        # signature cache.
+        self.sig_cache = sig_cache
+
+        # IndexManager defines an index manager to use when initializing the
+        # chain and connecting and disconnecting blocks.
+        #
+        # This field can be nil if the caller does not wish to make use of an
+        # index manager.
+        self.index_manager = index_manager
+
+        # HashCache defines a transaction hash mid-state cache to use when
+        # validating transactions. This cache has the potential to greatly
+        # speed up transaction validation as re-using the pre-calculated
+        # mid-state eliminates the O(N^2) validation complexity due to the
+        # SigHashAll flag.
+        #
+        # This field can be nil if the caller is not interested in using a
+        # signature cache.
+        self.hash_cache = hash_cache
 
 
 # BlockChain provides functions for working with the bitcoin block chain.
@@ -420,7 +583,7 @@ class BlockChain:
     def interval_block_hashes(self, end_hash, interval):
         pass
 
-    # TODO
+        # TODO
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
