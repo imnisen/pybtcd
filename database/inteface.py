@@ -1,61 +1,3 @@
-# Cursor represents a cursor over key/value pairs and nested buckets of a
-# bucket.
-#
-# Note that open cursors are not tracked on bucket changes and any
-# modifications to the bucket, with the exception of Cursor.Delete, invalidates
-# the cursor.  After invalidation, the cursor must be repositioned, or the keys
-# and values returned may be unpredictable.
-class Cursor:
-    # Bucket returns the bucket the cursor was created for.
-    def bucket(self) -> Bucket:
-        pass
-
-    # Delete removes the current key/value pair the cursor is at without
-    # invalidating the cursor.
-    #
-    # The interface contract guarantees at least the following errors will
-    # be returned (other implementation-specific errors are possible):
-    #   - ErrIncompatibleValue if attempted when the cursor points to a
-    #     nested bucket
-    #   - ErrTxNotWritable if attempted against a read-only transaction
-    #   - ErrTxClosed if the transaction has already been closed
-    def delete(self):
-        pass
-
-    # First positions the cursor at the first key/value pair and returns
-    # whether or not the pair exists.
-    def first(self) -> bool:
-        pass
-
-    # Last positions the cursor at the last key/value pair and returns
-    # whether or not the pair exists.
-    def last(self) -> bool:
-        pass
-
-    # Next moves the cursor one key/value pair forward and returns whether
-    # or not the pair exists.
-    def next(self) -> bool:
-        pass
-
-    # Prev moves the cursor one key/value pair backward and returns whether
-    # or not the pair exists.
-    def prev(self) -> bool:
-        pass
-
-    # Seek positions the cursor at the first key/value pair that is greater
-    # than or equal to the passed seek key.  Returns whether or not the
-    # pair exists.
-    def seek(self, seek: bytes) -> bool:
-        pass
-
-    # Key returns the current key the cursor is pointing to.
-    def key(self) -> bytes:
-        pass
-
-    # Value returns the current value the cursor is pointing to.  This will
-    # be nil for nested buckets.
-    def value(self) -> bytes:
-        pass
 
 
 # Bucket represents a collection of key/value pairs.
@@ -198,6 +140,65 @@ class Bucket:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def delete(self, key: bytes):
+        pass
+
+# Cursor represents a cursor over key/value pairs and nested buckets of a
+# bucket.
+#
+# Note that open cursors are not tracked on bucket changes and any
+# modifications to the bucket, with the exception of Cursor.Delete, invalidates
+# the cursor.  After invalidation, the cursor must be repositioned, or the keys
+# and values returned may be unpredictable.
+class Cursor:
+    # Bucket returns the bucket the cursor was created for.
+    def bucket(self) -> Bucket:
+        pass
+
+    # Delete removes the current key/value pair the cursor is at without
+    # invalidating the cursor.
+    #
+    # The interface contract guarantees at least the following errors will
+    # be returned (other implementation-specific errors are possible):
+    #   - ErrIncompatibleValue if attempted when the cursor points to a
+    #     nested bucket
+    #   - ErrTxNotWritable if attempted against a read-only transaction
+    #   - ErrTxClosed if the transaction has already been closed
+    def delete(self):
+        pass
+
+    # First positions the cursor at the first key/value pair and returns
+    # whether or not the pair exists.
+    def first(self) -> bool:
+        pass
+
+    # Last positions the cursor at the last key/value pair and returns
+    # whether or not the pair exists.
+    def last(self) -> bool:
+        pass
+
+    # Next moves the cursor one key/value pair forward and returns whether
+    # or not the pair exists.
+    def next(self) -> bool:
+        pass
+
+    # Prev moves the cursor one key/value pair backward and returns whether
+    # or not the pair exists.
+    def prev(self) -> bool:
+        pass
+
+    # Seek positions the cursor at the first key/value pair that is greater
+    # than or equal to the passed seek key.  Returns whether or not the
+    # pair exists.
+    def seek(self, seek: bytes) -> bool:
+        pass
+
+    # Key returns the current key the cursor is pointing to.
+    def key(self) -> bytes:
+        pass
+
+    # Value returns the current value the cursor is pointing to.  This will
+    # be nil for nested buckets.
+    def value(self) -> bytes:
         pass
 
 

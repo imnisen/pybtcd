@@ -199,7 +199,7 @@ class BlockNode:
         # This code follows suit to ensure the same rules are used, however, be
         # aware that should the medianTimeBlocks constant ever be changed to an
         # even number, this code will be wrong.
-        median_timestamp = timestamps[len(timestamps)/2]
+        median_timestamp = timestamps[len(timestamps)//2]
         return median_timestamp
 
 

@@ -66,7 +66,7 @@ class MedianTime(MedianTimeSource):
         """
         self.lock = lock or threading.Lock()
         self.known_ids = known_ids or {}
-        self.offsets = offsets or 0
+        self.offsets = offsets or []
         self.offset_secs = offset_secs or 0
         self.invalid_time_checked = invalid_time_checked or False
 
@@ -77,7 +77,7 @@ class MedianTime(MedianTimeSource):
     # MedianTimeSource interface implementation.
     def adjusted_time(self):
         with self.lock:
-            now = int(time.time)
+            now = int(time.time())
             return now + self.offset_secs
 
     # AddTimeSample adds a time sample that is used when determining the median
@@ -128,7 +128,7 @@ class MedianTime(MedianTimeSource):
 
             # At this point the number of offsets in the list is odd, so the
             # middle value of the sorted offsets is the median.
-            median = sorted_offsets[num_offsets / 2]
+            median = sorted_offsets[num_offsets // 2]
 
             # Set the new offset when the median offset is within the allowed
             # offset range.
