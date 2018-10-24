@@ -12,6 +12,7 @@ MaxBlockHeaderPayload = 16 + (HashSize * 2)
 # header.
 blockHeaderLen = 80
 
+
 # BlockHeader defines information about a block and is used in the bitcoin
 # block (MsgBlock) and headers (MsgHeaders) messages.
 class BlockHeader:
@@ -26,11 +27,23 @@ class BlockHeader:
         :param uint32 nonce:
         """
 
+        # Version of the block.  This is not the same as the protocol version.
         self.version = version or 0
+
+        # Hash of the previous block header in the block chain.
         self.prev_block = prev_block or Hash()
+
+        # Merkle tree reference to hash of all transactions for the block.
         self.merkle_root = merkle_root or Hash()
+
+        # Time the block was created.  This is, unfortunately, encoded as a
+        # uint32 on the wire and therefore is limited to 2106.
         self.timestamp = timestamp or int(time.time())
+
+        # Difficulty target for the block.
         self.bits = bits or 0
+
+        # Nonce used to generate the block.
         self.nonce = nonce or 0
 
     def __eq__(self, other):

@@ -65,5 +65,5 @@
    - State "DONE"       from "TODO"       [2018-10-18 Thu 16:52]
    :END:
 
-
+* Reconsider of time struct of python, now is int, need a class?
 * Use subclass of Enum or Int  to refactor some class
