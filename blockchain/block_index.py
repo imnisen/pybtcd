@@ -1,3 +1,95 @@
+from enum import Flag, auto
+
+
+# blockStatus is a bit field representing the validation state of the block.
+class BlockStatus(Flag):
+    # statusDataStored indicates that the block's payload is stored on disk.
+    statusDataStored = 1
+
+    # statusValid indicates that the block has been fully validated.
+    statusValid = auto()
+
+    # statusValidateFailed indicates that the block has failed validation.
+    statusValidateFailed = auto()
+
+    # statusInvalidAncestor indicates that one of the block's ancestors has
+    # has failed validation, thus the block is also invalid.
+    statusInvalidAncestor = auto()
+
+    # statusNone indicates that the block has no validation state flags set.
+    #
+    # NOTE: This must be defined last in order to avoid influencing iota.
+    statusNone = 0
+
+    # HaveData returns whether the full block data is stored in the database. This
+    # will return false for a block node where only the header is downloaded or
+    # kept.
+    def have_data(self) -> bool:
+        return self & BlockStatus.statusDataStored != 0
+
+    # KnownValid returns whether the block is known to be valid. This will return
+    # false for a valid block that has not been fully validated yet.
+    def known_valid(self) -> bool:
+        return self & BlockStatus.statusValid != 0
+
+    # KnownInvalid returns whether the block is known to be invalid. This may be
+    # because the block itself failed validation or any of its ancestors is
+    # invalid. This will return false for invalid blocks that have not been proven
+    # invalid yet.
+    def known_invalid(self) -> bool:
+        return self & (BlockStatus.statusValidateFailed | BlockStatus.statusInvalidAncestor) != 0
+
+
+# blockNode represents a block within the block chain and is primarily used to
+# aid in selecting the best chain to be the main chain.  The main chain is
+# stored into the block database.
+class BlockNode:
+    def __init__(self, parent=None, hash=None, work_sum=None, height=None,
+                 version=None, bits=None, nonce=None, timestamp=None, merkle_root=None,
+                 status=None):
+        """
+
+        :param parent:
+        :param chainhash.Hash hash:
+        :param *big.Int work_sum:
+        :param int32 height:
+        :param int32 version:
+        :param uint32 bits:
+        :param uint32 nonce:
+        :param int64 timestamp:
+        :param chainhash.Hash merkle_root:
+        :param blockStatus status:
+        """
+        # parent is the parent block for this node.
+        self.parent = parent
+
+        # hash is the double sha 256 of the block.
+        self.hash = hash
+
+        # workSum is the total amount of work in the chain up to and including
+        # this node.
+        self.work_sum = work_sum
+
+        # height is the position in the block chain.
+        self.height = height
+
+        # Some fields from block headers to aid in best chain selection and
+        # reconstructing headers from memory.  These must be treated as
+        # immutable and are intentionally ordered to avoid padding on 64-bit
+        # platforms.
+        self.version = version
+        self.bits = bits
+        self.nonce = nonce
+        self.timestamp = timestamp
+        self.merkle_root = merkle_root
+
+        # status is a bitfield representing the validation state of the block. The
+        # status field, unlike the other fields, may be written to and so should
+        # only be accessed using the concurrent-safe NodeStatus method on
+        # blockIndex once the node has been added to the global index.
+        self.status = status
+
+
 # blockIndex provides facilities for keeping track of an in-memory index of the
 # block chain.  Although the name block chain suggests a single chain of
 # blocks, it is actually a tree-shaped structure where any node can have
