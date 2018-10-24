@@ -33,6 +33,15 @@ class BlockLocator(list):
     pass
 
 
+# BestState houses information about the current best block and other info
+# related to the state of the main chain as it exists from the point of view of
+# the current best block.
+#
+# The BestSnapshot method can be used to obtain access to this information
+# in a concurrent safe manner and the data will not be changed out from under
+# the caller when chain state changes occur as the function name implies.
+# However, the returned snapshot must be treated as immutable since it is
+# shared by all callers.
 class BestState:
     def __init__(self, hash, height, bits, block_size, block_weight, num_txns, total_txns, media_time):
         """
