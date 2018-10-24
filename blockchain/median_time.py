@@ -1,3 +1,5 @@
+import time
+
 # This is an interface
 # MedianTimeSource provides a mechanism to add several time samples which are
 # used to determine a median time which is then used as an offset to the local
@@ -18,12 +20,12 @@ class MedianTimeSource:
     def offset(self):
         pass
 
-
-# TODO
-# int64Sorter implements sort.Interface to allow a slice of 64-bit integers to
-# be sorted.
-class Int64Sorter(int):
-    pass
+#
+# # TODO
+# # int64Sorter implements sort.Interface to allow a slice of 64-bit integers to
+# # be sorted.
+# class Int64Sorter(int):
+#     pass
 
 
 # medianTime provides an implementation of the MedianTimeSource interface.
@@ -52,7 +54,10 @@ class MedianTime(MedianTimeSource):
     # This function is safe for concurrent access and is part of the
     # MedianTimeSource interface implementation.
     def adjusted_time(self):
-        pass
+        with self.lock:
+            now = int(time.time)
+            return now + self.offset_secs
+
 
     # AddTimeSample adds a time sample that is used when determining the median
     # time of the added samples.
