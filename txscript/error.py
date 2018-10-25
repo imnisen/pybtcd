@@ -2,7 +2,6 @@ from enum import Enum
 
 
 # ErrorCode identifies a kind of script error.
-# ErrorCode identifies a kind of script error.
 class ErrorCode(Enum):
     # ErrInternal is returned if internal consistency checks fail.  In
     # practice this error should never be seen as it would mean there is an
