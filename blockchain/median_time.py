@@ -152,7 +152,7 @@ class MedianTime(MedianTimeSource):
                             break
 
                     if not remote_hash_close_time:
-                        _logger.warning("Please check your date and time are correct!  btcd will not work " +
+                        _logger.debug("Please check your date and time are correct!  btcd will not work " +
                                         "properly with an invalid time")
 
             _logger.debug("New time offset: %s" % self.offset_secs)
