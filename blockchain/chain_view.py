@@ -31,20 +31,20 @@ class BlockLocator(list):
 # The chain view for the branch ending in 6a consists of:
 #   genesis -> 1 -> 2 -> 3 -> 4a -> 5a -> 6a
 class ChainView:
-    def __init__(self, lock, nodes):
+    def __init__(self, lock=None, nodes=None):
         """
 
         :param threading.Lock lock:
         :param []*blockNode nodes:
         """
-        self.lock = lock
-        self.nodes = nodes
+        self.lock = lock or threading.Lock()
+        self.nodes = nodes or []
 
     @classmethod
     def new_from(cls, tip: BlockNode):
         # The mutex is intentionally not held since this is a constructor.
         c = cls()
-        c.set_tip(tip)
+        c._set_tip(tip)
         return c
 
     # genesis returns the genesis block for the chain view.  This only differs from
@@ -99,10 +99,22 @@ class ChainView:
     def _set_tip(self, node: BlockNode):
         if node is None:
             self.nodes = []
+            return
 
+        # Change self.nodes length to fit with node.height
+        # in order to fill self.nodes with node and it's ancestors
+        needed = node.height + 1
+        if len(self.nodes) < needed:
+            self.nodes += [None] * (needed - len(self.nodes))
+        elif len(self.nodes) > needed:
+            self.nodes = self.nodes[0:needed]
+
+        # let's fill self.nodes, untile we meet some node that right index as we need
+        # so we assume it and every node before it is all we need
         while node is not None and self.nodes[node.height] != node:
             self.nodes[node.height] = node
             node = node.parent
+
         return
 
     # SetTip sets the chain view to use the provided block node as the current tip
@@ -143,7 +155,7 @@ class ChainView:
     #
     # This function MUST be called with the view mutex locked (for reads).
     def _node_by_height(self, height: int) -> BlockNode:
-        if height < 0 or height > len(self.nodes):
+        if height < 0 or height >= len(self.nodes):
             return None
         return self.nodes[height]
 
@@ -164,7 +176,7 @@ class ChainView:
     def equals(self, other: 'ChainView'):
         self.lock.acquire()
         other.lock.acquire()
-        equals = (len(self.nodes) == len(other.nodes) and self.tip() == other.tip())
+        equals = (len(self.nodes) == len(other.nodes) and self._tip() == other._tip())
         other.lock.release()
         self.lock.release()
         return equals
@@ -199,7 +211,7 @@ class ChainView:
         if node is None or not self._contains(node):
             return None
 
-        return self.node_by_height(node.height + 1)
+        return self._node_by_height(node.height + 1)
 
     # Next returns the successor to the provided node for the chain view.  It will
     # return nil if there is no successfor or the provided node is not part of the
@@ -278,7 +290,7 @@ class ChainView:
     # This function is safe for concurrent access.
     def find_fork(self, node: BlockNode) -> BlockNode:
         self.lock.acquire()
-        fork = self.find_fork(node)
+        fork = self._find_fork(node)
         self.lock.release()
         return fork
 
@@ -293,7 +305,7 @@ class ChainView:
     def _block_locator(self, node: BlockNode) -> BlockLocator:
         # Use the current tip if requested.
         if node is None:
-            node = self.tip()
+            node = self._tip()
 
         if node is None:
             return None
