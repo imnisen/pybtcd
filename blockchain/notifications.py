@@ -1,4 +1,4 @@
-from enum import IntEnum, auto
+from enum import IntEnum
 
 
 # NotificationType represents the type of a notification message.
@@ -10,11 +10,11 @@ class NotificationType(IntEnum):
 
     # NTBlockConnected indicates the associated block was connected to the
     # main chain.
-    NTBlockConnected = auto()
+    NTBlockConnected = 1
 
     # NTBlockDisconnected indicates the associated block was disconnected
     # from the main chain.
-    NTBlockDisconnected = auto()
+    NTBlockDisconnected = 2
 
     def __str__(self):
         return self.name

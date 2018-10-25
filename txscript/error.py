@@ -1,6 +1,7 @@
-from enum import Enum, auto
+from enum import Enum
 
 
+# ErrorCode identifies a kind of script error.
 # ErrorCode identifies a kind of script error.
 class ErrorCode(Enum):
     # ErrInternal is returned if internal consistency checks fail.  In
@@ -14,82 +15,82 @@ class ErrorCode(Enum):
 
     # ErrInvalidFlags is returned when the passed flags to NewEngine
     # contain an invalid combination.
-    ErrInvalidFlags = auto()
+    ErrInvalidFlags = 1
 
     # ErrInvalidIndex is returned when an out-of-bounds index is passed to
     # a function.
-    ErrInvalidIndex = auto()
+    ErrInvalidIndex = 2
 
     # ErrInvalidIndex is returned when an out-of-bounds index is passed to
     # a function.
-    ErrUnsupportedAddress = auto()
+    ErrUnsupportedAddress = 3
 
     # ErrNotMultisigScript is returned from CalcMultiSigStats when the
     # provided script is not a multisig script.
-    ErrNotMultisigScript = auto()
+    ErrNotMultisigScript = 4
 
     # ErrTooManyRequiredSigs is returned from MultiSigScript when the
     # specified number of required signatures is larger than the number of
     # provided public keys.
-    ErrTooManyRequiredSigs = auto()
+    ErrTooManyRequiredSigs = 5
 
     # ErrTooMuchNullData is returned from NullDataScript when the length of
     # the provided data exceeds MaxDataCarrierSize.
-    ErrTooMuchNullData = auto()
+    ErrTooMuchNullData = 6
 
     # ------------------------------------------
     # Failures related to final execution state.
     # ------------------------------------------
 
     # ErrEarlyReturn is returned when OP_RETURN is executed in the script.
-    ErrEarlyReturn = auto()
+    ErrEarlyReturn = 7
 
     # ErrEmptyStack is returned when the script evaluated without error,
     # but terminated with an empty top stack element.
-    ErrEmptyStack = auto()
+    ErrEmptyStack = 8
 
     # ErrEvalFalse is returned when the script evaluated without error but
     # terminated with a false top stack element.
-    ErrEvalFalse = auto()
+    ErrEvalFalse = 9
 
     # ErrScriptUnfinished is returned when CheckErrorCondition is called on
     # a script that has not finished executing.
-    ErrScriptUnfinished = auto()
+    ErrScriptUnfinished = 10
 
     # ErrScriptDone is returned when an attempt to execute an opcode is
     # made once all of them have already been executed.  This can happen
     # due to things such as a second call to Execute or calling Step after
     # all opcodes have already been executed.
-    ErrInvalidProgramCounter = auto()
+    ErrInvalidProgramCounter = 11
 
     # -----------------------------------------------------
     # Failures related to exceeding maximum allowed limits.
     # -----------------------------------------------------
 
     # ErrScriptTooBig is returned if a script is larger than MaxScriptSize.
-    ErrScriptTooBig = auto()
+    ErrScriptTooBig = 12
 
     # ErrElementTooBig is returned if the size of an element to be pushed
     # to the stack is over MaxScriptElementSize.
-    ErrElementTooBig = auto()
+    ErrElementTooBig = 13
 
     # ErrTooManyOperations is returned if a script has more than
     # MaxOpsPerScript opcodes that do not push data.
-    ErrTooManyOperations = auto()
+    ErrTooManyOperations = 14
 
     # ErrStackOverflow is returned when stack and altstack combined depth
     # is over the limit.
-    ErrStackOverflow = auto()
+    ErrStackOverflow = 15
 
     # ErrInvalidPubKeyCount is returned when the number of public keys
     # specified for a multsig is either negative or greater than
     # MaxPubKeysPerMultiSig.
-    ErrInvalidPubKeyCount = auto()
+    ErrInvalidPubKeyCount = 16
 
     # ErrInvalidSignatureCount is returned when the number of signatures
     # specified for a multisig is either negative or greater than the
     # number of public keys.
-    ErrInvalidSignatureCount = auto()
+    ErrInvalidSignatureCount = 17
 
     # ErrNumberTooBig is returned when the argument for an opcode that
     # expects numeric input is larger than the expected maximum number of
@@ -97,7 +98,7 @@ class ErrorCode(Enum):
     # via offsets, arithmetic, numeric comparison, and boolean logic are
     # those that this applies to.  However, any opcode that expects numeric
     # input may fail with this code.
-    ErrNumberTooBig = auto()
+    ErrNumberTooBig = 18
 
     # --------------------------------------------
     # Failures related to verification operations.
@@ -105,26 +106,26 @@ class ErrorCode(Enum):
 
     # ErrVerify is returned when OP_VERIFY is encountered in a script and
     # the top item on the data stack does not evaluate to true.
-    ErrVerify = auto()
+    ErrVerify = 19
 
     # ErrEqualVerify is returned when OP_EQUALVERIFY is encountered in a
     # script and the top item on the data stack does not evaluate to true.
-    ErrEqualVerify = auto()
+    ErrEqualVerify = 20
 
     # ErrNumEqualVerify is returned when OP_NUMEQUALVERIFY is encountered
     # in a script and the top item on the data stack does not evaluate to
     # true.
-    ErrNumEqualVerify = auto()
+    ErrNumEqualVerify = 21
 
     # ErrCheckSigVerify is returned when OP_CHECKSIGVERIFY is encountered
     # in a script and the top item on the data stack does not evaluate to
     # true.
-    ErrCheckSigVerify = auto()
+    ErrCheckSigVerify = 22
 
     # ErrCheckSigVerify is returned when OP_CHECKMULTISIGVERIFY is
     # encountered in a script and the top item on the data stack does not
     # evaluate to true.
-    ErrCheckMultiSigVerify = auto()
+    ErrCheckMultiSigVerify = 23
 
     # --------------------------------------------
     # Failures related to improper use of opcodes.
@@ -132,25 +133,25 @@ class ErrorCode(Enum):
 
     # ErrDisabledOpcode is returned when a disabled opcode is encountered
     # in a script.
-    ErrDisabledOpcode = auto()
+    ErrDisabledOpcode = 24
 
     # ErrReservedOpcode is returned when an opcode marked as reserved
     # is encountered in a script.
-    ErrReservedOpcode = auto()
+    ErrReservedOpcode = 25
 
     # ErrMalformedPush is returned when a data push opcode tries to push
     # more bytes than are left in the script.
-    ErrMalformedPush = auto()
+    ErrMalformedPush = 26
 
     # ErrInvalidStackOperation is returned when a stack operation is
     # attempted with a number that is invalid for the current stack size.
-    ErrInvalidStackOperation = auto()
+    ErrInvalidStackOperation = 27
 
     # ErrUnbalancedConditional is returned when an OP_ELSE or OP_ENDIF is
     # encountered in a script without first having an OP_IF or OP_NOTIF or
     # the end of script is reached without encountering an OP_ENDIF when
     # an OP_IF or OP_NOTIF was previously encountered.
-    ErrUnbalancedConditional = auto()
+    ErrUnbalancedConditional = 28
 
     # ---------------------------------
     # Failures related to malleability.
@@ -159,116 +160,116 @@ class ErrorCode(Enum):
     # ErrMinimalData is returned when the ScriptVerifyMinimalData flag
     # is set and the script contains push operations that do not use
     # the minimal opcode required.
-    ErrMinimalData = auto()
+    ErrMinimalData = 29
 
     # ErrInvalidSigHashType is returned when a signature hash type is not
     # one of the supported types.
-    ErrInvalidSigHashType = auto()
+    ErrInvalidSigHashType = 30
 
     # ErrSigTooShort is returned when a signature that should be a
     # canonically-encoded DER signature is too short.
-    ErrSigTooShort = auto()
+    ErrSigTooShort = 31
 
     # ErrSigTooLong is returned when a signature that should be a
     # canonically-encoded DER signature is too long.
-    ErrSigTooLong = auto()
+    ErrSigTooLong = 32
 
     # ErrSigInvalidSeqID is returned when a signature that should be a
     # canonically-encoded DER signature does not have the expected ASN.1
     # sequence ID.
-    ErrSigInvalidSeqID = auto()
+    ErrSigInvalidSeqID = 33
 
     # ErrSigInvalidDataLen is returned a signature that should be a
     # canonically-encoded DER signature does not specify the correct number
     # of remaining bytes for the R and S portions.
-    ErrSigInvalidDataLen = auto()
+    ErrSigInvalidDataLen = 34
 
     # ErrSigMissingSTypeID is returned a signature that should be a
     # canonically-encoded DER signature does not provide the ASN.1 type ID
     # for S.
-    ErrSigMissingSTypeID = auto()
+    ErrSigMissingSTypeID = 35
 
     # ErrSigMissingSLen is returned when a signature that should be a
     # canonically-encoded DER signature does not provide the length of S.
-    ErrSigMissingSLen = auto()
+    ErrSigMissingSLen = 36
 
     # ErrSigInvalidSLen is returned a signature that should be a
     # canonically-encoded DER signature does not specify the correct number
     # of bytes for the S portion.
-    ErrSigInvalidSLen = auto()
+    ErrSigInvalidSLen = 37
 
     # ErrSigInvalidRIntID is returned when a signature that should be a
     # canonically-encoded DER signature does not have the expected ASN.1
     # integer ID for R.
-    ErrSigInvalidRIntID = auto()
+    ErrSigInvalidRIntID = 38
 
     # ErrSigZeroRLen is returned when a signature that should be a
     # canonically-encoded DER signature has an R length of zero.
-    ErrSigZeroRLen = auto()
+    ErrSigZeroRLen = 39
 
     # ErrSigNegativeR is returned when a signature that should be a
     # canonically-encoded DER signature has a negative value for R.
-    ErrSigNegativeR = auto()
+    ErrSigNegativeR = 40
 
     # ErrSigTooMuchRPadding is returned when a signature that should be a
     # canonically-encoded DER signature has too much padding for R.
-    ErrSigTooMuchRPadding = auto()
+    ErrSigTooMuchRPadding = 41
 
     # ErrSigInvalidSIntID is returned when a signature that should be a
     # canonically-encoded DER signature does not have the expected ASN.1
     # integer ID for S.
-    ErrSigInvalidSIntID = auto()
+    ErrSigInvalidSIntID = 42
 
     # ErrSigZeroSLen is returned when a signature that should be a
     # canonically-encoded DER signature has an S length of zero.
-    ErrSigZeroSLen = auto()
+    ErrSigZeroSLen = 43
 
     # ErrSigNegativeS is returned when a signature that should be a
     # canonically-encoded DER signature has a negative value for S.
-    ErrSigNegativeS = auto()
+    ErrSigNegativeS = 44
 
     # ErrSigTooMuchSPadding is returned when a signature that should be a
     # canonically-encoded DER signature has too much padding for S.
-    ErrSigTooMuchSPadding = auto()
+    ErrSigTooMuchSPadding = 45
 
     # ErrSigHighS is returned when the ScriptVerifyLowS flag is set and the
     # script contains any signatures whose S values are higher than the
     # half order.
-    ErrSigHighS = auto()
+    ErrSigHighS = 46
 
     # ErrNotPushOnly is returned when a script that is required to only
     # push data to the stack performs other operations.  A couple of cases
     # where this applies is for a pay-to-script-hash signature script when
     # bip16 is active and when the ScriptVerifySigPushOnly flag is set.
-    ErrNotPushOnly = auto()
+    ErrNotPushOnly = 47
 
     # ErrSigNullDummy is returned when the ScriptStrictMultiSig flag is set
     # and a multisig script has anything other than 0 for the extra dummy
     # argument.
-    ErrSigNullDummy = auto()
+    ErrSigNullDummy = 48
 
     # ErrPubKeyType is returned when the ScriptVerifyStrictEncoding
     # flag is set and the script contains invalid public keys.
-    ErrPubKeyType = auto()
+    ErrPubKeyType = 49
 
     # ErrCleanStack is returned when the ScriptVerifyCleanStack flag
     # is set, and after evalution, the stack does not contain only a
     # single element.
-    ErrCleanStack = auto()
+    ErrCleanStack = 50
 
     # ErrNullFail is returned when the ScriptVerifyNullFail flag is
     # set and signatures are not empty on failed checksig or checkmultisig
     # operations.
-    ErrNullFail = auto()
+    ErrNullFail = 51
 
     # ErrWitnessMalleated is returned if ScriptVerifyWitness is set and a
     # native p2wsh program is encountered which has a non-empty sigScript.
-    ErrWitnessMalleated = auto()
+    ErrWitnessMalleated = 52
 
     # ErrWitnessMalleatedP2SH is returned if ScriptVerifyWitness if set
     # and the validation logic for nested p2sh encounters a sigScript
     # which isn't *exactyl* a datapush of the witness program.
-    ErrWitnessMalleatedP2SH = auto()
+    ErrWitnessMalleatedP2SH = 53
 
     # -------------------------------
     # Failures related to soft forks.
@@ -277,27 +278,27 @@ class ErrorCode(Enum):
     # ErrDiscourageUpgradableNOPs is returned when the
     # ScriptDiscourageUpgradableNops flag is set and a NOP opcode is
     # encountered in a script.
-    ErrDiscourageUpgradableNOPs = auto()
+    ErrDiscourageUpgradableNOPs = 54
 
     # ErrNegativeLockTime is returned when a script contains an opcode that
     # interprets a negative lock time.
-    ErrNegativeLockTime = auto()
+    ErrNegativeLockTime = 55
 
     # ErrUnsatisfiedLockTime is returned when a script contains an opcode
     # that involves a lock time and the required lock time has not been
     # reached.
-    ErrUnsatisfiedLockTime = auto()
+    ErrUnsatisfiedLockTime = 56
 
     # ErrMinimalIf is returned if ScriptVerifyWitness is set and the
     # operand of an OP_IF/OP_NOF_IF are not either an empty vector or
     # [0x01].
-    ErrMinimalIf = auto()
+    ErrMinimalIf = 57
 
     # ErrDiscourageUpgradableWitnessProgram is returned if
     # ScriptVerifyWitness is set and the versino of an executing witness
     # program is outside the set of currently defined witness program
     # vesions.
-    ErrDiscourageUpgradableWitnessProgram = auto()
+    ErrDiscourageUpgradableWitnessProgram = 58
 
     # ----------------------------------------
     # Failures related to segregated witness.
@@ -305,32 +306,33 @@ class ErrorCode(Enum):
 
     # ErrWitnessProgramEmpty is returned if ScriptVerifyWitness is set and
     # the witness stack itself is empty.
-    ErrWitnessProgramEmpty = auto()
+    ErrWitnessProgramEmpty = 59
 
     # ErrWitnessProgramMismatch is returned if ScriptVerifyWitness is set
     # and the witness itself for a p2wkh witness program isn't *exactly* 2
     # items or if the witness for a p2wsh isn't the sha255 of the witness
     # script.
-    ErrWitnessProgramMismatch = auto()
+    ErrWitnessProgramMismatch = 60
 
     # ErrWitnessProgramWrongLength is returned if ScriptVerifyWitness is
     # set and the length of the witness program violates the length as
     # dictated by the current witness version.
-    ErrWitnessProgramWrongLength = auto()
+    ErrWitnessProgramWrongLength = 61
 
     # ErrWitnessUnexpected is returned if ScriptVerifyWitness is set and a
     # transaction includes witness data but doesn't spend an which is a
     # witness program (nested or native).
-    ErrWitnessUnexpected = auto()
+    ErrWitnessUnexpected = 62
 
     # ErrWitnessPubKeyType is returned if ScriptVerifyWitness is set and
     # the public key used in either a check-sig or check-multi-sig isn't
     # serialized in a compressed format.
-    ErrWitnessPubKeyType = auto()
+    ErrWitnessPubKeyType = 62
 
     # numErrorCodes is the maximum error code number used in tests.  This
     # entry MUST be the last entry in the enum.
-    numErrorCodes = auto()
+    numErrorCodes = 63
+
 
     def __str__(self):
         return errorCodeStrings[self]

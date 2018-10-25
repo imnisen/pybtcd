@@ -1,4 +1,4 @@
-from enum import Flag, auto
+from enum import Flag
 import chainhash
 
 
@@ -11,27 +11,27 @@ class ThresholdState(Flag):
 
     # ThresholdStarted is the state for a deployment once its start time
     # has been reached.
-    ThresholdStarted = auto()
+    ThresholdStarted = 1
 
     # ThresholdLockedIn is the state for a deployment during the retarget
     # period which is after the ThresholdStarted state period and the
     # number of blocks that have voted for the deployment equal or exceed
     # the required number of votes for the deployment.
-    ThresholdLockedIn = auto()
+    ThresholdLockedIn = 2
 
     # ThresholdActive is the state for a deployment for all blocks after a
     # retarget period in which the deployment was in the ThresholdLockedIn
     # state.
-    ThresholdActive = auto()
+    ThresholdActive = 3
 
     # ThresholdFailed is the state for a deployment once its expiration
     # time has been reached and it did not reach the ThresholdLockedIn
     # state.
-    ThresholdFailed = auto()
+    ThresholdFailed = 4
 
     # numThresholdsStates is the maximum number of threshold states used in
     # tests.
-    numThresholdsStates = auto()
+    numThresholdsStates = 5
 
     def __str__(self):
         if self == ThresholdState.numThresholdsStates:
@@ -43,16 +43,16 @@ class ThresholdState(Flag):
 # thresholdStateCache provides a type to cache the threshold states of each
 # threshold window for a set of IDs.
 class ThresholdStateCache:
-    def __init__(self, entries):
+    def __init__(self, entries=None):
         """
 
         :param map[chainhash.Hash]ThresholdState entries:
         """
-        self.entries = entries
+        self.entries = entries or {}
 
     # Lookup returns the threshold state associated with the given hash along with
     # a boolean that indicates whether or not it is valid.
-    def loop_up(self, hash: chainhash.Hash):
+    def look_up(self, hash: chainhash.Hash):
         return self.entries.get(hash)
 
     # Update updates the cache to contain the provided hash to threshold state
@@ -63,6 +63,14 @@ class ThresholdStateCache:
 
 
     # TODO TOADD some method to add to blockchain class
+
+# newThresholdCaches returns a new array of caches to be used when calculating
+# threshold states.
+def new_threshold_caches(num_caches: int):
+    caches = []
+    for i in range(num_caches):
+        caches.append(ThresholdStateCache())
+    return caches
 
 # An interface
 # thresholdConditionChecker provides a generic interface that is invoked to

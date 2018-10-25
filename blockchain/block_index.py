@@ -1,4 +1,4 @@
-from enum import Flag, auto
+from enum import Flag
 from .difficulty import *
 import pyutil
 import chainhash
@@ -15,14 +15,14 @@ class BlockStatus(Flag):
     statusDataStored = 1
 
     # statusValid indicates that the block has been fully validated.
-    statusValid = auto()
+    statusValid = 2
 
     # statusValidateFailed indicates that the block has failed validation.
-    statusValidateFailed = auto()
+    statusValidateFailed = 3
 
     # statusInvalidAncestor indicates that one of the block's ancestors has
     # has failed validation, thus the block is also invalid.
-    statusInvalidAncestor = auto()
+    statusInvalidAncestor = 4
 
     # statusNone indicates that the block has no validation state flags set.
     #
