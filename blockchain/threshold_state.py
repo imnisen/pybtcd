@@ -1,4 +1,5 @@
 from enum import Flag, auto
+import chainhash
 
 
 # ThresholdState define the various threshold states used when voting on
@@ -51,13 +52,14 @@ class ThresholdStateCache:
 
     # Lookup returns the threshold state associated with the given hash along with
     # a boolean that indicates whether or not it is valid.
-    def loop_up(self, hash):
-        pass
+    def loop_up(self, hash: chainhash.Hash):
+        return self.entries.get(hash)
 
     # Update updates the cache to contain the provided hash to threshold state
     # mapping.
-    def update(self, hash, state):
-        pass
+    def update(self, hash: chainhash.Hash, state: ThresholdState):
+        self.entries[hash] = state
+        return
 
 
     # TODO TOADD some method to add to blockchain class
