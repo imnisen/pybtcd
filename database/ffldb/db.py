@@ -12,6 +12,16 @@ class BulkFetchData:
         self.reply_index = reply_index
 
 
+
+# pendingBlock houses a block that will be written to disk when the database
+# transaction is committed.
+class PendingBlock:
+    def __init__(self, pb_hash, pb_bytes):
+        self.pb_hash = pb_hash
+        self.pb_bytes = pb_bytes
+
+
+
 # transaction represents a database transaction.  It can either be read-only or
 # read-write and implements the database.Tx interface.  The transaction
 # provides a root bucket against which all read and writes occur.
