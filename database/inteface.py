@@ -1,5 +1,3 @@
-
-
 # Bucket represents a collection of key/value pairs.
 class Bucket:
     # Bucket retrieves a nested bucket with the given key.  Returns nil if
@@ -141,6 +139,7 @@ class Bucket:
     #   - ErrTxClosed if the transaction has already been closed
     def delete(self, key: bytes):
         pass
+
 
 # Cursor represents a cursor over key/value pairs and nested buckets of a
 # bucket.
