@@ -20,6 +20,7 @@
 * txscript/standard txscript/script very messy, Change the structure of whole txscript
 * Change the mix ecdsa cryptools thing in btcec to ecdsa methods
 * Change the ScriptNum to subclass int? and other same class can also do so.
+* A much pythonic way to implenmetate treap structure
 * Finish test case for txscript
 ** engine
 ** error
