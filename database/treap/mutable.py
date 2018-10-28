@@ -1,4 +1,5 @@
 from .common import *
+from .treapiter import *
 import random
 import pyutil
 
@@ -252,3 +253,12 @@ class Mutable:
         self.total_size = 0
         self.root = None
         return
+
+    def iterator(self, start_key, limit_key):
+        return Iterator(
+            t=self,
+            root=self.root,
+            is_new=True,
+            start_key=start_key,
+            limit_key=limit_key
+        )

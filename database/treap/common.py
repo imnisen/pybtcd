@@ -35,3 +35,17 @@ class ParentStack(list):
             raise IndexError
 
         return self[index]
+
+    def push(self, x):
+        self.append(x)
+        return
+
+    def pop(self, index=None):
+        if len(self) > 0:
+            if index is None:
+                return super(ParentStack, self).pop()
+            else:
+                return super(ParentStack, self).pop(index)
+        else:
+            return None
+

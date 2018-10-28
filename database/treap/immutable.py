@@ -1,4 +1,5 @@
 from .common import *
+from .treapiter import *
 import random
 import pyutil
 
@@ -272,3 +273,11 @@ class Immutable:
                 node = node.left
 
         return
+
+    def iterator(self, start_key, limit_key):
+        return Iterator(
+            root=self.root,
+            is_new=True,
+            start_key=start_key,
+            limit_key=limit_key
+        )
