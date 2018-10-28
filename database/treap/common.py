@@ -6,6 +6,7 @@
 # each of the priority, left, and right fields (24*2 + 8*3).
 nodeFieldsSize = 72  # TOCHECK , why not 8*3 = 24?
 
+
 class TreapNode:
     def __init__(self, key, value, priority, left=None, right=None):
         self.key = key
@@ -18,11 +19,10 @@ class TreapNode:
         return str((self.key, self.value, self.priority))
 
     def node_size(self):
-        return nodeFieldsSize + len(self.key), len(self.value)
+        return nodeFieldsSize + len(self.key) + len(self.value)
 
 
 class ParentStack(list):
-
     def at(self, n):
 
         index = len(self) - 1 - n
@@ -32,5 +32,3 @@ class ParentStack(list):
         if index > len(self) - 1:
             raise IndexError
         return self[index]
-
-

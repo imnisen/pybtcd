@@ -63,7 +63,7 @@ class Immutable:
                 else:
                     parent.right = node_copy
 
-            result = self._key_compare(key, node)
+            result = self._key_compare(key, node.key)
             if result > 0:
                 parent = node_copy
                 parent_stack.append(parent)

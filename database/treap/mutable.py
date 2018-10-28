@@ -43,7 +43,7 @@ class Mutable:
         parent = None
         parent_stack = ParentStack()
         while node is not None:
-            result = self._key_compare(key, node)
+            result = self._key_compare(key, node.key)
             if result > 0:
                 parent = node
                 parent_stack.append(parent)
@@ -70,6 +70,7 @@ class Mutable:
     def _relink_grand_parent(self, node, parent, grandparent):
         if grandparent is None:
             self.root = node
+            return
 
         if grandparent.left == parent:
             grandparent.left = node
@@ -106,7 +107,7 @@ class Mutable:
             parent.left = node
         return
 
-    def put(self, key: bytes, value: bytes):
+    def put(self, key: bytes, value: bytes or None):
         # If put None, we set valye to empty bytes
         if value is None:
             value = bytes()
@@ -206,7 +207,6 @@ class Mutable:
         :param fn:
         :return:
         """
-        # loop the
         node = self.root
         parent_stack = ParentStack()
 
@@ -219,6 +219,26 @@ class Mutable:
 
             if not fn(node.key, node.value):
                 return
+
+            node = node.right
+            while node is not None:
+                parent_stack.append(node)
+                node = node.left
+
+        return
+
+    def for_each2(self):
+        node = self.root
+        parent_stack = ParentStack()
+
+        while node is not None:
+            parent_stack.append(node)
+            node = node.left
+
+        while len(parent_stack) > 0:
+            node = parent_stack.pop()
+
+            yield node.key, node.value
 
             node = node.right
             while node is not None:
