@@ -100,7 +100,7 @@ class Mutable:
             self._relink_grand_parent(node, parent, grandparent)
 
     def _attach_node_to_parent(self, node, parent):
-        result = self._key_compare(node.value, parent.value)
+        result = self._key_compare(node.key, parent.key)
         if result > 0:
             parent.right = node
         else:

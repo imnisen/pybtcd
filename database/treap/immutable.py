@@ -110,21 +110,21 @@ class Immutable:
             grandparent = parent_stack.at(0)
             if grandparent is None:
                 new_root = node
-            if grandparent.left == parent:
+            elif grandparent.left == parent:
                 grandparent.left = node
             else:
                 grandparent.right = node
         return new_root
 
     def _attach_node_to_parent(self, node, parent):
-        result = self._key_compare(node.value, parent.value)
+        result = self._key_compare(node.key, parent.key)
         if result > 0:
             parent.right = node
         else:
             parent.left = node
         return
 
-    def put(self, key: bytes, value: bytes):
+    def put(self, key: bytes, value: bytes or None):
         # If put None, we set valye to empty bytes
         if value is None:
             value = bytes()
@@ -140,7 +140,11 @@ class Immutable:
 
         # We put the key that already exsits
         if node is not None:
-            new_root = parent_stack[0]
+            if parent is None:
+                new_root = node
+            else:
+                new_root = parent
+
             new_total_size = self.total_size - len(node.value) + len(value)
             node.value = value
             return Immutable(root=new_root, count=self.count, total_size=new_total_size)
@@ -207,6 +211,8 @@ class Immutable:
             else:
                 parent.right = child
 
+            parent = child
+
         # pop node from it's parent
         if parent.right == node:
             parent.right = None
@@ -239,6 +245,26 @@ class Immutable:
 
             if not fn(node.key, node.value):
                 return
+
+            node = node.right
+            while node is not None:
+                parent_stack.append(node)
+                node = node.left
+
+        return
+
+    def for_each2(self):
+        node = self.root
+        parent_stack = ParentStack()
+
+        while node is not None:
+            parent_stack.append(node)
+            node = node.left
+
+        while len(parent_stack) > 0:
+            node = parent_stack.pop()
+
+            yield node.key, node.value
 
             node = node.right
             while node is not None:

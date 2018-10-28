@@ -16,7 +16,7 @@ class TreapNode:
         self.right = right
 
     def __repr__(self):
-        return str((self.key, self.value, self.priority))
+        return "TreapNode(key=%s, value=%s, priority=%s)" % (self.key, self.value, self.priority)
 
     def node_size(self):
         return nodeFieldsSize + len(self.key) + len(self.value)
@@ -24,11 +24,14 @@ class TreapNode:
 
 class ParentStack(list):
     def at(self, n):
+        if n < 0:
+            return None
 
         index = len(self) - 1 - n
-
         if index < 0:
             return None
+
         if index > len(self) - 1:
             raise IndexError
+
         return self[index]
