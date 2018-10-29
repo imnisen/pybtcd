@@ -1187,6 +1187,12 @@ def new_cursor(b: Bucket, bucket_id: bytes, cursor_type: CursorType) -> Cursor:
 
 dbType = "ffldb"
 
+
+# TODO
+def roll_back_panic(tx):
+    pass
+
+
 # db represents a collection of namespaces which are persisted and implements
 # the database.DB interface.  All database access is performed through
 # transactions which are obtained through the specific Namespace.
@@ -1230,4 +1236,74 @@ class DB(database.DB):
     # which is used by the managed transaction code while the database method
     # returns the interface.
     def _begin(self, writeable: bool) -> Transaction:
-        pass
+        # Whenever a new writable transaction is started, grab the write lock
+        # to ensure only a single write transaction can be active at the same
+        # time.  This lock will not be released until the transaction is
+        # closed (via Rollback or Commit).
+        if writeable:
+            self.write_lock.acquire()
+
+        # Whenever a new transaction is started, grab a read lock against the
+        # database to ensure Close will wait for the transaction to finish.
+        # This lock will not be released until the transaction is closed (via
+	    # Rollback or Commit).
+        self.close_lock.reader_acquire()
+        if self.closed:
+            self.close_lock.reader_release()
+            if writeable:
+                self.write_lock.release()
+
+            raise DBError(ErrorCode.ErrDbNotOpen, errDbNotOpenStr)
+
+        # Grab a snapshot of the database cache (which in turn also handles the
+	    # underlying database).
+        try:
+            snapshot = self.cache.snapshot()
+        except Exception as e:
+            _logger.debug(e)
+            self.close_lock.reader_release()
+            if writeable:
+                self.write_lock.release()
+            raise e
+
+        # The metadata and block index buckets are internal-only buckets, so
+	    # they have defined IDs.
+        tx = Transaction(
+            writable=writeable,
+            db=self,
+            snapshot=snapshot,
+            pending_keys=treap.Mutable(),
+            pending_remove=treap.Mutable(),
+        )
+        tx.meta_bucket = Bucket(tx=tx, id=metadataBucketID)
+        tx.block_idx_bucket = Bucket(tx=tx, id=blockIdxBucketID)
+        return tx
+
+    # Begin starts a transaction which is either read-only or read-write depending
+    # on the specified flag.  Multiple read-only transactions can be started
+    # simultaneously while only a single read-write transaction can be started at a
+    # time.  The call will block when starting a read-write transaction when one is
+    # already open.
+    #
+    # NOTE: The transaction must be closed by calling Rollback or Commit on it when
+    # it is no longer needed.  Failure to do so will result in unclaimed memory.
+    #
+    # This function is part of the database.DB interface implementation.
+    def begin(self, writeable:bool) -> database.Tx:
+        return self.begin(writeable)
+
+
+
+    # View invokes the passed function in the context of a managed read-only
+    # transaction with the root bucket for the namespace.  Any errors returned from
+    # the user-supplied function are returned from this function.
+    #
+    # This function is part of the database.DB interface implementation.
+    def view(self, fn):
+        # Start a read-only transaction.
+        tx = self.begin(writeable=False)
+
+        # todo rollbackonpanic
+
+
+
