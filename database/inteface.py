@@ -29,7 +29,7 @@ class Bucket:
     #     particular implementation
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
-    def create_bucket_if_not_exsit(self, key: bytes) -> 'Bucket':
+    def create_bucket_if_not_exists(self, key: bytes) -> 'Bucket':
         pass
 
     # DeleteBucket removes a nested bucket with the given key.  This also
@@ -453,7 +453,7 @@ class Tx:
 class DB:
     # Type returns the database driver type the current database instance
     # was created with.
-    def type(self):
+    def type(self) -> str:
         pass
 
     # Begin starts a transaction which is either read-only or read-write
@@ -466,7 +466,7 @@ class DB:
     # it when it is no longer needed.  Failure to do so can result in
     # unclaimed memory and/or inablity to close the database due to locks
     # depending on the specific database implementation.
-    def begin(self):
+    def begin(self, writeable: bool) -> Tx:
         pass
 
     # View invokes the passed function in the context of a managed

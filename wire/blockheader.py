@@ -54,7 +54,7 @@ class BlockHeader:
                self.bits == other.bits and \
                self.nonce == other.nonce
 
-    def block_hash(self):
+    def block_hash(self) -> Hash:
         """BlockHash computes the block identifier hash for the given block header."""
 
         # Encode the header and double sha256 everything prior to the number of

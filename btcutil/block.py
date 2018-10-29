@@ -52,7 +52,7 @@ class Block:
     # Bytes returns the serialized bytes for the Block.  This is equivalent to
     # calling Serialize on the underlying wire.MsgBlock, however it caches the
     # result so subsequent calls are more efficient.
-    def bytes(self):
+    def bytes(self) -> bytes:
         # Return the cached serialized bytes if it has already been generated.
         if len(self.serialized_block):
             return self.serialized_block
@@ -87,7 +87,7 @@ class Block:
     # Hash returns the block identifier hash for the Block.  This is equivalent to
     # calling BlockHash on the underlying wire.MsgBlock, however it caches the
     # result so subsequent calls are more efficient.
-    def hash(self):
+    def hash(self) -> chainhash.Hash:
         if self.block_hash:
             return self.block_hash
 

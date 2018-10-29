@@ -139,7 +139,7 @@ class MsgBlock(Message):
         return n
 
     # BlockHash computes the block identifier hash for this block.
-    def block_hash(self):
+    def block_hash(self) -> Hash():
         return self.header.block_hash()
 
     def tx_hashes(self):
