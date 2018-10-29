@@ -1246,7 +1246,7 @@ class DB(database.DB):
         # Whenever a new transaction is started, grab a read lock against the
         # database to ensure Close will wait for the transaction to finish.
         # This lock will not be released until the transaction is closed (via
-	    # Rollback or Commit).
+        # Rollback or Commit).
         self.close_lock.reader_acquire()
         if self.closed:
             self.close_lock.reader_release()
@@ -1256,7 +1256,7 @@ class DB(database.DB):
             raise DBError(ErrorCode.ErrDbNotOpen, errDbNotOpenStr)
 
         # Grab a snapshot of the database cache (which in turn also handles the
-	    # underlying database).
+        # underlying database).
         try:
             snapshot = self.cache.snapshot()
         except Exception as e:
@@ -1267,7 +1267,7 @@ class DB(database.DB):
             raise e
 
         # The metadata and block index buckets are internal-only buckets, so
-	    # they have defined IDs.
+        # they have defined IDs.
         tx = Transaction(
             writable=writeable,
             db=self,
@@ -1289,10 +1289,8 @@ class DB(database.DB):
     # it is no longer needed.  Failure to do so will result in unclaimed memory.
     #
     # This function is part of the database.DB interface implementation.
-    def begin(self, writeable:bool) -> database.Tx:
-        return self.begin(writeable)
-
-
+    def begin(self, writeable: bool) -> database.Tx:
+        return self._begin(writeable)
 
     # View invokes the passed function in the context of a managed read-only
     # transaction with the root bucket for the namespace.  Any errors returned from
@@ -1304,6 +1302,3 @@ class DB(database.DB):
         tx = self.begin(writeable=False)
 
         # todo rollbackonpanic
-
-
-
