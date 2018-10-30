@@ -832,7 +832,29 @@ class Transaction:
     # underlying snapshot, the transaction read lock, and the write lock when the
     # transaction is writable.
     def close(self):
-        pass
+        self.closed = True
+
+        # Clear pending blocks that would have been written on commit.
+        self.pending_blocks = None
+        self.pending_block_data = None
+
+        # Clear pending keys that would have been written or deleted on commit.
+        self.pending_keys= None
+        self.pending_remove = None
+
+        # Release the snapshot.
+        if self.snapshot:
+            self.snapshot.release()
+            self.snapshot = None
+
+        self.db.close_lock.reader_release()
+
+        # Release the writer lock for writable transactions to unblock any
+        # other write transaction which are possibly waiting.
+        if self.writable:
+            self.db.write_lock.release()
+        
+        return
 
     # writePendingAndCommit writes pending block data to the flat block files,
     # updates the metadata with their locations as well as the new current write
@@ -852,14 +874,45 @@ class Transaction:
     #
     # This function is part of the database.Tx interface implementation.
     def commit(self):
-        pass
+        # Prevent commits on managed transactions.
+        if self.managed:
+            self.close()
+            msg = "managed transaction rollback not allowed"
+            raise Exception(msg)  # TOCHECK the way of panic
+
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        try:
+            if not self.writable:
+                msg = "Commit requires a writable database transaction"
+                raise DBError(ErrorCode.ErrTxNotWritable, msg)
+
+            return self.write_pending_and_commit()
+        finally:
+            # Regardless of whether the commit succeeds, the transaction is closed
+            # on return.
+            self.close()
+
+
+
 
     # Rollback undoes all changes that have been made to the root bucket and all of
     # its sub-buckets.
     #
     # This function is part of the database.Tx interface implementation.
     def rollback(self):
-        pass
+        # Prevent rollbacks on managed transactions.
+        if self.managed:
+            self.close()
+            msg = "managed transaction rollback not allowed"
+            raise Exception(msg)  # TOCHECK the way of panic
+
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        self.close()
+        return
 
 
 # cursor is an internal type used to represent a cursor over key/value pairs
