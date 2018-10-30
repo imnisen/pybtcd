@@ -8,6 +8,7 @@ import logging
 import copy
 from .utils import *
 from enum import IntEnum
+from .block_io import *
 
 _logger = logging.Logger(__name__)
 
@@ -420,12 +421,12 @@ class Transaction:
         :param bool managed:
         :param bool closed:
         :param bool writable:
-        :param *db db:
+        :param DB db:
         :param *dbCacheSnapshot snapshot:
         :param *bucket meta_bucket:
         :param *bucket block_idx_bucket:
         :param map[chainhash.Hash]int pending_blocks:
-        :param []pendingBlock pending_block_data:
+        :param [PendingBlock] pending_block_data:
         :param *treap.Mutable pending_keys:
         :param *treap.Mutable pending_remove:
         :param RWLock active_iter_lock:
@@ -863,7 +864,53 @@ class Transaction:
     #
     # This function MUST only be called when there is pending data to be written.
     def write_pending_and_commit(self):
-        pass
+        # Save the current block store write position for potential rollback.
+        # These variables are only updated here in this function and there can
+        # only be one write transaction active at a time, so it's safe to store
+        # them for potential rollback.
+        wc = self.db.store.write_cursor
+        wc.r_lock()
+        old_blk_file_num = wc.cur_file_num
+        old_blk_offset = wc.cur_offset
+        wc.r_unlock()
+
+        def rollback():
+            # Rollback any modifications made to the block files if needed.
+            self.db.store.handle_rollback(old_blk_file_num, old_blk_offset)
+
+        # Loop through all of the pending blocks to store and write them.
+        for block_data in self.pending_block_data:
+            _logger.info("Storing block %s" % block_data.hash)
+            try:
+                location = self.db.store.write_block(block_data.bytes)
+            except Exception as e:
+                rollback()
+                raise e
+
+            # Add a record in the block index for the block.  The record
+            # includes the location information needed to locate the block
+            # on the filesystem as well as the block header since they are
+            # so commonly needed.
+            try:
+                block_row = serialize_block_loc(location)
+                self.block_idx_bucket.put(block_data.hash, block_row)
+            except Exception as e:
+                rollback()
+                raise e
+
+        # Update the metadata for the current write file and offset.
+        try:
+            write_row = serialize_write_row(wc.cur_file_num, wc.cur_offset)
+        except Exception as e:
+            rollback()
+            return  convert_err("failed to store write cursor", e)
+
+        # Atomically update the database cache.  The cache automatically
+        # handles flushing to the underlying persistent storage database.
+        return self.db.cache.commit_tx(self)
+
+
+
 
     # Commit commits all changes that have been made to the root metadata bucket
     # and all of its sub-buckets to the database cache which is periodically synced
@@ -1256,7 +1303,7 @@ class DB(database.DB):
         :param pyutil.Lock write_lock:
         :param pyutil.RWLock close_lock:
         :param bool closed:
-        :param *blockStore store:
+        :param BlockStore store:
         :param *dbCache cache:
         """
 
@@ -1355,3 +1402,4 @@ class DB(database.DB):
         tx = self.begin(writeable=False)
 
         # todo rollbackonpanic
+
