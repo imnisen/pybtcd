@@ -4,6 +4,28 @@ import pyutil
 import database.treap as treap
 import time
 
+# defaultCacheSize is the default size for the database cache.
+defaultCacheSize = 100 * 1024 * 1024  # 100 MB
+
+# defaultFlushSecs is the default number of seconds to use as a
+# threshold in between database cache flushes when the cache size has
+# not been exceeded.
+defaultFlushSecs = 300  # 5 minutes
+
+# ldbBatchHeaderSize is the size of a leveldb batch header which
+# includes the sequence header and record counter.
+#
+# ldbRecordIKeySize is the size of the ikey used internally by leveldb
+# when appending a record to a batch.
+#
+# These are used to help preallocate space needed for a batch in one
+# allocation instead of letting leveldb itself constantly grow it.
+# This results in far less pressure on the GC and consequently helps
+# prevent the GC from allocating a lot of extra unneeded space.
+ldbBatchHeaderSize = 12
+ldbRecordIKeySize = 8
+
+
 # dbCacheSnapshot defines a snapshot of the database cache and underlying
 # database at a particular point in time.
 class DBCacheSnapshot:
@@ -50,7 +72,6 @@ class DBCacheSnapshot:
         self.pending_keys = None
         self.pending_remove = None
         return
-
 
 
 # dbCache provides a database cache layer backed by an underlying database.  It
@@ -100,7 +121,7 @@ class DBCache:
         self.max_size = max_size
         self.flush_interval = flush_interval
         self.last_flush = last_flush
-        
+
         # The following fields hold the keys that need to be stored or deleted
         # from the underlying database once the cache is full, enough time has
         # passed, or when the database is shutting down.  Note that these are
@@ -132,7 +153,6 @@ class DBCache:
         self.cache_lock.r_unlock()
         return cache_snapshot
 
-
     # No Need
     # # updateDB invokes the passed function in the context of a managed leveldb
     # # transaction.  Any errors returned from the user-supplied function will cause
@@ -142,7 +162,7 @@ class DBCache:
     # def update_db(self, fn):
     #     pass
 
-    
+
     # commitTreaps atomically commits all of the passed pending add/update/remove
     # updates to the underlying database.
     def commit_treaps(self, pending_keys: treap.Immutable, pending_remove: treap.Immutable):
@@ -159,7 +179,6 @@ class DBCache:
             raise convert_err("failed to commit", e)
         return
 
-    
     # flush flushes the database cache to persistent storage.  This involes syncing
     # the block store and replaying all transactions that have been applied to the
     # cache to the underlying database.
@@ -167,7 +186,7 @@ class DBCache:
     # This function MUST be called with the database write lock held.
     def flush(self):
         self.last_flush = int(time.time)
-        
+
         # Sync the current write file associated with the block store.  This is
         # necessary before writing the metadata to prevent the case where the
         # metadata contains information about a block which actually hasn't
@@ -197,7 +216,6 @@ class DBCache:
 
         return
 
-
     # needsFlush returns whether or not the database cache needs to be flushed to
     # persistent storage based on its current size, whether or not adding all of
     # the entries in the passed database transaction would cause it to exceed the
@@ -207,7 +225,7 @@ class DBCache:
     # This function MUST be called with the database write lock held.
     def needs_flush(self, tx):  # TODO define the type of tx
         # A flush is needed when more time has elapsed than the configured
-	    # flush interval.
+        # flush interval.
         now = int(time.time())
         if now - self.last_flush > self.flush_interval:
             return True
@@ -241,16 +259,73 @@ class DBCache:
     # This function MUST be called during a database write transaction which in
     # turn implies the database write lock will be held.
     def commit_tx(self, tx):  # TODO define the type of tx
-        # # Flush the cache and write the current transaction directly to the
-        # # database if a flush is needed.
-        # if self.needs_flush(tx):
-        #     self.flush()
-        #
-        #     #
-        pass
+        # Flush the cache and write the current transaction directly to the
+        # database if a flush is needed.
+        if self.needs_flush(tx):
+            self.flush()
 
+            # Perform all leveldb updates using an atomic transaction.
+            self.commit_treaps(tx.pending_keys, tx.pending_remove)
 
+            # Clear the transaction entries since they have been committed.
+            tx.pending_keys = None
+            tx.pending_remove = None
+            return
 
-        
+        # At this point a database flush is not needed, so atomically commit
+        # the transaction to the cache.
 
+        # Since the cached keys to be added and removed use an immutable treap,
+        # a snapshot is simply obtaining the root of the tree under the lock
+        # which is used to atomically swap the root.
+        self.cache_lock.r_lock()
+        new_cached_keys = self.cached_keys
+        new_cached_remove = self.cached_remove
+        self.cache_lock.r_unlock()
 
+        # Apply every key to add in the database transaction to the cache.
+        for k, v in tx.pending_keys.for_each2():
+            new_cached_remove = new_cached_remove.delete(k)
+            new_cached_keys = new_cached_keys.put(k, v)
+        tx.pending_keys = None
+
+        # Apply every key to remove in the database transaction to the cache.
+        for k, v in tx.pending_remove.for_each2():
+            new_cached_keys = new_cached_keys.delete(k)
+            new_cached_remove = new_cached_remove.put(k, v)
+        tx.pending_remove = None
+
+        # Atomically replace the immutable treaps which hold the cached keys to
+        # add and delete.
+        self.cache_lock.lock()
+        self.cached_keys = new_cached_keys
+        self.cached_remove = new_cached_remove
+        self.cache_lock.r_unlock()
+        return
+
+    # Close cleanly shuts down the database cache by syncing all data and closing
+    # the underlying leveldb database.
+    #
+    # This function MUST be called with the database write lock held.
+    def close(self):  # TOCHANGE The try except thing ungly here
+        # Flush any outstanding cached entries to disk.
+        try:
+            self.flush()
+        except Exception as e:
+            # Even if there is an error while flushing, attempt to close
+            # the underlying database.  The error is ignored since it would
+            # mask the flush error.
+            try:
+                self.ldb.close()
+            except Exception:
+                pass
+            raise e
+
+        # Close the underlying leveldb database.
+        try:
+            self.ldb.close()
+        except Exception as e:
+            msg = "failed to close underlying leveldb database"
+            raise convert_err(msg, e)
+
+        return
