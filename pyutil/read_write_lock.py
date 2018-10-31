@@ -57,6 +57,21 @@ class RWLock:
         self.__write_switch.release(self.__no_readers)
 
 
+    # Alias. Union them latter
+    def r_lock(self):
+        self.reader_acquire()
+
+    def r_unlock(self):
+        self.reader_release()
+
+    def lock(self):
+        self.writer_acquire()
+
+    def unlock(self):
+        self.writer_release()
+
+
+
 class _LightSwitch:
     """An auxiliary "light switch"-like object. The first thread turns on the
     "switch", the last one turns it off (see [1, sec. 4.2.2] for details)."""

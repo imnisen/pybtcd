@@ -31,7 +31,11 @@ class Immutable:
         # the treap including the keys, values, and node sizes.
         self.total_size = total_size or 0
 
+    # TOREMOVE
     def len(self):
+        return self.count
+
+    def __len__(self):
         return self.count
 
     def size(self):
@@ -254,6 +258,7 @@ class Immutable:
 
         return
 
+    # TOCONSIDER Create a Iterator instead of this
     def for_each2(self):
         node = self.root
         parent_stack = ParentStack()
