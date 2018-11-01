@@ -9,6 +9,7 @@ import copy
 from .utils import *
 from enum import IntEnum
 from .block_io import *
+from .reconcile import *
 
 _logger = logging.Logger(__name__)
 
@@ -829,7 +830,7 @@ class Transaction:
         self.pending_block_data = None
 
         # Clear pending keys that would have been written or deleted on commit.
-        self.pending_keys= None
+        self.pending_keys = None
         self.pending_remove = None
 
         # Release the snapshot.
@@ -843,7 +844,7 @@ class Transaction:
         # other write transaction which are possibly waiting.
         if self.writable:
             self.db.write_lock.release()
-        
+
         return
 
     # writePendingAndCommit writes pending block data to the flat block files,
@@ -881,7 +882,8 @@ class Transaction:
             # on the filesystem as well as the block header since they are
             # so commonly needed.
             try:
-                block_row = serialize_block_loc(location)
+                block_row = BlockLocation()
+                block_row.deserialize(location)
                 self.block_idx_bucket.put(block_data.hash, block_row)
             except Exception as e:
                 rollback()
@@ -892,14 +894,11 @@ class Transaction:
             write_row = serialize_write_row(wc.cur_file_num, wc.cur_offset)
         except Exception as e:
             rollback()
-            return  convert_err("failed to store write cursor", e)
+            return convert_err("failed to store write cursor", e)
 
         # Atomically update the database cache.  The cache automatically
         # handles flushing to the underlying persistent storage database.
         return self.db.cache.commit_tx(self)
-
-
-
 
     # Commit commits all changes that have been made to the root metadata bucket
     # and all of its sub-buckets to the database cache which is periodically synced
@@ -929,9 +928,6 @@ class Transaction:
             # Regardless of whether the commit succeeds, the transaction is closed
             # on return.
             self.close()
-
-
-
 
     # Rollback undoes all changes that have been made to the root bucket and all of
     # its sub-buckets.
@@ -1391,4 +1387,3 @@ class DB(database.DB):
         tx = self.begin(writeable=False)
 
         # todo rollbackonpanic
-
