@@ -3,6 +3,13 @@ from database.error import *
 import pyutil
 from collections import deque
 import chainhash
+from .utils import *
+import wire
+import io
+
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # ************************************************
 #   Some constants
@@ -24,6 +31,19 @@ blockFilenameTemplate = "%09d.fdb"
 # write file, so there will typically be one more than this value open.
 maxOpenFiles = 25
 
+# maxBlockFileSize is the maximum size for each file used to store
+# blocks.
+#
+# NOTE: The current code uses uint32 for all offsets, so this value
+# must be less than 2^32 (4 GiB).  This is also why it's a typed
+# constant.
+maxBlockFileSize = 512 * 1024 * 1024  # 512 Mi
+
+
+# byteOrder is the preferred byte order used through the database and
+# block files.  Sometimes big endian will be used to allow ordered byte
+# sortable integer values.
+byteOrder = "litter"
 
 # Make the api better to use
 class LRUList(deque):
@@ -45,14 +65,61 @@ class BlockLocation:
         self.file_offset = file_offset or 0
         self.block_len = block_len or 0
 
+    # serializeBlockLoc returns the serialization of the passed block location.
+    # This is data to be stored into the block index metadata for each block.
+    def serialize(self):
+        # The serialized block location format is:
+        #
+        #  [0:4]  Block file (4 bytes)
+        #  [4:8]  File offset (4 bytes)
+        #  [8:12] Block length (4 bytes)
+        s = io.BytesIO()
+        s.write(self.block_file_num.to_bytes(4, byteOrder))
+        s.write(self.file_offset.to_bytes(4, byteOrder))
+        s.write(self.block_len.to_bytes(4, byteOrder))
+        return s.getvalue()
+
+    # deserializeBlockLoc deserializes the passed serialized block location
+    # information.  This is data stored into the block index metadata for each
+    # block.  The serialized data passed to this function MUST be at least
+    # blockLocSize bytes or it will panic.  The error check is avoided here because
+    # this information will always be coming from the block index which includes a
+    # checksum to detect corruption.  Thus it is safe to use this unchecked here
+    def deserialize(self, serialized_data: bytes):
+        # The serialized block location format is:
+        #
+        #  [0:4]  Block file (4 bytes)
+        #  [4:8]  File offset (4 bytes)
+        #  [8:12] Block length (4 bytes)
+        self.block_file_num = int.from_bytes(serialized_data[0:4], byteOrder)
+        self.file_offset = int.from_bytes(serialized_data[4:8], byteOrder)
+        self.block_len = int.from_bytes(serialized_data[8:12], byteOrder)
+        return self
+
+
+
 
 def block_file_path(db_path: str, file_num: int) -> str:
     file_name = blockFilenameTemplate % file_num
     return os.path.join(db_path, file_name)
 
 
+# TODO
 class Filer:
-    pass
+    def reader_at(self, *args, **kwargs):
+        pass
+
+    def writer_at(self, *args, **kwargs):
+        pass
+
+    def close(self):
+        pass
+
+    def truncate(self, size: int):
+        pass
+
+    def sync(self):
+        pass
 
 
 # lockableFile represents a block file on disk that has been opened for either
@@ -60,27 +127,32 @@ class Filer:
 # multiple concurrent readers.
 class LockableFile:
     def __init__(self, lock=None, file=None):
-        self.lock = lock or pyutil.RWLock()
+        """
+
+        :param pyutil.RWLock lock:
+        :param Filer file:
+        """
+        self._lock = lock or pyutil.RWLock()
         self.file = file
 
     def lock(self):
-        self.lock.writer_acquire()
+        self._lock.writer_acquire()
 
     def unlock(self):
-        self.lock.writer_release()
+        self._lock.writer_release()
 
     def r_lock(self):
-        self.lock.reader_acquire()
+        self._lock.reader_acquire()
 
     def r_unlock(self):
-        self.lock.reader_release()
+        self._lock.reader_release()
 
 
 # writeCursor represents the current file and offset of the block file on disk
 # for performing all writes. It also contains a read-write mutex to support
 # multiple concurrent readers which can reuse the file handle.
 class WriterCursor:
-    def __init__(self, lock, cur_file, cur_file_num, cur_offset):
+    def __init__(self, cur_file, cur_file_num=None, cur_offset=None, lock=None):
         """
 
         :param pyutil.RWLOCK lock:
@@ -88,7 +160,7 @@ class WriterCursor:
         :param int cur_file_num:
         :param int cur_offset:
         """
-        self.lock = lock
+        self._lock = lock or pyutil.RWLock
 
         # curFile is the current block file that will be appended to when
         # writing new blocks.
@@ -96,32 +168,32 @@ class WriterCursor:
 
         # curFileNum is the current block file number and is used to allow
         # readers to use the same open file handle.
-        self.cur_file_num = cur_file_num
+        self.cur_file_num = cur_file_num or 0
 
         # curOffset is the offset in the current write block file where the
         # next new block will be written.
-        self.cur_offset = cur_offset
+        self.cur_offset = cur_offset or 0
 
     def lock(self):
-        self.lock.writer_acquire()
+        self._lock.lock()
 
     def unlock(self):
-        self.lock.writer_release()
+        self._lock.unlock()
 
     def r_lock(self):
-        self.lock.reader_acquire()
+        self._lock.r_lock()
 
     def r_unlock(self):
-        self.lock.reader_release()
+        self._lock.r_unlock()
 
 
 # blockStore houses information used to handle reading and writing blocks (and
 # part of blocks) into flat files with support for multiple concurrent readers.
 class BlockStore:
     def __init__(self, network, base_path, max_block_file_size,
-                 obf_mutex, lru_mutex, open_blocks_lru, file_num_to_lru_elem, open_block_files,
-                 write_cursor,
-                 open_file_func, open_write_file_func, delete_file_func):
+                 obf_mutex=None, lru_mutex=None, open_blocks_lru=None, file_num_to_lru_elem=None, open_block_files=None,
+                 write_cursor=None,
+                 open_file_func=None, open_write_file_func=None, delete_file_func=None):
         """
 
         :param wire.BitcoinNet  network:
@@ -208,6 +280,61 @@ class BlockStore:
         self.open_file_func = open_file_func
         self.open_write_file_func = open_write_file_func
         self.delete_file_func = delete_file_func
+
+    # scanBlockFiles searches the database directory for all flat block files to
+    # find the end of the most recent file.  This position is considered the
+    # current write cursor which is also stored in the metadata.  Thus, it is used
+    # to detect unexpected shutdowns in the middle of writes so the block files
+    # can be reconciled.
+    @staticmethod
+    def scan_block_files(db_path: str):
+        last_file = -1
+        i = 0
+        while True:
+
+            file_path = block_file_path(db_path, i)
+            try:
+                st = os.stat(file_path)
+            except Exception:
+                break
+
+            last_file = i
+            file_len = st.st_size
+
+            i += 1
+
+        _logger.info("Scan found latest block file #%d with length %d" % (last_file, file_len))
+        return last_file, file_len
+
+    # newBlockStore returns a new block store with the current block file number
+    # and offset set and all fields initialized.
+    @classmethod
+    def new_from_path_network(cls, base_path: str, network: wire.BitcoinNet) -> 'BlockStore':
+        # Look for the end of the latest block to file to determine what the
+        # write cursor position is from the viewpoing of the block files on
+        # disk.
+        file_num, file_off = cls.scan_block_files(base_path)
+        if file_num == -1:
+            file_num = 0
+            file_off = 0
+
+        store = cls(
+            network=network,
+            base_path=base_path,
+            max_block_file_size=maxBlockFileSize,
+            open_block_files={},
+            open_blocks_lru=LRUList(),
+            file_num_to_lru_elem={},
+            write_cursor=WriterCursor(
+                cur_file=LockableFile(),
+                cur_file_num=file_num,
+                cur_offset=file_off
+            ),
+        )
+        store.open_file_func = store.open_file
+        store.open_write_file_func = store.open_write_file
+        store.delete_file_func = store.delete_file
+        return store
 
     # openWriteFile returns a file handle for the passed flat file number in
     # read/write mode.  The file will be created if needed.  It is typically used
@@ -306,14 +433,14 @@ class BlockStore:
     def block_file(self, file_num: int):
         # When the requested block file is open for writes, return it.
         wc = self.write_cursor
-        wc.lock.reader_acquire()
+        wc.r_lock()
         if file_num == wc.cur_file_num and wc.cur_file.file is not None:
             obf = wc.cur_file
-            obf.lock.reader_acquire()
-            wc.lock.reader_release()
+            obf.r_lock()
+            wc.r_unlock()
             return obf
 
-        wc.lock.reader_release()
+        wc.r_unlock()
 
         # Try to return an open file under the overall files read lock.
         self.obf_mutex.reader_acquire()
@@ -323,7 +450,7 @@ class BlockStore:
             self.open_blocks_lru.move_to_front(self.file_num_to_lru_elem[file_num])
             self.lru_mutex.release()
 
-            obf.lock.reader_acquire()
+            obf.r_lock()
             self.obf_mutex.reader_release()
             return obf
 
@@ -335,7 +462,7 @@ class BlockStore:
         self.obf_mutex.writer_acquire()
         if file_num in self.open_block_files:
             obf = self.open_block_files[file_num]
-            obf.lock.reader_acquire()
+            obf.r_lock()
             self.obf_mutex.writer_release()
             return obf
 
@@ -347,7 +474,7 @@ class BlockStore:
             self.obf_mutex.writer_release()
             raise e
 
-        obf.lock.reader_acquire()
+        obf.r_lock()
         self.obf_mutex.writer_release()
         return obf
 
@@ -365,11 +492,11 @@ class BlockStore:
     def write_data(self, data: bytes, field_name: str):
         wc = self.write_cursor
         try:
-            n = wc.cur_file.file.write_at(data, wc.cur_offset)  # TODO no write_at
+            n = wc.cur_file.file.writer_at(data, wc.cur_offset)  # TOCHECK no write_at
             wc.cur_offset += n
         except Exception as e:
             msg = "failed to write %s to file %d at offset %s: %s" % (
-            field_name, wc.cur_file_num, wc.cur_offset, str(e))
+                field_name, wc.cur_file_num, wc.cur_offset, str(e))
             raise DBError(ErrorCode.ErrDriverSpecific, msg, e)
 
         return
@@ -391,6 +518,15 @@ class BlockStore:
         block_len = len(raw_block)
         full_len = block_len + 12
 
+        # Move to the next block file if adding the new block would exceed the
+        # max allowed size for the current block file.  Also detect overflow
+        # to be paranoid, even though it isn't possible currently, numbers
+        # might change in the future to make it possible.
+        #
+        # NOTE: The writeCursor.offset field isn't protected by the mutex
+        # since it's only read/changed during this function which can only be
+        # called during a write transaction, of which there can be only one at
+        # a time.
         wc = self.write_cursor
         final_offset = wc.cur_offset + full_len
         if final_offset < wc.cur_offset or final_offset > self.max_block_file_size:
@@ -405,7 +541,10 @@ class BlockStore:
 
             wc.cur_file.lock()
             if wc.cur_file.file is not None:
-                wc.cur_file.file.close()  # TODO
+                try:
+                    wc.cur_file.file.close()
+                except:
+                    pass
                 wc.cur_file.file = None
 
             wc.cur_file.unlock()
@@ -430,17 +569,22 @@ class BlockStore:
 
             # Bitcoin network.
             orig_offset = wc.cur_offset
-            # scratch = transfer_network_to_scratch() TODO
-
+            network_bytes = self.network.to_bytes_as_uint32("little")
+            self.write_data(network_bytes, field_name="network")
 
             # Block length.
-            # TODO
+            block_len_bytes = block_len.to_bytes(4, byteorder="little")
+            self.write_data(block_len_bytes, field_name="block length")
 
             # Serialized block.
-            # TODO
+            self.write_data(raw_block, field_name="block")
 
             # Castagnoli CRC-32 as a checksum of all the previous.
-            # TODO
+            checksum_bytes = crc32_Castagnoli(network_bytes +
+                                              block_len_bytes +
+                                              raw_block).to_bytes(4,
+                                                                  byteorder="big")  # TODO check the int -> bytes right?
+            self.write_data(checksum_bytes, field_name="checksum")
 
             loc = BlockLocation(
                 block_file_num=wc.cur_file_num,
@@ -449,7 +593,7 @@ class BlockStore:
             )
             return loc
 
-        finally:  # TODO better way
+        finally:
             wc.cur_file.unlock()
 
     # readBlock reads the specified block record and returns the serialized block.
@@ -473,8 +617,8 @@ class BlockStore:
         block_file = self.block_file(loc.block_file_num)
 
         try:
-            serialized_data = []
-            n = block_file.file.read_at(serialized_data, loc.file_offset)
+            serialized_data = bytes()
+            n = block_file.file.reader_at(serialized_data, loc.file_offset)
         except Exception as e:
             msg = "failed to read block %s from file %d, offset %d: %s" % (hash, loc.block_file_num, loc.file_offset, e)
             raise DBError(ErrorCode.ErrDriverSpecific, msg, e)
@@ -485,14 +629,26 @@ class BlockStore:
         # serialized checksum.  This will detect any data corruption in the
         # flat file without having to do much more expensive merkle root
         # calculations on the loaded block.
-        # TODO checksum
+        serialized_checksum = int.from_bytes(serialized_data[-4:], "big")
+        calculated_checksum = crc32_Castagnoli(serialized_data[:-4])
+        if serialized_checksum != calculated_checksum:
+            msg = "block data for block %s checksum does not match - got %x, want %x" % (hash,
+                                                                                         calculated_checksum,
+                                                                                         serialized_checksum)
+            raise DBError(ErrorCode.ErrCorruption, msg)
 
         # The network associated with the block must match the current active
         # network, otherwise somebody probably put the block files for the
         # wrong network in the directory.
-        # TODO check network
+        serialized_net = int.from_bytes(serialized_data[:4], "little")
+        if serialized_net != self.network.to_int():
+            msg = "block data for block %s is for the wrong network - got %d, want %d" % (
+                hash, serialized_net, self.network.to_int())
+            raise DBError(ErrorCode.ErrDriverSpecific, msg)
 
-        return serialized_data[8: n - 4]
+            # The raw block excludes the network, length of the block, and
+            # checksum.
+        return serialized_data[8: -4]
 
     # readBlockRegion reads the specified amount of data at the provided offset for
     # a given block location.  The offset is relative to the start of the
@@ -513,11 +669,11 @@ class BlockStore:
         # for block length.  Thus, add 8 bytes to adjust.
         read_offset = loc.file_offset + 8 + offset
         try:
-            serialized_data = []
-            block_file.file.read_at(serialized_data, read_offset)
+            serialized_data = bytes()
+            block_file.file.reader_at(serialized_data, read_offset)
         except Exception as e:
             msg = "failed to read region from block file %d, offset %d, len %d: %s" % (
-            loc.block_file_num, read_offset, num_bytes, e)
+                loc.block_file_num, read_offset, num_bytes, e)
             raise DBError(ErrorCode.ErrDriverSpecific, msg, e)
         finally:
             block_file.r_unlock()
@@ -535,7 +691,7 @@ class BlockStore:
         wc = self.write_cursor
         wc.r_lock()
 
-        # TODO fucking the defer pattern, try make a better one
+        # TOCHANGE fucking the defer pattern, try make a better one
         try:
             # Nothing to do if there is no current file associated with the write
             # cursor.
@@ -545,7 +701,7 @@ class BlockStore:
                     return
 
                 try:
-                    wc.cur_file.file.sync()
+                    wc.cur_file.file.sync()  # TOCHECK no sync() now
                 except Exception as e:
                     msg = "failed to sync file %d: %s" % (wc.cur_file_num, e)
                     raise DBError(ErrorCode.ErrDriverSpecific, msg, e)
@@ -582,12 +738,79 @@ class BlockStore:
     #
     # Therefore, any errors are simply logged at a warning level rather than being
     # returned since there is nothing more that could be done about it anyways.
-    def handle_rollback(self, old_blk_file_num, old_blk_offset):
-        pass
+    def handle_rollback(self, old_block_file_num: int, old_block_offset: int):
+        # Grab the write cursor mutex since it is modified throughout this
+        # function.
+        wc = self.write_cursor
+        wc.lock()
+        try:
+            # Nothing to do if the rollback point is the same as the current write
+            # cursor.
+            if wc.cur_file_num == old_block_file_num and wc.cur_offset == old_block_offset:
+                return
+
+                # Regardless of any failures that happen below, reposition the write
+                # cursor to the old block file and offset.
+            try:
+                _logger.debug("ROLLBACK: Rolling back to file %d, offset %d" % (old_block_file_num, old_block_offset))
+
+                # Close the current write file if it needs to be deleted.  Then delete
+                # all files that are newer than the provided rollback file while
+                # also moving the write cursor file backwards accordingly.
+                if wc.cur_file_num > old_block_file_num:
+                    wc.cur_file.lock()
+                    if wc.cur_file.file is not None:
+                        try:
+                            wc.cur_file.file.close()
+                        except:
+                            pass
+                        wc.cur_file.file = None
+
+                    wc.cur_file.unlock()
+
+                while wc.cur_file_num > old_block_file_num:
+                    try:
+                        self.delete_file_func(wc.cur_file_num)
+                    except Exception as e:
+                        _logger.warning(
+                            "ROLLBACK: Failed to delete block file number %d: %s" % (wc.cur_file_num, repr(e)))
+                        return
+
+                    wc.cur_file_num -= 1
+
+                # Open the file for the current write cursor if needed
+                wc.cur_file.lock()
+                if wc.cur_file.file is None:
+                    try:
+                        obf = self.open_write_file_func(wc.cur_file_num)
+                    except Exception as e:
+                        wc.cur_file.unlock()
+                        _logger.warning("ROLLBACK: %s" % repr(e))
+                        return
+                    wc.cur_file.file = obf
+
+                # Truncate the to the provided rollback offset.
+                try:
+                    wc.cur_file.file.truncate(old_block_offset)
+                except Exception as e:
+                    wc.cur_file.unlock()
+                    _logger.warning("ROLLBACK: Failed to truncate file %d: %s" % (wc.cur_file_num, repr(e)))
+                    return
+
+                # Sync the file to disk
+                try:
+                    wc.cur_file.file.sync()
+                except Exception as e:
+                    wc.cur_file.unlock()
+                    _logger.warning("ROLLBACK: Failed to sync file %d: %v" % (wc.cur_file_num.repr(e)))
+                    return
+                wc.cur_file.unlock()
+
+            finally:
+                wc.cur_file_num = old_block_file_num
+                wc.cur_offset = old_block_offset
+
+        finally:
+            wc.unlock()
 
 
-def serialize_block_loc(loc: BlockLocation):
-    pass
-
-def serialize_write_row(cur_block_file_num: int, cur_file_offset: int):
-    pass

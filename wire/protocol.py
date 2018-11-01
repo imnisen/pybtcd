@@ -71,6 +71,12 @@ class BitcoinNet(Enum):
                 return flagService
         raise ValueError(cls.__name__ + ' has no value matching "' + str(i) + '"')
 
+    def to_bytes_as_uint32(self, byteorder):
+        return self.value[0].to_bytes(4, byteorder=byteorder)
+
+    def to_int(self):
+        return self.value[0]
+
 
 # Enumerations support iteration, in definition order
 # TODO Change this
