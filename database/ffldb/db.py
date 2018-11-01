@@ -10,6 +10,8 @@ from .utils import *
 from enum import IntEnum
 from .block_io import *
 from .reconcile import *
+import plyvel
+from .db_cache import *
 
 _logger = logging.Logger(__name__)
 
@@ -26,6 +28,9 @@ errTxClosedStr = "database tx is closed"
 # ****************
 # Some global variables
 # ****************
+
+# metadataDbName is the name used for the metadata database.
+metadataDbName = "metadata"
 
 # bucketIndexPrefix is the prefix used for all entries in the bucket
 # index.
@@ -47,6 +52,10 @@ blockIdxBucketID = bytes([0x00, 0x00, 0x00, 0x01])
 # metadata.
 blockIdxBucketName = b"ffldb-blockidx"
 
+
+# writeLocKeyName is the key used to store the current write file
+# location.
+writeLocKeyName = b"ffldb-writeloc"
 
 # ****************
 # Helper function
@@ -890,8 +899,9 @@ class Transaction:
                 raise e
 
         # Update the metadata for the current write file and offset.
+        write_row = serialize_write_row(wc.cur_file_num, wc.cur_offset)
         try:
-            write_row = serialize_write_row(wc.cur_file_num, wc.cur_offset)
+            self.meta_bucket.put(writeLocKeyName, write_row)
         except Exception as e:
             rollback()
             return convert_err("failed to store write cursor", e)
@@ -1282,7 +1292,7 @@ def roll_back_panic(tx):
 # the database.DB interface.  All database access is performed through
 # transactions which are obtained through the specific Namespace.
 class DB(database.DB):
-    def __init__(self, write_lock=None, close_lock=None, closed=None, store=None, cache=None, ):
+    def __init__(self, store, cache,  write_lock=None, close_lock=None, closed=None):
         """
 
         :param pyutil.Lock write_lock:
@@ -1302,10 +1312,10 @@ class DB(database.DB):
         self.closed = closed or False
 
         # Handles read/writing blocks to flat files.
-        self.store = store  # TODO the default value
+        self.store = store
 
         # Cache layer which wraps underlying leveldb DB.
-        self.cache = cache  # TODO the default value
+        self.cache = cache
 
     # Type returns the database driver type the current database instance was
     # created with.
@@ -1384,6 +1394,187 @@ class DB(database.DB):
     # This function is part of the database.DB interface implementation.
     def view(self, fn):
         # Start a read-only transaction.
-        tx = self.begin(writeable=False)
+        tx = self._begin(writeable=False)
 
-        # todo rollbackonpanic
+        # TOCHANGE So strange here
+        try:
+            tx.managed = True
+            try:
+                fn(tx)
+            except Exception as e:
+                try:
+                    tx.rollback()
+                except:
+                    pass
+                raise e
+            tx.managed = False
+
+        except Exception as e:
+            # Since the user-provided function might panic, ensure the transaction
+            # releases all mutexes and resources.  There is no guarantee the caller
+            # won't use recover and keep going.  Thus, the database must still be
+            # in a usable state on panics due to caller issues.
+            tx.managed = False
+            tx.rollback()
+            raise e
+
+        return tx.rollback()
+
+    # Update invokes the passed function in the context of a managed read-write
+    # transaction with the root bucket for the namespace.  Any errors returned from
+    # the user-supplied function will cause the transaction to be rolled back and
+    # are returned from this function.  Otherwise, the transaction is committed
+    # when the user-supplied function returns a nil error.
+    #
+    # This function is part of the database.DB interface implementation.
+    def update(self, fn):
+        tx = self._begin(writeable=True)
+
+        try:
+            tx.managed = True
+            try:
+                fn(tx)
+            except Exception as e:
+                try:
+                    tx.rollback()
+                except:
+                    pass
+                raise e
+            tx.managed = False
+        except Exception as e:
+            # Since the user-provided function might panic, ensure the transaction
+            # releases all mutexes and resources.  There is no guarantee the caller
+            # won't use recover and keep going.  Thus, the database must still be
+            # in a usable state on panics due to caller issues.
+            tx.managed = False
+            tx.rollback()
+            raise e
+
+        return tx.commit()
+
+    # Close cleanly shuts down the database and syncs all data.  It will block
+    # until all database transactions have been finalized (rolled back or
+    # committed).
+    #
+    # This function is part of the database.DB interface implementation.
+    def close(self):
+        # Since all transactions have a read lock on this mutex, this will
+        # cause Close to wait for all readers to complete.
+        self.close_lock.lock()
+
+        # TOCHANGE Damn pattern
+        try:
+            if self.closed:
+                raise DBError(ErrorCode.ErrDbNotOpen, errDbNotOpenStr)
+
+            self.closed = True
+
+            # NOTE: Since the above lock waits for all transactions to finish and
+            # prevents any new ones from being started, it is safe to flush the
+            # cache and clear all state without the individual locks.
+
+            # Close the database cache which will flush any existing entries to
+            # disk and close the underlying leveldb database.  Any error is saved
+            # and returned at the end after the remaining cleanup since the
+            # database will be marked closed even if this fails given there is no
+            # good way for the caller to recover from a failure here anyways.
+            self.cache.close()
+
+            # Close any open flat files that house the blocks.
+            try:
+                wc = self.store.write_cursor
+                if wc.cur_file.file is not None:
+                    try:
+                        wc.cur_file.file.close()
+                    except:
+                        pass
+                    wc.cur_file.file = None
+
+                for _, block_file in self.store.open_block_files.items():
+                    try:
+                        block_file.file.close()
+                    except:
+                        pass
+            finally:
+                self.store.open_block_files = {}
+                self.store.open_blocks_lru = LRUList()
+                self.store.file_num_to_lru_elem = {}
+
+            return
+        finally:
+            self.close_lock.unlock()
+
+# initDB creates the initial buckets and values used by the package.  This is
+# mainly in a separate function for testing purposes.
+def init_db(ldb):
+    # The starting block file write cursor location is file num 0, offset
+	# 0.
+    batch = ldb.write_batch()
+    batch.put(bucketized_key(metadataBucketID, writeLocKeyName),
+              serialize_write_row(cur_block_file_num=0, cur_file_offset=0))
+
+    # Create block index bucket and set the current bucket id.
+	#
+	# NOTE: Since buckets are virtualized through the use of prefixes,
+	# there is no need to store the bucket index data for the metadata
+	# bucket in the database.  However, the first bucket ID to use does
+	# need to account for it to ensure there are no key collisions.
+    batch.put(bucketized_key(metadataBucketID, writeLocKeyName),
+              blockIdxBucketID)
+    batch.put(curBucketIDKeyName, blockIdxBucketID)
+
+    try:
+        batch.write()
+    except Exception as e:
+        msg = "failed to initialize metadata database: %s" % repr(e)
+        raise convert_err(msg, e)
+    return
+
+# openDB opens the database at the provided path.  database.ErrDbDoesNotExist
+# is returned if the database doesn't exist and the create flag is not set.
+def open_db(db_path:str, network: wire.BitcoinNet, create:bool)-> database.DB:
+    # Error if the database doesn't exist and the create flag is not set.
+    metadata_db_path = os.path.join(db_path, metadataDbName)
+    db_exists = os.path.exists(metadata_db_path)
+    if not create and not db_exists:
+        msg = "database %s does not exist" % metadata_db_path
+        raise DBError(ErrorCode.ErrDbDoesNotExist, msg)
+
+    # Ensure the full path to the database exists.
+    if not db_exists:
+        # The error can be ignored here since the call to
+		# leveldb.OpenFile will fail if the directory couldn't be
+		# created.
+        try:
+            os.makedirs(db_path, mode=0o700)
+        except:
+            pass
+
+    # Open the metadata database (will create it if needed).
+    opt = {
+        "create_if_missing": create,
+        "error_if_exists": create,
+        "compression": False,
+    }
+    try:
+        ldb = plyvel.DB(metadata_db_path, **opt)
+    except Exception as e:
+        raise convert_err(repr(e), e)
+
+    # Create the block store which includes scanning the existing flat
+	# block files to find what the current write cursor position is
+	# according to the data that is actually on disk.  Also create the
+	# database cache which wraps the underlying leveldb database to provide
+	# write caching.
+    store = BlockStore.new_from_path_network(db_path, network)
+    cache = DBCache(ldb=ldb, store=store)
+    pdb = DB(store=store, cache=cache)
+    return reconcile_db(pdb, create)
+
+
+
+
+
+
+
+    

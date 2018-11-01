@@ -82,7 +82,7 @@ class DBCacheSnapshot:
 # can commit transactions at will without incurring large performance hits due
 # to frequent disk syncs.
 class DBCache:
-    def __init__(self, ldb, store, max_size, flush_interval, last_flush,
+    def __init__(self, ldb, store, max_size=None, flush_interval=None, last_flush=None,
                  cache_lock=None, cached_keys=None, cached_remove=None):
         """
 
@@ -118,9 +118,9 @@ class DBCache:
         #
         # NOTE: These flush related fields are protected by the database write
         # lock.
-        self.max_size = max_size
-        self.flush_interval = flush_interval
-        self.last_flush = last_flush
+        self.max_size = max_size or defaultCacheSize
+        self.flush_interval = flush_interval or defaultFlushSecs
+        self.last_flush = last_flush or int(time.time())
 
         # The following fields hold the keys that need to be stored or deleted
         # from the underlying database once the cache is full, enough time has

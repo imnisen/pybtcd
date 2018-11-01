@@ -39,11 +39,11 @@ maxOpenFiles = 25
 # constant.
 maxBlockFileSize = 512 * 1024 * 1024  # 512 Mi
 
-
 # byteOrder is the preferred byte order used through the database and
 # block files.  Sometimes big endian will be used to allow ordered byte
 # sortable integer values.
 byteOrder = "litter"
+
 
 # Make the api better to use
 class LRUList(deque):
@@ -95,8 +95,6 @@ class BlockLocation:
         self.file_offset = int.from_bytes(serialized_data[4:8], byteOrder)
         self.block_len = int.from_bytes(serialized_data[8:12], byteOrder)
         return self
-
-
 
 
 def block_file_path(db_path: str, file_num: int) -> str:
@@ -802,7 +800,7 @@ class BlockStore:
                     wc.cur_file.file.sync()
                 except Exception as e:
                     wc.cur_file.unlock()
-                    _logger.warning("ROLLBACK: Failed to sync file %d: %v" % (wc.cur_file_num.repr(e)))
+                    _logger.warning("ROLLBACK: Failed to sync file %d: %s" % (wc.cur_file_num, repr(e)))
                     return
                 wc.cur_file.unlock()
 
@@ -812,5 +810,3 @@ class BlockStore:
 
         finally:
             wc.unlock()
-
-
