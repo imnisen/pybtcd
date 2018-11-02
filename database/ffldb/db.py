@@ -52,10 +52,10 @@ blockIdxBucketID = bytes([0x00, 0x00, 0x00, 0x01])
 # metadata.
 blockIdxBucketName = b"ffldb-blockidx"
 
-
 # writeLocKeyName is the key used to store the current write file
 # location.
 writeLocKeyName = b"ffldb-writeloc"
+
 
 # ****************
 # Helper function
@@ -678,7 +678,11 @@ class Transaction:
     # fetchBlockRow fetches the metadata stored in the block index for the provided
     # hash.  It will return ErrBlockNotFound if there is no entry.
     def fetch_block_row(self, hash: chainhash.Hash):
-        pass
+        block_row = self.block_idx_bucket.get(hash.to_bytes())
+        if block_row is None:
+            msg = "block %s does not exist" % hash
+            raise DBError(ErrorCode.ErrBlockNotFound, msg)
+        return block_row
 
     # FetchBlockHeader returns the raw serialized bytes for the block header
     # identified by the given hash.  The raw bytes are in the format returned by
@@ -697,7 +701,11 @@ class Transaction:
     #
     # This function is part of the database.Tx interface implementation.
     def fetch_block_header(self, hash: chainhash.Hash):
-        pass
+        return self.fetch_block_region(database.BlockRegion(
+            hash=hash,
+            offset=0,
+            len=wire.MaxBlockHeaderPayload
+        ))
 
     # FetchBlockHeaders returns the raw serialized bytes for the block headers
     # identified by the given hashes.  The raw bytes are in the format returned by
@@ -715,7 +723,14 @@ class Transaction:
     #
     # This function is part of the database.Tx interface implementation.
     def fetch_block_headers(self, hashes: [chainhash.Hash]):
-        pass
+        regions = []
+        for hash in hashes:
+            regions.append(database.BlockRegion(
+                hash=hash,
+                offset=0,
+                len=wire.MaxBlockHeaderPayload
+            ))
+        return self.fetch_block_regions(regions)
 
     # FetchBlock returns the raw serialized bytes for the block identified by the
     # given hash.  The raw bytes are in the format returned by Serialize on a
@@ -736,7 +751,23 @@ class Transaction:
     #
     # This function is part of the database.Tx interface implementation.
     def fetch_block(self, hash: chainhash.Hash):
-        pass
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        # When the block is pending to be written on commit return the bytes
+        # from there.
+        if hash in self.pending_blocks:
+            idx = self.pending_blocks[hash]
+            return self.pending_block_data[idx].bytes
+
+        block_row = self.fetch_block_row(hash)
+        location = BlockLocation()
+        location.deserialize(block_row)
+
+        # Read the block from the appropriate location.  The function also
+        # performs a checksum over the data to detect data corruption.
+        block_bytes = self.db.store.read_block(hash, location)
+        return block_bytes
 
     # FetchBlocks returns the raw serialized bytes for the blocks identified by the
     # given hashes.  The raw bytes are in the format returned by Serialize on a
@@ -756,16 +787,43 @@ class Transaction:
     # allows support for memory-mapped database implementations.
     #
     # This function is part of the database.Tx interface implementation.
-    def fetch_blocks(self):
-        pass
+    def fetch_blocks(self, hashes):
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        # NOTE: This could check for the existence of all blocks before loading
+        # any of them which would be faster in the failure case, however
+        # callers will not typically be calling this function with invalid
+        # values, so optimize for the common case.
+        blocks =[]
+        for hash in hashes:
+            blocks.append(self.fetch_block(hash))
+        return blocks
+
 
     # fetchPendingRegion attempts to fetch the provided region from any block which
     # are pending to be written on commit.  It will return nil for the byte slice
     # when the region references a block which is not pending.  When the region
     # does reference a pending block, it is bounds checked and returns
     # ErrBlockRegionInvalid if invalid.
-    def fetch_pending_region(self, region):
-        pass
+    def fetch_pending_region(self, region: database.BlockRegion):
+        # Nothing to do if the block is not pending to be written on commit.
+        if region.hash not in self.pending_blocks:
+            return None
+
+        # Ensure the region is within the bounds of the block.
+        idx = self.pending_blocks[region.hash]
+        block_bytes = self.pending_block_data[idx].bytes
+        block_len = len(block_bytes)
+        end_offset = region.offset + region.len
+        if end_offset < region.offset or end_offset > block_len:
+            msg = "block %s region offset %d, length %d exceeds block length of %d" % (region.hash, region.offset, region.len, block_len)
+            raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
+
+        # Return the bytes from the pending block.
+        return block_bytes[region.offset:end_offset]
+
+
 
     # FetchBlockRegion returns the raw serialized bytes for the given block region.
     #
@@ -794,8 +852,34 @@ class Transaction:
     # allows support for memory-mapped database implementations.
     #
     # This function is part of the database.Tx interface implementation.
-    def fetch_block_region(self, region):
-        pass
+    def fetch_block_region(self, region: database.BlockRegion):
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        # When the block is pending to be written on commit return the bytes
+	    # from there.
+        if self.pending_blocks:
+            region_bytes = self.fetch_pending_region(region)
+            if region_bytes:
+                return region_bytes
+
+        # Lookup the location of the block in the files from the block index.
+        block_row = self.fetch_block_row(region.hash)
+        location = BlockLocation()
+        location.deserialize(block_row)
+
+        # Ensure the region is within the bounds of the block.
+        end_offset = region.offset + region.len
+        if end_offset <  region.offset or end_offset > location.block_len:
+            msg = "block %s region offset %d, length %d exceeds block length of %d" % (
+            region.hash, region.offset, region.len, location.block_len)
+            raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
+
+        # Read the region from the appropriate disk block file.
+        region_bytes = self.db.store.read_block_region(location, region.offset, region.len)
+        return region_bytes
+
+
 
     # FetchBlockRegions returns the raw serialized bytes for the given block
     # regions.
@@ -826,7 +910,61 @@ class Transaction:
     #
     # This function is part of the database.Tx interface implementation.
     def fetch_block_regions(self, regions):
-        pass
+        # Ensure transaction state is valid.
+        self.check_closed()
+
+        # NOTE: This could check for the existence of all blocks before
+        # deserializing the locations and building up the fetch list which
+        # would be faster in the failure case, however callers will not
+        # typically be calling this function with invalid values, so optimize
+        # for the common case.
+
+        # NOTE: A potential optimization here would be to combine adjacent
+        # regions to reduce the number of reads.
+
+        # In order to improve efficiency of loading the bulk data, first grab
+        # the block location for all of the requested block hashes and sort
+        # the reads by filenum:offset so that all reads are grouped by file
+        # and linear within each file.  This can result in quite a significant
+        # performance increase depending on how spread out the requested hashes
+        # are by reducing the number of file open/closes and random accesses
+        # needed.  The fetchList is intentionally allocated with a cap because
+        # some of the regions might be fetched from the pending blocks and
+        # hence there is no need to fetch those from disk.
+        block_regions = []
+
+        for region in regions:
+            # When the block is pending to be written on commit return the bytes
+            # from there.
+            if self.pending_blocks:
+                region_bytes = self.fetch_pending_region(region)
+                if region_bytes:
+                    block_regions.append(region_bytes)
+                    continue
+
+            # Lookup the location of the block in the files from the block index.
+            block_row = self.fetch_block_row(region.hash)
+            location = BlockLocation()
+            location.deserialize(block_row)
+
+            # Ensure the region is within the bounds of the block.
+            end_offset = region.offset + region.len
+            if end_offset < region.offset or end_offset > location.block_len:
+                msg = "block %s region offset %d, length %d exceeds block length of %d" % (
+                    region.hash, region.offset, region.len, location.block_len)
+                raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
+
+            # fetch_list.append(bulk_)
+            # Read the region from the appropriate disk block file.
+            region_bytes = self.db.store.read_block_region(location, region.offset, region.len)
+            block_regions.append(region_bytes)
+
+        return block_regions
+
+
+
+
+
 
     # close marks the transaction closed then releases any pending data, the
     # underlying snapshot, the transaction read lock, and the write lock when the
@@ -1292,7 +1430,7 @@ def roll_back_panic(tx):
 # the database.DB interface.  All database access is performed through
 # transactions which are obtained through the specific Namespace.
 class DB(database.DB):
-    def __init__(self, store, cache,  write_lock=None, close_lock=None, closed=None):
+    def __init__(self, store, cache, write_lock=None, close_lock=None, closed=None):
         """
 
         :param pyutil.Lock write_lock:
@@ -1504,21 +1642,22 @@ class DB(database.DB):
         finally:
             self.close_lock.unlock()
 
+
 # initDB creates the initial buckets and values used by the package.  This is
 # mainly in a separate function for testing purposes.
 def init_db(ldb):
     # The starting block file write cursor location is file num 0, offset
-	# 0.
+    # 0.
     batch = ldb.write_batch()
     batch.put(bucketized_key(metadataBucketID, writeLocKeyName),
               serialize_write_row(cur_block_file_num=0, cur_file_offset=0))
 
     # Create block index bucket and set the current bucket id.
-	#
-	# NOTE: Since buckets are virtualized through the use of prefixes,
-	# there is no need to store the bucket index data for the metadata
-	# bucket in the database.  However, the first bucket ID to use does
-	# need to account for it to ensure there are no key collisions.
+    #
+    # NOTE: Since buckets are virtualized through the use of prefixes,
+    # there is no need to store the bucket index data for the metadata
+    # bucket in the database.  However, the first bucket ID to use does
+    # need to account for it to ensure there are no key collisions.
     batch.put(bucketized_key(metadataBucketID, writeLocKeyName),
               blockIdxBucketID)
     batch.put(curBucketIDKeyName, blockIdxBucketID)
@@ -1530,9 +1669,10 @@ def init_db(ldb):
         raise convert_err(msg, e)
     return
 
+
 # openDB opens the database at the provided path.  database.ErrDbDoesNotExist
 # is returned if the database doesn't exist and the create flag is not set.
-def open_db(db_path:str, network: wire.BitcoinNet, create:bool)-> database.DB:
+def open_db(db_path: str, network: wire.BitcoinNet, create: bool) -> database.DB:
     # Error if the database doesn't exist and the create flag is not set.
     metadata_db_path = os.path.join(db_path, metadataDbName)
     db_exists = os.path.exists(metadata_db_path)
@@ -1543,8 +1683,8 @@ def open_db(db_path:str, network: wire.BitcoinNet, create:bool)-> database.DB:
     # Ensure the full path to the database exists.
     if not db_exists:
         # The error can be ignored here since the call to
-		# leveldb.OpenFile will fail if the directory couldn't be
-		# created.
+        # leveldb.OpenFile will fail if the directory couldn't be
+        # created.
         try:
             os.makedirs(db_path, mode=0o700)
         except:
@@ -1561,20 +1701,12 @@ def open_db(db_path:str, network: wire.BitcoinNet, create:bool)-> database.DB:
     except Exception as e:
         raise convert_err(repr(e), e)
 
-    # Create the block store which includes scanning the existing flat
-	# block files to find what the current write cursor position is
-	# according to the data that is actually on disk.  Also create the
-	# database cache which wraps the underlying leveldb database to provide
-	# write caching.
+        # Create the block store which includes scanning the existing flat
+    # block files to find what the current write cursor position is
+    # according to the data that is actually on disk.  Also create the
+    # database cache which wraps the underlying leveldb database to provide
+    # write caching.
     store = BlockStore.new_from_path_network(db_path, network)
     cache = DBCache(ldb=ldb, store=store)
     pdb = DB(store=store, cache=cache)
     return reconcile_db(pdb, create)
-
-
-
-
-
-
-
-    
