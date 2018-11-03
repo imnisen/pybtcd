@@ -1,2 +1,3 @@
+crcmod==1.7
 ecdsa==0.13
 plyvel==1.0.5
