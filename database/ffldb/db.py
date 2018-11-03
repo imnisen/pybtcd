@@ -1709,4 +1709,4 @@ def open_db(db_path: str, network: wire.BitcoinNet, create: bool) -> database.DB
     store = BlockStore.new_from_path_network(db_path, network)
     cache = DBCache(ldb=ldb, store=store)
     pdb = DB(store=store, cache=cache)
-    return reconcile_db(pdb, create)
+    return reconcile_db(pdb)
