@@ -255,8 +255,8 @@ class Bucket(database.Bucket):
             _logger.debug(e)
             return Cursor(bucket=self)
 
-            # Create the cursor and setup a runtime finalizer to ensure the
-            # iterators are released when the cursor is garbage collected.
+        # Create the cursor and setup a runtime finalizer to ensure the
+        # iterators are released when the cursor is garbage collected.
         c = new_cursor(self, self.id, CursorType.ctFull)
 
         # TOADD TODO add a destructive method to cursor class?

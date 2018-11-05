@@ -64,6 +64,9 @@ class Bucket:
     def for_each(self):  # TODO
         pass
 
+    def for_each2(self):  # TODO
+        pass
+
     # ForEachBucket invokes the passed function with the key of every
     # nested bucket in the current bucket.  This does not include any
     # nested buckets within those nested buckets.
@@ -84,6 +87,9 @@ class Bucket:
     def for_each_bucket(self):  # TODO
         pass
 
+    def for_each_bucket2(self):  # TODO
+        pass
+
     # Cursor returns a new cursor, allowing for iteration over the bucket's
     # key/value pairs and nested buckets in forward or backward order.
     #
@@ -92,7 +98,7 @@ class Bucket:
     # do so will result in the same return values as an exhausted cursor,
     # which is false for the Prev and Next functions and nil for Key and
     # Value functions.
-    def cursor(self):
+    def cursor(self) -> Cursor:
         pass
 
     # Writable returns whether or not the bucket is writable.
