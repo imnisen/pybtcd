@@ -170,8 +170,6 @@ class DBCacheIterator(Iterator):
 
         return self.current_iter.key()
 
-
-
     # Value returns the current value the iterator is pointing to.
     #
     # This is part of the leveldb iterator.Iterator interface implementation.
@@ -195,23 +193,23 @@ class DBCacheIterator(Iterator):
         return
 
 
-
-# Note: treap.Iterator actually work as LdbCacheIter
-# as python is dynamic, so no need casting
-
 # ldbCacheIter wraps a treap iterator to provide the additional functionality
 # needed to satisfy the leveldb iterator.Iterator interface.
-class LdbCacheIter(treap.Iterator, Iterator):
+class LdbCacheIter:
+    def __init__(self, iter):
+        self.__iter = iter
+
+    def __getattr__(self, attr):
+        return getattr(self.__iter, attr)
 
     # required by leveldb Iterator
     def release(self):
         pass
 
+
 def new_ldb_cache_iter(snap, start, limit) -> LdbCacheIter:
     iter = snap.pending_keys.iterator(start, limit)
-    return LdbCacheIter()  # TOCONSIDER  # TODO MARK how to make a instance here
-
-
+    return LdbCacheIter(iter=iter)
 
 
 # dbCacheSnapshot defines a snapshot of the database cache and underlying
@@ -261,7 +259,6 @@ class DBCacheSnapshot:
         self.pending_remove = None
         return
 
-    
     # NewIterator returns a new iterator for the snapshot.  The newly returned
     # iterator is not pointing to a valid item until a call to one of the methods
     # to position it is made.
