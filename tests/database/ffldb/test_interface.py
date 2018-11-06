@@ -1147,7 +1147,7 @@ class TestInterface(unittest.TestCase):
         return
 
     # package which require state in the database for the given database type.
-    def test_interface(self, db: database.DB):
+    def _test_interface(self, db: database.DB):
         # Create a test context to pass around.
         context = TestContext(db=db)
 

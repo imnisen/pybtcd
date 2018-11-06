@@ -98,7 +98,7 @@ class Bucket:
     # do so will result in the same return values as an exhausted cursor,
     # which is false for the Prev and Next functions and nil for Key and
     # Value functions.
-    def cursor(self) -> Cursor:
+    def cursor(self) -> 'Cursor':
         pass
 
     # Writable returns whether or not the bucket is writable.
