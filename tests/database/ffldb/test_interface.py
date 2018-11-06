@@ -50,10 +50,6 @@ class KeyPair:
 
 
 class TestInterface(unittest.TestCase):
-    # ***
-    # Some helper method
-    # ***
-
     # loadBlocks loads the blocks contained in the testdata directory and returns
     # a slice of them.
     def _load_blocks(self, data_file: str, network: wire.BitcoinNet):
@@ -153,22 +149,18 @@ class TestInterface(unittest.TestCase):
 
         tc.bucket_depth += 1
         try:
-            return self.test_bucket_inteface(tc, test_bucket)
+            return self._test_bucket_inteface(tc, test_bucket)
         finally:
             tc.bucket_depth -= 1
 
-    # ***
-    # Here comes the test
-    # ***
-
     # testCursorInterface ensures the cursor itnerface is working properly by
     # exercising all of its functions on the passed bucket.
-    def test_cursor_interface(self, tc: TestContext, bucket: database.Bucket):
+    def _test_cursor_interface(self, tc: TestContext, bucket: database.Bucket):
         # Ensure a cursor can be obtained for the bucket.
         cursor = bucket.cursor()
 
         # Ensure the cursor returns the same bucket it was created for.
-        self.assertEqual(cursor.bucket(), bucket)
+        self.assertEqual(cursor.get_bucket(), bucket)
 
         if tc.is_writeable:
             unsorted_values = [
@@ -251,7 +243,7 @@ class TestInterface(unittest.TestCase):
     # testBucketInterface ensures the bucket interface is working properly by
     # exercising all of its functions.  This includes the cursor interface for the
     # cursor returned from the bucket.
-    def test_bucket_inteface(self, tc: TestContext, bucket: database.Bucket):
+    def _test_bucket_inteface(self, tc: TestContext, bucket: database.Bucket):
         self.assertEqual(bucket.writable(), tc.is_writeable)
 
         if tc.is_writeable:
@@ -294,7 +286,7 @@ class TestInterface(unittest.TestCase):
             # expected error.
             with self.assertRaises(database.DBError) as cm:
                 bucket.create_bucket(test_bucket_name)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrBucketExists)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrBucketExists)
 
             # Ensure CreateBucketIfNotExists returns an existing bucket.
             test_bucket = bucket.create_bucket_if_not_exists(test_bucket_name)
@@ -312,7 +304,7 @@ class TestInterface(unittest.TestCase):
             #  expected error.
             with self.assertRaises(database.DBError) as cm:
                 bucket.delete_bucket(test_bucket_name)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrBucketNotFound)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrBucketNotFound)
 
             # Ensure CreateBucketIfNotExists creates a new bucket when
             # it doesn't already exist.
@@ -320,7 +312,7 @@ class TestInterface(unittest.TestCase):
             self._test_nested_bucket(tc, test_bucket)
 
             # Ensure the cursor interface works as expected.
-            self.test_cursor_interface(tc, test_bucket)
+            self._test_cursor_interface(tc, test_bucket)
 
             # Delete the test bucket to avoid leaving it around for future
             # calls.
@@ -331,33 +323,33 @@ class TestInterface(unittest.TestCase):
             fail_bytes = b"fail"
             with self.assertRaises(database.DBError) as cm:
                 bucket.put(fail_bytes, fail_bytes)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
 
             with self.assertRaises(database.DBError) as cm:
                 bucket.delete(fail_bytes)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
 
             with self.assertRaises(database.DBError) as cm:
                 bucket.create_bucket(fail_bytes)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
 
             with self.assertRaises(database.DBError) as cm:
                 bucket.create_bucket_if_not_exists(fail_bytes)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
 
             with self.assertRaises(database.DBError) as cm:
                 bucket.delete_bucket(fail_bytes)
-                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+            self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
 
             # Ensure the cursor interface works as expected with read-only
             # buckets.
-            self.test_cursor_interface(tc, bucket)
+            self._test_cursor_interface(tc, bucket)
 
         return
 
     # testManagedTxPanics ensures calling Rollback of Commit inside a managed
     # transaction panics.
-    def test_managed_tx_panics(self, tc):
+    def _test_managed_tx_panics(self, tc):
         # Ensure calling Commit on a managed read-only transaction panics.
         with self.assertRaises(Exception):
             tc.db.view(lambda tx: tx.commit())
@@ -378,7 +370,7 @@ class TestInterface(unittest.TestCase):
 
     # testMetadataManualTxInterface ensures that the manual transactions metadata
     # interface works as expected.
-    def test_metadata_manual_tx_interface(self, tc):
+    def _test_metadata_manual_tx_interface(self, tc):
         # populateValues tests that populating values works as expected.
         #
         # When the writable flag is false, a read-only tranasction is created,
@@ -405,7 +397,7 @@ class TestInterface(unittest.TestCase):
 
             tc.is_writeable = writable
 
-            self.test_bucket_inteface(tc, bucket1)
+            self._test_bucket_inteface(tc, bucket1)
 
             if not writable:
                 # The transaction is not writable, so it should fail
@@ -414,7 +406,7 @@ class TestInterface(unittest.TestCase):
                 # test_name = "unwritable tx commit"
                 with self.assertRaises(database.DB) as cm:
                     tx.commit()  # TOCHANGE TODO commit and rollback raise a exception that not catch here
-                    self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
+                self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
             else:
                 self.assertTrue(self._test_put_values(tc, bucket1, put_values))
                 if rollback:
@@ -494,13 +486,13 @@ class TestInterface(unittest.TestCase):
     # testMetadataTxInterface tests all facets of the managed read/write and
     # manual transaction metadata interfaces as well as the bucket interfaces under
     # them.
-    def test_metadata_tx_interface(self, tc):
-        self.test_managed_tx_panics(tc)
+    def _test_metadata_tx_interface(self, tc):
+        self._test_managed_tx_panics(tc)
 
         bucket1_name = b"bucket1"
         tc.db.update(lambda tx: tx.metadata().create_bucket(bucket1_name))
 
-        self.test_metadata_manual_tx_interface(tc)
+        self._test_metadata_manual_tx_interface(tc)
 
         # keyValues holds the keys and values to use when putting values
         # into a bucket.
@@ -520,7 +512,7 @@ class TestInterface(unittest.TestCase):
             self.assertIsNotNone(bucket1)
 
             tc.is_writeable = False
-            self.test_bucket_inteface(tc, bucket1)
+            self._test_bucket_inteface(tc, bucket1)
 
         tc.db.view(test_read_only)
 
@@ -535,7 +527,7 @@ class TestInterface(unittest.TestCase):
 
         with self.assertRaises(viewError) as cm:
             tc.db.view(test_user_error)
-            self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
+        self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
 
         # # Test the bucket interface via a managed read-write transaction.
         # Also, put a series of values and force a rollback so the following
@@ -551,7 +543,7 @@ class TestInterface(unittest.TestCase):
             self.assertIsNotNone(bucket1)
 
             tc.is_writeable = True
-            self.test_bucket_inteface(tc, bucket1)
+            self._test_bucket_inteface(tc, bucket1)
 
             self._test_put_values(tc, bucket1, key_values)
 
@@ -559,7 +551,7 @@ class TestInterface(unittest.TestCase):
 
         with self.assertRaises(forceRollbackError) as cm:
             tc.db.view(test_read_write)
-            self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
+        self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
 
         # Ensure the values that should not have been stored due to the forced
         # rollback above were not actually stored.
@@ -675,7 +667,7 @@ class TestInterface(unittest.TestCase):
             # the expected error.
             with self.assertRaises(database.DBError) as cm:
                 tx.fetch_block_header(bad_block_hash)
-                self.assertEqual(cm.exception.c, want_err_code)
+            self.assertEqual(cm.exception.c, want_err_code)
 
             # Ensure fetching a block region in a block that doesn't exist
             # return the expected error.
@@ -683,7 +675,7 @@ class TestInterface(unittest.TestCase):
             region.offset = 0
             with self.assertRaises(database.DBError) as cm:
                 tx.fetch_block_region(region)
-                self.assertEqual(cm.exception.c, want_err_code)
+            self.assertEqual(cm.exception.c, want_err_code)
 
             # Ensure fetching a block region that is out of bounds returns
             # the expected error.
@@ -734,13 +726,13 @@ class TestInterface(unittest.TestCase):
         want_err_code = database.ErrorCode.ErrBlockNotFound
         with self.assertRaises(database.DBError) as cm:
             tx.fetch_blocks(bad_block_hashes)
-            self.assertEqual(cm.exception.c, want_err_code)
+        self.assertEqual(cm.exception.c, want_err_code)
 
         # Ensure fetching block headers for which one doesn't exist returns the
         # expected error.
         with self.assertRaises(database.DBError) as cm:
             tx.fetch_block_headers(bad_block_hashes)
-            self.assertEqual(cm.exception.c, want_err_code)
+        self.assertEqual(cm.exception.c, want_err_code)
 
         # Ensure fetching block regions for which one of blocks doesn't exist
         # returns expected error.
@@ -750,7 +742,7 @@ class TestInterface(unittest.TestCase):
         ))
         with self.assertRaises(database.DBError) as cm:
             tx.fetch_block_regions(bad_block_regions)
-            self.assertEqual(cm.exception.c, want_err_code)
+        self.assertEqual(cm.exception.c, want_err_code)
 
         # Ensure fetching block regions that are out of bounds returns the
         # expected error.
@@ -759,7 +751,77 @@ class TestInterface(unittest.TestCase):
         want_err_code = database.ErrorCode.ErrBlockRegionInvalid
         with self.assertRaises(database.DBError) as cm:
             tx.fetch_block_regions(bad_block_regions)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        return
+
+    # testFetchBlockIOMissing ensures that all of the block retrieval API functions
+    # work as expected when requesting blocks that don't exist.
+    def _test_fetch_block_io_missing(self, tc: TestContext, tx: database.Tx):
+        want_err_code = database.ErrorCode.ErrBlockNotFound
+
+        # ---------------------
+        # Non-bulk Block IO API
+        # ---------------------
+
+        # Test the individual block APIs one block at a time to ensure they
+        # return the expected error.  Also, build the data needed to test the
+        # bulk APIs below while looping.
+        all_block_hashes = []
+        all_block_regions = []
+        for block in tc.blocks:
+            block_hash = block.hash()
+            all_block_hashes.append(block)
+
+            tx_locs = block.tx_loc()
+
+            # Ensure FetchBlock returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block(block_hash)
             self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure FetchBlockHeader returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_header(block_hash)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure the first transaction fetched as a block region from
+            # the database returns the expected error.
+            region = database.BlockRegion(
+                hash=block_hash, offset=tx_locs[0].tx_start, len=tx_locs[0].tx_len
+            )
+            all_block_regions.append(region)
+
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_region(region)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure HasBlock returns false.
+            self.assertFalse(tx.has_block(block_hash))
+
+        # -----------------
+        # Bulk Block IO API
+        # -----------------
+
+        # Ensure FetchBlocks returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_blocks(all_block_hashes)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure FetchBlockHeaders returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_headers(all_block_hashes)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure FetchBlockRegions returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_regions(all_block_regions)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure HasBlocks returns false for all blocks.
+        has_blocks = tx.has_blocks(all_block_hashes)
+        for has_block in has_blocks:
+            self.assertFalse(has_block)
 
         return
 
@@ -774,7 +836,7 @@ class TestInterface(unittest.TestCase):
             for block in tx.blocks:
                 with self.assertRaises(database.DBError) as cm:
                     tx.store_block(block)
-                    self.assertEqual(cm.exception.c, want_err_code)
+                self.assertEqual(cm.exception.c, want_err_code)
 
         tc.db.view(_sub_test_store_in_read_only)
 
@@ -797,7 +859,7 @@ class TestInterface(unittest.TestCase):
             for block in tx.blocks:
                 with self.assertRaises(database.DBError) as cm:
                     tx.store_block(block)
-                    self.assertEqual(cm.exception.c, want_err_code)
+                self.assertEqual(cm.exception.c, want_err_code)
 
             # Ensure that all data fetches from the stored blocks before
             # the transaction has been committed work as expected
@@ -805,9 +867,285 @@ class TestInterface(unittest.TestCase):
 
             raise forceRollbackError
 
-            # TODO
+        with self.assertRaises(forceRollbackError) as cm:
+            tc.db.update(_sub_test_store_and_rollback_in_read_write)
+        self.assertIsInstance(cm.exception, forceRollbackError)
 
-    # testInterface tests performs tests for the various interfaces of the database
+        # Ensure rollback was successful
+        def _sub_test_rollback_successful(tx):
+            self._test_fetch_block_io_missing(tc, tx)
+
+        tc.db.view(_sub_test_rollback_successful)
+
+        # Populate the database with loaded blocks and ensure all of the data
+        # fetching APIs work properly.
+        def _sub_test_populate_with_loaded_blocks(tx):
+            # Store a bunch of blocks in the same transaction.
+            for block in tc.blocks:
+                tx.store_block(block)
+
+            # Ensure attempting to store the same block again while in the
+            # same transaction, but before it has been committed, returns
+            # the expected error.
+            want_err_code = database.ErrorCode.ErrBlockExists
+            for block in tc.blocks:
+                with self.assertRaises(database.DBError) as cm:
+                    tx.store_block(block)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure that all data fetches from the stored blocks before
+            # the transaction has been committed work as expected.
+            self._test_fetch_block_io(tc, tx)
+
+        tc.db.update(_sub_test_populate_with_loaded_blocks)
+
+        # Ensure all data fetch tests work as expected using a managed
+        # read-only transaction after the data was successfully committed
+        # above.
+        def _sub_test_read_only_fetch_successful(tx):
+            self._test_fetch_block_io(tc, tx)
+
+        tc.db.view(_sub_test_read_only_fetch_successful)
+
+        # Ensure all data fetch tests work as expected using a managed
+        # read-write transaction after the data was successfully committed
+        # above.
+        def _sub_test_read_write_correct_after_commit(tx):
+            self._test_fetch_block_io(tc, tx)
+
+            # Ensure attempting to store existing blocks again returns the
+            # expected error.  Note that this is different from the
+            # previous version since this is a new transaction after the
+            # blocks have been committed.
+            want_err_code = database.ErrorCode.ErrBlockExists
+            for block in tc.blocks:
+                with self.assertRaises(database.DBError) as cm:
+                    tx.store_block(block)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+        tc.db.update(_sub_test_read_write_correct_after_commit)
+
+        return
+
+    # testClosedTxInterface ensures that both the metadata and block IO API
+    # functions behave as expected when attempted against a closed transaction.
+    def _test_closed_tx_interface(self, tc: TestContext, tx: database.Tx):
+        want_err_code = database.ErrorCode.ErrTxClosed
+        bucket = tx.metadata()
+        cursor = tx.metadata().cursor()
+        bucket_name = b"closedtxbucket"
+        key_name = b"closedtxkey"
+
+        # ------------
+        # Metadata API
+        # ------------
+
+        # Ensure that attempting to get an existing bucket returns nil when the
+        # transaction is closed.
+        self.assertIsNone(bucket.bucket(bucket_name))
+
+        # Ensure CreateBucket returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.create_bucket(bucket_name)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure CreateBucketIfNotExists returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.create_bucket_if_not_exists(bucket_name)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure Delete returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.delete(key_name)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure DeleteBucket returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.delete_bucket(bucket_name)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure ForEach returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            for _, _ in bucket.for_each2():
+                pass
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure ForEachBucket returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            for _, _ in bucket.for_each_bucket2():
+                pass
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure Get returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.get(key_name)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure Put returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            bucket.put(key_name, b"test")
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # -------------------
+        # Metadata Cursor API
+        # -------------------
+
+        # Ensure attempting to get a bucket from a cursor on a closed tx gives
+        # back nil.
+        self.assertIsNone(cursor.get_bucket())
+
+        # Ensure Cursor.Delete returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            cursor.delete()
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure Cursor.First on a closed tx returns false and nil key/value.
+        self.assertFalse(cursor.first())
+        self.assertIsNone(cursor.key())
+        self.assertIsNone(cursor.value())
+
+        # Ensure Cursor.Last on a closed tx returns false and nil key/value.
+        self.assertFalse(cursor.last())
+        self.assertIsNone(cursor.key())
+        self.assertIsNone(cursor.value())
+
+        # Ensure Cursor.Next on a closed tx returns false and nil key/value.
+        self.assertFalse(cursor.next())
+        self.assertIsNone(cursor.key())
+        self.assertIsNone(cursor.value())
+
+        # Ensure Cursor.Prev on a closed tx returns false and nil key/value.
+        self.assertFalse(cursor.prev())
+        self.assertIsNone(cursor.key())
+        self.assertIsNone(cursor.value())
+
+        # Ensure Cursor.Seek on a closed tx returns false and nil key/value.
+        self.assertFalse(cursor.seek(b""))
+        self.assertIsNone(cursor.key())
+        self.assertIsNone(cursor.value())
+
+        # ---------------------
+        # Non-bulk Block IO API
+        # ---------------------
+
+        # Test the individual block APIs one block at a time to ensure they
+        # return the expected error.  Also, build the data needed to test the
+        # bulk APIs below while looping.
+        all_block_hashes = []
+        all_block_regions = []
+        for block in tc.blocks:
+            block_hash = block.hash()
+            all_block_hashes.append(block)
+
+            tx_locs = block.tx_loc()
+
+            # Ensure StoreBlock returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.store_block(block)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure FetchBlock returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block(block_hash)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure FetchBlockHeader returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_header(block_hash)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure the first transaction fetched as a block region from
+            # the database returns the expected error.
+            region = database.BlockRegion(
+                hash=block_hash, offset=tx_locs[0].tx_start, len=tx_locs[0].tx_len
+            )
+            all_block_regions.append(region)
+
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_region(region)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure HasBlock returns expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.has_block(block_hash)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+        # -----------------
+        # Bulk Block IO API
+        # -----------------
+
+        # Ensure FetchBlocks returns expected error.
+        # Ensure FetchBlocks returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_blocks(all_block_hashes)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure FetchBlockHeaders returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_headers(all_block_hashes)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure FetchBlockRegions returns expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_regions(all_block_regions)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure HasBlocks returns false for all blocks.
+        with self.assertRaises(database.DBError) as cm:
+            tx.has_blocks(all_block_hashes)
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        # ---------------
+        # Commit/Rollback
+        # ---------------
+
+        # Ensure that attempting to rollback or commit a transaction that is
+        # already closed returns the expected error.
+
+        with self.assertRaises(database.DBError) as cm:
+            tx.rollback()
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        with self.assertRaises(database.DBError) as cm:
+            tx.commit()
+        self.assertEqual(cm.exception.c, want_err_code)
+
+        return
+
+    # testTxClosed ensures that both the metadata and block IO API functions behave
+    # as expected when attempted against both read-only and read-write
+    # transactions.
+    def _test_tx_closed(self, tc: TestContext):
+        bucket_name = b"closedtxbucket"
+        key_name = b"closedtxkey"
+
+        # Start a transaction, create a bucket and key used for testing, and
+        # immediately perform a commit on it so it is closed.
+        tx = tc.db.begin(writeable=True)
+
+        # TODO defer rollbackOnPanic
+
+        tx.metadata().create_bucket(bucket_name)
+        tx.metadata().put(key_name, b'test')
+        tx.commit()
+
+        # Ensure invoking all of the functions on the closed read-write
+        # transaction behave as expected.
+        self._test_closed_tx_interface(tc, tx)
+
+        # Repeat the tests with a rolled-back read-only transaction.
+        tx = tc.db.begin(writeable=False)
+
+        # TODO defer rollbackOnPanic
+
+        tx.rollback()
+
+        # Ensure invoking all of the functions on the closed read-only
+        # transaction behave as expected.
+        self._test_closed_tx_interface(tc, tx)
+
+        return
+
     # package which require state in the database for the given database type.
     def test_interface(self, db: database.DB):
         # Create a test context to pass around.
@@ -820,11 +1158,18 @@ class TestInterface(unittest.TestCase):
 
         # Test the transaction metadata interface including managed and manual
         # transactions as well as buckets.
-        self.test_metadata_tx_interface(context)
+        self._test_metadata_tx_interface(context)
 
         # Test the transaction block IO interface using managed and manual
         # transactions.  This function leaves all of the stored blocks in the
         # database since they're used later.
         self._test_block_io_tx_interface(context)
 
-        # TODO
+        # Test all of the transaction interface functions against a closed
+        # transaction work as expected.
+        self._test_tx_closed(context)
+
+        # TOADD Test the database properly supports concurrency.
+        # TOADD testConcurrentClose.
+
+        return

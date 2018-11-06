@@ -410,7 +410,7 @@ class PendingBlock:
 # transaction represents a database transaction.  It can either be read-only or
 # read-write and implements the database.Tx interface.  The transaction
 # provides a root bucket against which all read and writes occur.
-class Transaction:
+class Transaction(database.Tx):
     def __init__(self, managed=None, closed=None, writable=None, db=None, snapshot=None, meta_bucket=None,
                  block_idx_bucket=None, pending_blocks=None, pending_block_data=None,
                  pending_keys=None, pending_remove=None,

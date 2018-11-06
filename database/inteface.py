@@ -156,7 +156,11 @@ class Bucket:
 # and values returned may be unpredictable.
 class Cursor:
     # Bucket returns the bucket the cursor was created for.
-    def bucket(self) -> Bucket:
+    # def bucket(self) -> Bucket:
+    #     pass
+
+    # As replacement of above
+    def get_bucket(self) -> Bucket:
         pass
 
     # Delete removes the current key/value pair the cursor is at without
@@ -232,7 +236,7 @@ class BlockRegion:
 # long running operations.
 class Tx:
     #  Metadata returns the top-most bucket for all metadata storage.
-    def meta_data(self) -> Bucket:
+    def metadata(self) -> Bucket:
         pass
 
     # StoreBlock stores the provided block into the database.  There are no
