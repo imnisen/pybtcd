@@ -3,6 +3,7 @@ from .utils import *
 import pyutil
 import database.treap as treap
 import time
+from .leveldb_iterator import Iterator
 
 # defaultCacheSize is the default size for the database cache.
 defaultCacheSize = 100 * 1024 * 1024  # 100 MB
@@ -24,6 +25,193 @@ defaultFlushSecs = 300  # 5 minutes
 # prevent the GC from allocating a lot of extra unneeded space.
 ldbBatchHeaderSize = 12
 ldbRecordIKeySize = 8
+
+
+class DBCacheIterator(Iterator):
+    def __init__(self, cache_snapshot, db_iter, cache_iter, current_iter=None, released=None):
+        """
+
+        :param cache_snapshot:
+        :param db_iter:
+        :param cache_iter:
+        :param current_iter:
+        :param released:
+        """
+        self.cache_snapshot = cache_snapshot
+        self.db_iter = db_iter
+        self.cache_iter = cache_iter
+        self.current_iter = current_iter or None
+        self.released = released or False
+
+    # skipPendingUpdates skips any keys at the current database iterator position
+    # that are being updated by the cache.  The forwards flag indicates the
+    # direction the iterator is moving.
+    def _skip_pending_updates(self, forwards: bool):
+        while self.db_iter.valid():
+
+            key = self.db_iter.key()
+
+            if self.cache_snapshot.pending_remove.has(key):
+                skip = True
+            elif self.cache_snapshot.pending_keys.has(key):
+                skip = True
+            else:
+                skip = False
+
+            if not skip:
+                break
+
+            if forwards:
+                self.db_iter.next()
+            else:
+                self.db_iter.prev()
+
+        return
+
+    # chooseIterator first skips any entries in the database iterator that are
+    # being updated by the cache and sets the current iterator to the appropriate
+    # iterator depending on their validity and the order they compare in while taking
+    # into account the direction flag.  When the iterator is being moved forwards
+    # and both iterators are valid, the iterator with the smaller key is chosen and
+    # vice versa when the iterator is being moved backwards.
+    def _choose_iterator(self, forwards: bool) -> bool:
+        # Skip any keys at the current database iterator position that are
+        # being updated by the transaction.
+        self._skip_pending_updates(forwards)
+
+        # When both iterators are exhausted, the iterator is exhausted too.
+        if not self.db_iter.valid() and not self.cache_iter.valid():
+            self.current_iter = None
+            return False
+
+        # Choose the database iterator when the cache keys iterator is
+        # exhausted.
+        if not self.cache_iter.valid():
+            self.current_iter = self.db_iter
+            return True
+
+        # Choose the cache iterator when the database iterator is exhausted.
+        if not self.db_iter.valid():
+            self.current_iter = self.cache_iter
+            return True
+
+            # Both iterators are valid, so choose the iterator with either the
+            # smaller or larger key depending on the forwards flag.
+        compare = byte_compare(self.db_iter.key(), self.cache_iter.key())
+        if forwards and compare > 0 or (not forwards and compare < 0):
+            self.current_iter = self.cache_iter
+        else:
+            self.current_iter = self.db_iter
+
+        return True
+
+    # First positions the iterator at the first key/value pair and returns whether
+    # or not the pair exists.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def first(self) -> bool:
+        self.db_iter.first()
+        self.cache_iter.first()
+        return self._choose_iterator(True)
+
+    # Last positions the iterator at the last key/value pair and returns whether or
+    # not the pair exists.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def last(self) -> bool:
+        self.db_iter.last()
+        self.cache_iter.last()
+        return self._choose_iterator(False)
+
+    # Next moves the iterator one key/value pair forward and returns whether or not
+    # the pair exists.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def next(self) -> bool:
+        if self.current_iter is None:
+            return False
+
+        self.current_iter.next()
+        return self._choose_iterator(True)
+
+    # Next moves the iterator one key/value pair forward and returns whether or not
+    # the pair exists.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def prev(self):
+        if self.current_iter is None:
+            return False
+
+        self.current_iter.prev()
+        return self._choose_iterator(False)
+
+    # Seek positions the iterator at the first key/value pair that is greater than
+    # or equal to the passed seek key.  Returns false if no suitable key was found.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def seek(self, key: bytes) -> bool:
+        self.db_iter.seek(key)
+        self.cache_iter.seek(key)
+        return self._choose_iterator(True)
+
+    # Valid indicates whether the iterator is positioned at a valid key/value pair.
+    # It will be considered invalid when the iterator is newly created or exhausted.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def valid(self) -> bool:
+        return self.current_iter is not None
+
+    # Key returns the current key the iterator is pointing to.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def key(self) -> bytes or None:
+        if self.current_iter is None:
+            return None
+
+        return self.current_iter.key()
+
+
+
+    # Value returns the current value the iterator is pointing to.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def value(self) -> bytes or None:
+        if self.current_iter is None:
+            return None
+
+        return self.current_iter.value()
+
+    # Release releases the iterator by removing the underlying treap iterator from
+    # the list of active iterators against the pending keys treap.
+    #
+    # This is part of the leveldb iterator.Iterator interface implementation.
+    def release(self):
+        if not self.released:
+            self.db_iter.release()
+            self.cache_iter.release()
+            self.current_iter = None
+            self.released = True
+
+        return
+
+
+
+# Note: treap.Iterator actually work as LdbCacheIter
+# as python is dynamic, so no need casting
+
+# ldbCacheIter wraps a treap iterator to provide the additional functionality
+# needed to satisfy the leveldb iterator.Iterator interface.
+class LdbCacheIter(treap.Iterator, Iterator):
+
+    # required by leveldb Iterator
+    def release(self):
+        pass
+
+def new_ldb_cache_iter(snap, start, limit) -> LdbCacheIter:
+    iter = snap.pending_keys.iterator(start, limit)
+    return LdbCacheIter()  # TOCONSIDER  # TODO MARK how to make a instance here
+
+
 
 
 # dbCacheSnapshot defines a snapshot of the database cache and underlying
@@ -72,6 +260,29 @@ class DBCacheSnapshot:
         self.pending_keys = None
         self.pending_remove = None
         return
+
+    
+    # NewIterator returns a new iterator for the snapshot.  The newly returned
+    # iterator is not pointing to a valid item until a call to one of the methods
+    # to position it is made.
+    #
+    # The slice parameter allows the iterator to be limited to a range of keys.
+    # The start key is inclusive and the limit key is exclusive.  Either or both
+    # can be nil if the functionality is not desired.
+    def new_iterator(self, start, limit):
+
+        db_iter = self.db_snapshot.raw_iterator(start=start, limit=limit),  # TODO check the params correct
+
+        # Modify the plyvel.RawIterator to statisfy leveldb_iterator.Iterator inteface
+        db_iter.first = db_iter.seek_to_first
+        db_iter.last = db_iter.seek_to_last
+        db_iter.release = db_iter.close
+
+        return DBCacheIterator(
+            db_iter=db_iter,
+            cache_iter=new_ldb_cache_iter(self, start, limit),
+            cache_snapshot=self
+        )
 
 
 # dbCache provides a database cache layer backed by an underlying database.  It
