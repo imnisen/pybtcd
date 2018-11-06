@@ -583,7 +583,7 @@ class Transaction:
     # Metadata returns the top-most bucket for all metadata storage.
     #
     # This function is part of the database.Tx interface implementation.
-    def meta_data(self):
+    def metadata(self):
         return self.meta_bucket
 
     # hasBlock returns whether or not a block with the given hash exists.

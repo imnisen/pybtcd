@@ -6,7 +6,7 @@ import btcutil
 import chaincfg
 import database
 import copy
-
+import chainhash
 
 # some constant
 
@@ -118,7 +118,7 @@ class TestInterface(unittest.TestCase):
                 item.value = bytes()
         return values
 
-    def _roll_back_values(self,  values):
+    def _roll_back_values(self, values):
         values = copy.deepcopy(values)
         for item in values:
             item.value = None
@@ -141,7 +141,7 @@ class TestInterface(unittest.TestCase):
     def _lookup_key(self, key, values):
         for item in values:
             if key == item.key:
-                return item.value , True
+                return item.value, True
         return None, False
 
     # testNestedBucket reruns the testBucketInterface against a nested bucket along
@@ -156,9 +156,6 @@ class TestInterface(unittest.TestCase):
             return self.test_bucket_inteface(tc, test_bucket)
         finally:
             tc.bucket_depth -= 1
-
-
-        
 
     # ***
     # Here comes the test
@@ -273,7 +270,7 @@ class TestInterface(unittest.TestCase):
             keys_found = []
 
             for k, v in bucket.for_each2():
-                want_v, found = self._lookup_key(k,  expected_key_values)
+                want_v, found = self._lookup_key(k, expected_key_values)
                 self.assertTrue(found)
 
                 self.assertEqual(v, want_v)
@@ -393,12 +390,13 @@ class TestInterface(unittest.TestCase):
         # performed, and then the transaction is either committed or rolled
         # back depending on the flag.
         bucket1_name = b"bucket1"
+
         def populate_values(writable: bool, rollback: bool, put_values: [KeyPair]) -> bool:
             tx = tc.db.begin(writable)
 
             # TODO rollback on panic
 
-            metadata_bucket = tx.meta_data()
+            metadata_bucket = tx.metadata()
             print("metadata bucket", metadata_bucket)
             self.assertIsNotNone(metadata_bucket)
 
@@ -423,21 +421,46 @@ class TestInterface(unittest.TestCase):
                     tx.rollback()
                 else:
                     tx.commit()
-            
+
             return
-
-
 
         # checkValues starts a read-only transaction and checks that all of
         # the key/value pairs specified in the expectedValues parameter match
         # what's in the database.
         def check_values(expected_values: [KeyPair]) -> bool:
-            pass
+            tx = tc.db.begin(False)
+
+            # TODO rollback on panic
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            self._test_get_values(tc, bucket1, expected_values)
+
+            tx.rollback()
+
+            return
 
         # deleteValues starts a read-write transaction and deletes the keys
         # in the passed key/value pairs.
         def delete_values(values: [KeyPair]) -> bool:
-            pass
+            tx = tc.db.begin(True)
+
+            # TODO rollback on panic
+
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            self._test_delete_values(tc, bucket1, values)
+
+            self._test_get_values(tc, bucket1, self._roll_back_values(values))
+
+            return
 
         # keyValues holds the keys and values to use when putting values into a
         # bucket.
@@ -450,25 +473,23 @@ class TestInterface(unittest.TestCase):
 
         # Ensure that attempting populating the values using a read-only
         # transaction fails as expected.
-        self.assertTrue(populate_values(False, True, key_values))
-        self.assertTrue(check_values(self._roll_back_values(key_values)))
+        populate_values(False, True, key_values)
+        check_values(self._roll_back_values(key_values))
 
         # Ensure that attempting populating the values using a read-write
         # transaction and then rolling it back yields the expected values.
-        self.assertTrue(populate_values(True, True, key_values))
-        self.assertTrue(check_values(self._roll_back_values(key_values)))
+        populate_values(True, True, key_values)
+        check_values(self._roll_back_values(key_values))
 
         # Ensure that attempting populating the values using a read-write
         # transaction and then committing it stores the expected values.
-        self.assertTrue(populate_values(True, False, key_values))
-        self.assertTrue(check_values(self._roll_back_values(key_values)))
+        populate_values(True, False, key_values)
+        check_values(self._roll_back_values(key_values))
 
         # Clean up the keys.
-        self.assertTrue(delete_values(key_values))
+        delete_values(key_values)
 
         return
-
-
 
     # testMetadataTxInterface tests all facets of the managed read/write and
     # manual transaction metadata interfaces as well as the bucket interfaces under
@@ -481,6 +502,310 @@ class TestInterface(unittest.TestCase):
 
         self.test_metadata_manual_tx_interface(tc)
 
+        # keyValues holds the keys and values to use when putting values
+        # into a bucket.
+        key_values = [
+            KeyPair(b"mtxkey1", b"foo1"),
+            KeyPair(b"mtxkey2", b"foo2"),
+            KeyPair(b"mtxkey3", b"foo3"),
+            KeyPair(b"mtxkey4", None),
+        ]
+
+        # Test the bucket interface via a managed read-only transaction.
+        def test_read_only(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            tc.is_writeable = False
+            self.test_bucket_inteface(tc, bucket1)
+
+        tc.db.view(test_read_only)
+
+        # Ensure errors returned from the user-supplied View function are
+        # returned.
+        class viewError(Exception):
+            """example view error"""
+            pass
+
+        def test_user_error(tx):
+            raise viewError
+
+        with self.assertRaises(viewError) as cm:
+            tc.db.view(test_user_error)
+            self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
+
+        # # Test the bucket interface via a managed read-write transaction.
+        # Also, put a series of values and force a rollback so the following
+        # code can ensure the values were not stored.
+        class forceRollbackError(Exception):
+            pass
+
+        def test_read_write(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            tc.is_writeable = True
+            self.test_bucket_inteface(tc, bucket1)
+
+            self._test_put_values(tc, bucket1, key_values)
+
+            raise forceRollbackError
+
+        with self.assertRaises(forceRollbackError) as cm:
+            tc.db.view(test_read_write)
+            self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
+
+        # Ensure the values that should not have been stored due to the forced
+        # rollback above were not actually stored.
+        def test_values_exsits(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+            self._test_get_values(tc, metadata_bucket, self._roll_back_values(key_values))
+
+        tc.db.view(test_values_exsits)
+
+        # Store a series of values via a managed read-write transaction.
+        def test_read_write_store(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            self._test_put_values(tc, bucket1, key_values)
+
+        tc.db.update(test_read_write_store)
+
+        # Ensure the values stored above were committed as expected.
+        def test_read_write_get(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            self._test_get_values(tc, bucket1, self._to_get_values(key_values))
+
+        tc.db.view(test_read_write_get)
+
+        # Clean up the values stored above in a managed read-write transaction.
+        def test_read_write_clean(tx):
+            metadata_bucket = tx.metadata()
+            self.assertIsNotNone(metadata_bucket)
+
+            bucket1 = metadata_bucket.bucket(bucket1_name)
+            self.assertIsNotNone(bucket1)
+
+            self._test_delete_values(tc, bucket1, key_values)
+
+        tc.db.update(test_read_write_clean)
+
+        return
+
+    # testFetchBlockIO ensures all of the block retrieval API functions work as
+    # expected for the provide set of blocks.  The blocks must already be stored in
+    # the database, or at least stored into the the passed transaction.  It also
+    # tests several error conditions such as ensuring the expected errors are
+    # returned when fetching blocks, headers, and regions that don't exist.
+    def _test_fetch_block_io(self, tc: TestContext, tx: database.Tx):
+        # ---------------------
+        # Non-bulk Block IO API
+        # ---------------------
+
+        # Test the individual block APIs one block at a time.  Also, build the
+        # data needed to test the bulk APIs below while looping.
+        all_block_hashes = []
+        all_block_bytes = []
+        all_block_tx_loc = []
+        all_block_regions = []
+        for block in tc.blocks:
+            block_hash = block.hash()
+            all_block_hashes.append(block_hash)
+
+            block_bytes = block.bytes()
+            all_block_bytes.append(block_bytes)
+
+            tx_locs = block.tx_loc()
+            all_block_tx_loc.append(tx_locs)
+
+            # Ensure the block data fetched from the database matches the
+            # expected bytes.
+            got_block_bytes = tx.fetch_block(block_hash)
+            self.assertEqual(got_block_bytes, block_bytes)
+
+            # Ensure the block header fetched from the database matches the
+            # expected bytes.
+            want_header_bytes = block_bytes[0: wire.MaxBlockHeaderPayload]
+            got_block_bytes = tx.fetch_block_header(block_hash)
+            self.assertEqual(got_block_bytes, want_header_bytes)
+
+            # Ensure the first transaction fetched as a block region from
+            # the database matches the expected bytes.
+            region = database.BlockRegion(
+                hash=block_hash, offset=tx_locs[0].tx_start, len=tx_locs[0].tx_len
+            )
+            all_block_regions.append(region)
+
+            want_region_bytes = block_bytes[region.offset: region.offset + region.len]
+            got_region_bytes = tx.fetch_block_region(region)
+            self.assertEqual(got_region_bytes, want_region_bytes)
+
+            # Ensure hash block works as expected
+            self.assertTrue(tx.has_block(block_hash))
+
+            # -----------------------
+            # Invalid blocks/regions.
+            # -----------------------
+
+            # Ensure fetching a block that doesn't exist returns the
+            # expected error.
+            bad_block_hash = chainhash.Hash()
+            want_err_code = database.ErrorCode.ErrBlockNotFound
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block(bad_block_hash)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure fetching a block header that doesn't exist returns
+            # the expected error.
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_header(bad_block_hash)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure fetching a block region in a block that doesn't exist
+            # return the expected error.
+            region.hash = bad_block_hash
+            region.offset = 0
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_region(region)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure fetching a block region that is out of bounds returns
+            # the expected error.
+            want_err_code = database.ErrorCode.ErrBlockRegionInvalid
+            region.hash = block_hash
+            region.offset = 0
+            with self.assertRaises(database.DBError) as cm:
+                tx.fetch_block_region(region)
+                self.assertEqual(cm.exception.c, want_err_code)
+
+        # -----------------
+        # Bulk Block IO API
+        # -----------------
+
+        # Ensure the bulk block data fetched from the database matches the
+        # expected bytes.
+        block_data = tx.fetch_blocks(all_block_hashes)
+        self.assertListEqual(block_data, all_block_bytes)
+
+        # Ensure the bulk block headers fetched from the database match the
+        # expected bytes.
+        block_header_data = tx.fetch_block_headers(all_block_hashes)
+        self.assertListEqual(block_header_data, [each[0:wire.MaxBlockHeaderPayload] for each in all_block_bytes])
+
+        # Ensure the first transaction of every block fetched in bulk block
+        # regions from the database matches the expected bytes.
+        all_region_bytes = tx.fetch_block_regions(all_block_regions)
+        self.assertEqual(len(all_region_bytes), len(all_block_regions))
+        for i, got_region_bytes in enumerate(all_region_bytes):
+            region = all_block_regions[i]
+            want_region_bytes = block_data[i][region.offset: region.offset + region.len]
+            self.assertEqual(got_region_bytes, want_region_bytes)
+
+        # Ensure the bulk determination of whether a set of block hashes are in
+        # the database returns true for all loaded blocks.
+        has_blocks = tx.has_blocks(all_block_hashes)
+        for has_block in has_blocks:
+            self.assertTrue(has_block)
+
+        # -----------------------
+        # Invalid blocks/regions.
+        # -----------------------
+
+        # Ensure fetching blocks for which one doesn't exist returns the
+        # expected error.
+        bad_block_hashes = copy.deepcopy(all_block_hashes)
+        bad_block_hashes.append(chainhash.Hash())
+        want_err_code = database.ErrorCode.ErrBlockNotFound
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_blocks(bad_block_hashes)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure fetching block headers for which one doesn't exist returns the
+        # expected error.
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_headers(bad_block_hashes)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure fetching block regions for which one of blocks doesn't exist
+        # returns expected error.
+        bad_block_regions = copy.deepcopy(all_block_regions)
+        bad_block_regions.append(database.BlockRegion(
+            hash=chainhash.Hash(), offset=0, len=0
+        ))
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_regions(bad_block_regions)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+        # Ensure fetching block regions that are out of bounds returns the
+        # expected error.
+        bad_block_regions = bad_block_regions[:-1]
+        bad_block_regions[-1].offset = 0
+        want_err_code = database.ErrorCode.ErrBlockRegionInvalid
+        with self.assertRaises(database.DBError) as cm:
+            tx.fetch_block_regions(bad_block_regions)
+            self.assertEqual(cm.exception.c, want_err_code)
+
+        return
+
+    # testBlockIOTxInterface ensures that the block IO interface works as expected
+    # for both managed read/write and manual transactions.  This function leaves
+    # all of the stored blocks in the database.
+    def _test_block_io_tx_interface(self, tc):
+        # Ensure attempting to store a block with a read-only transaction fails
+        # with the expected error.
+        def _sub_test_store_in_read_only(tx):
+            want_err_code = database.ErrorCode.ErrTxNotWritable
+            for block in tx.blocks:
+                with self.assertRaises(database.DBError) as cm:
+                    tx.store_block(block)
+                    self.assertEqual(cm.exception.c, want_err_code)
+
+        tc.db.view(_sub_test_store_in_read_only)
+
+        # Populate the database with loaded blocks and ensure all of the data
+        # fetching APIs work properly on them within the transaction before a
+        # commit or rollback.  Then, force a rollback so the code below can
+        # ensure none of the data actually gets stored.
+        class forceRollbackError(Exception):
+            """force rollback"""
+            pass
+
+        def _sub_test_store_and_rollback_in_read_write(tx):
+            # Store all blocks in the same transaction.
+            for block in tc.blocks:
+                tx.store_block(block)
+
+            # Ensure attempting to store the same block again, before the
+            # transaction has been committed, returns the expected error.
+            want_err_code = database.ErrorCode.ErrBlockExists
+            for block in tx.blocks:
+                with self.assertRaises(database.DBError) as cm:
+                    tx.store_block(block)
+                    self.assertEqual(cm.exception.c, want_err_code)
+
+            # Ensure that all data fetches from the stored blocks before
+            # the transaction has been committed work as expected
+            self._test_fetch_block_io(tc, tx)
+
+            raise forceRollbackError
+
+            # TODO
 
     # testInterface tests performs tests for the various interfaces of the database
     # package which require state in the database for the given database type.
@@ -497,22 +822,9 @@ class TestInterface(unittest.TestCase):
         # transactions as well as buckets.
         self.test_metadata_tx_interface(context)
 
+        # Test the transaction block IO interface using managed and manual
+        # transactions.  This function leaves all of the stored blocks in the
+        # database since they're used later.
+        self._test_block_io_tx_interface(context)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        # TODO
