@@ -158,7 +158,7 @@ class WriterCursor:
         :param int cur_file_num:
         :param int cur_offset:
         """
-        self._lock = lock or pyutil.RWLock
+        self._lock = lock or pyutil.RWLock()
 
         # curFile is the current block file that will be appended to when
         # writing new blocks.
@@ -287,6 +287,7 @@ class BlockStore:
     @staticmethod
     def scan_block_files(db_path: str):
         last_file = -1
+        file_len = 0
         i = 0
         while True:
 
@@ -695,7 +696,7 @@ class BlockStore:
             # cursor.
             wc.cur_file.r_lock()
             try:
-                if wc.cur_file.file is not None:
+                if wc.cur_file.file is None:
                     return
 
                 try:

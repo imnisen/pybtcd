@@ -5,14 +5,20 @@ import database
 dbType = "ffldb"
 
 
+class InvalidArgNumErr(Exception):
+    pass
+
+
 def parse_args(func_name: str, *args):
     if len(args) != 2:
         msg = "invalid arguments to %s.%s -- expected database path and block network" % (dbType, func_name)
-        raise Exception(msg)
+        raise InvalidArgNumErr(msg)
 
-    db_path = str(args[0])
+    db_path = args[0]
+    assert type(db_path) is str
 
-    network = wire.BitcoinNet.from_string(args[1])  # TOCHECK
+    network = args[1]
+    assert type(network) is wire.BitcoinNet
 
     return db_path, network
 

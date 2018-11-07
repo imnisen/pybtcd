@@ -336,7 +336,7 @@ class DBCache:
         # stored using immutable treaps to support O(1) MVCC snapshots against
         # the cached data.  The cacheLock is used to protect concurrent access
         # for cache updates and snapshots.
-        self.cache_lock = cache_lock or pyutil.RWLock
+        self.cache_lock = cache_lock or pyutil.RWLock()
         self.cached_keys = cached_keys or treap.Immutable()
         self.cached_remove = cached_remove or treap.Immutable()
 
@@ -393,7 +393,7 @@ class DBCache:
     #
     # This function MUST be called with the database write lock held.
     def flush(self):
-        self.last_flush = int(time.time)
+        self.last_flush = int(time.time())
 
         # Sync the current write file associated with the block store.  This is
         # necessary before writing the metadata to prevent the case where the

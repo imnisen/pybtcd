@@ -29,7 +29,7 @@ def deserialize_write_row(write_row: bytes):
     want_checksum = int.from_bytes(write_row[8:12], "big")
     if got_checksum != want_checksum:
         msg = "metadata for write cursor does not match the expected checksum - got %d, want %d" % (
-        got_checksum, want_checksum)
+            got_checksum, want_checksum)
         raise DBError(ErrorCode.ErrCorruption, msg)
 
     file_num = int.from_bytes(write_row[0:4], "little")

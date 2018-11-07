@@ -111,7 +111,7 @@ def bucketized_key(bucket_id: bytes(4), key: bytes) -> bytes:
 # bucket is an internal type used to represent a collection of key/value pairs
 # and implements the database.Bucket interface.
 class Bucket(database.Bucket):
-    def __init__(self, tx: Transaction, id: bytes(4)):
+    def __init__(self, tx: 'Transaction', id: bytes(4)):
         self.tx = tx
         self.id = id
 
@@ -819,7 +819,7 @@ class Transaction(database.Tx):
         end_offset = region.offset + region.len
         if end_offset < region.offset or end_offset > block_len:
             msg = "block %s region offset %d, length %d exceeds block length of %d" % (
-            region.hash, region.offset, region.len, block_len)
+                region.hash, region.offset, region.len, block_len)
             raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
 
         # Return the bytes from the pending block.
@@ -1564,7 +1564,7 @@ class DB(database.DB):
         # Start a read-only transaction.
         tx = self._begin(writeable=False)
 
-        # TOCHANGE So strange here
+        # TOCHANGE So strange here     # golang defer rollbackOnPanic(tx) pattern
         try:
             tx.managed = True
             try:
@@ -1575,7 +1575,9 @@ class DB(database.DB):
                 except:
                     pass
                 raise e
+
             tx.managed = False
+            return tx.rollback()
 
         except Exception as e:
             # Since the user-provided function might panic, ensure the transaction
@@ -1583,10 +1585,10 @@ class DB(database.DB):
             # won't use recover and keep going.  Thus, the database must still be
             # in a usable state on panics due to caller issues.
             tx.managed = False
-            tx.rollback()
-            raise e
-
-        return tx.rollback()
+            try:
+                tx.rollback()
+            except:
+                pass
 
     # Update invokes the passed function in the context of a managed read-write
     # transaction with the root bucket for the namespace.  Any errors returned from
@@ -1598,6 +1600,7 @@ class DB(database.DB):
     def update(self, fn):
         tx = self._begin(writeable=True)
 
+        # TOCHANGE So strange here     # golang defer rollbackOnPanic(tx) pattern
         try:
             tx.managed = True
             try:
@@ -1608,17 +1611,20 @@ class DB(database.DB):
                 except:
                     pass
                 raise e
+
             tx.managed = False
+            return tx.commit()
+
         except Exception as e:
             # Since the user-provided function might panic, ensure the transaction
             # releases all mutexes and resources.  There is no guarantee the caller
             # won't use recover and keep going.  Thus, the database must still be
             # in a usable state on panics due to caller issues.
             tx.managed = False
-            tx.rollback()
-            raise e
-
-        return tx.commit()
+            try:
+                tx.rollback()
+            except:
+                pass
 
     # Close cleanly shuts down the database and syncs all data.  It will block
     # until all database transactions have been finalized (rolled back or
@@ -1724,14 +1730,14 @@ def open_db(db_path: str, network: wire.BitcoinNet, create: bool) -> database.DB
     opt = {
         "create_if_missing": create,
         "error_if_exists": create,
-        "compression": False,
+        # "compression": False,  # TOCHECK why raise '\\'compression\\' must be None or a string' error?
     }
     try:
         ldb = plyvel.DB(metadata_db_path, **opt)
     except Exception as e:
         raise convert_err(repr(e), e)
 
-        # Create the block store which includes scanning the existing flat
+    # Create the block store which includes scanning the existing flat
     # block files to find what the current write cursor position is
     # according to the data that is actually on disk.  Also create the
     # database cache which wraps the underlying leveldb database to provide
@@ -1739,4 +1745,8 @@ def open_db(db_path: str, network: wire.BitcoinNet, create: bool) -> database.DB
     store = BlockStore.new_from_path_network(db_path, network)
     cache = DBCache(ldb=ldb, store=store)
     pdb = DB(store=store, cache=cache)
+
+    if create:
+        init_db(pdb.cache.ldb)
+
     return reconcile_db(pdb)
