@@ -12,6 +12,8 @@ from .block_io import *
 from .reconcile import *
 import plyvel
 from .db_cache import *
+from .ldb_treap_iter import *
+from .leveldb_iterator import *
 
 _logger = logging.Logger(__name__)
 
@@ -795,11 +797,10 @@ class Transaction(database.Tx):
         # any of them which would be faster in the failure case, however
         # callers will not typically be calling this function with invalid
         # values, so optimize for the common case.
-        blocks =[]
+        blocks = []
         for hash in hashes:
             blocks.append(self.fetch_block(hash))
         return blocks
-
 
     # fetchPendingRegion attempts to fetch the provided region from any block which
     # are pending to be written on commit.  It will return nil for the byte slice
@@ -817,13 +818,12 @@ class Transaction(database.Tx):
         block_len = len(block_bytes)
         end_offset = region.offset + region.len
         if end_offset < region.offset or end_offset > block_len:
-            msg = "block %s region offset %d, length %d exceeds block length of %d" % (region.hash, region.offset, region.len, block_len)
+            msg = "block %s region offset %d, length %d exceeds block length of %d" % (
+            region.hash, region.offset, region.len, block_len)
             raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
 
         # Return the bytes from the pending block.
         return block_bytes[region.offset:end_offset]
-
-
 
     # FetchBlockRegion returns the raw serialized bytes for the given block region.
     #
@@ -857,7 +857,7 @@ class Transaction(database.Tx):
         self.check_closed()
 
         # When the block is pending to be written on commit return the bytes
-	    # from there.
+        # from there.
         if self.pending_blocks:
             region_bytes = self.fetch_pending_region(region)
             if region_bytes:
@@ -870,16 +870,14 @@ class Transaction(database.Tx):
 
         # Ensure the region is within the bounds of the block.
         end_offset = region.offset + region.len
-        if end_offset <  region.offset or end_offset > location.block_len:
+        if end_offset < region.offset or end_offset > location.block_len:
             msg = "block %s region offset %d, length %d exceeds block length of %d" % (
-            region.hash, region.offset, region.len, location.block_len)
+                region.hash, region.offset, region.len, location.block_len)
             raise DBError(ErrorCode.ErrBlockRegionInvalid, msg)
 
         # Read the region from the appropriate disk block file.
         region_bytes = self.db.store.read_block_region(location, region.offset, region.len)
         return region_bytes
-
-
 
     # FetchBlockRegions returns the raw serialized bytes for the given block
     # regions.
@@ -960,11 +958,6 @@ class Transaction(database.Tx):
             block_regions.append(region_bytes)
 
         return block_regions
-
-
-
-
-
 
     # close marks the transaction closed then releases any pending data, the
     # underlying snapshot, the transaction read lock, and the write lock when the
@@ -1405,17 +1398,54 @@ def cursor_finalizer(c: Cursor):
     c.pending_iter.release()
 
 
+# BytesPrefix returns start, limit that satisfy the given prefix.
+# This only applicable for the standard 'bytes comparer'.
+def helper_bytes_prefix(prefix: bytes):
+    limit = bytes()
+    i = len(prefix) - 1
+    while i >= 0:
+        c = prefix[i]
+        if c < 0xff:
+            limit = prefix[:i + 1] + bytes([c + 1])
+            break
+        i -= 1
+    return prefix, limit
+
+
 # newCursor returns a new cursor for the given bucket, bucket ID, and cursor
 # type.
 #
 # NOTE: The caller is responsible for calling the cursorFinalizer function on
 # the returned cursor.
 def new_cursor(b: Bucket, bucket_id: bytes, cursor_type: CursorType) -> Cursor:
-    # if cursor_type == CursorType.ctKeys:
-    # TODO
+    if cursor_type == CursorType.ctKeys:
+        prefix = bucket_id
+        start, limit = helper_bytes_prefix(prefix)
+        db_iter = b.tx.snapshot.new_iterator(start, limit)
+        pending_iter = new_ldb_treap_iter(b.tx, start, limit)
+    elif cursor_type == CursorType.ctBuckets:
+        prefix = bucketIndexPrefix + bucket_id
+        start, limit = helper_bytes_prefix(prefix)
+        db_iter = b.tx.snapshot.new_iterator(start, limit)
+        pending_iter = new_ldb_treap_iter(b.tx, start, limit)
+    else:
+        # About key
+        prefix = bucket_id
+        start, limit = helper_bytes_prefix(prefix)
+        key_db_iter = b.tx.snapshot.new_iterator(start, limit)
+        key_pending_iter = new_ldb_treap_iter(b.tx, start, limit)
 
+        # About bucket
+        prefix = bucketIndexPrefix + bucket_id
+        start, limit = helper_bytes_prefix(prefix)
+        bucket_db_iter = b.tx.snapshot.new_iterator(start, limit)
+        bucket_pending_iter = new_ldb_treap_iter(b.tx, start, limit)
 
-    pass
+        # Merge them
+        db_iter = new_merged_iterator([key_db_iter, bucket_db_iter])
+        pending_iter = new_merged_iterator([key_pending_iter, bucket_pending_iter])
+
+    return Cursor(bucket=b, db_iter=db_iter, pending_iter=pending_iter)
 
 
 dbType = "ffldb"
