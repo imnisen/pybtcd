@@ -3,11 +3,12 @@ import database
 from database.ffldb import *
 from tests.database.ffldb.test_interface import *
 import tempfile
+import chaincfg
 
 dbType = "ffldb"
 
 
-class TestCreateOpenFail(unittest.TestCase):
+class TestDriver(unittest.TestCase):
     def test_create_open_fail(self):
         # TOADD parapllel
 
@@ -81,3 +82,68 @@ class TestCreateOpenFail(unittest.TestCase):
         with self.assertRaises(database.DBError) as cm:
             db.close()
         self.assertEqual(cm.exception.c, want_err_code)
+
+
+    def test_persistence(self):
+        # TOADD parallel
+
+        tmp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(tmp_dir.name, "ffldb-persistencetest")
+        tmp_dir.cleanup()
+        db = database.create(dbType, db_path, blockDataNet)
+
+        try:
+            # Create a bucket, put some values into it, and store a block so they
+            # can be tested for existence on re-open.
+            bucket1_key = b"bucket1"
+            store_values = {
+                "b1key1": "foo1",
+                "b1key2": "foo2",
+                "b1key3": "foo3",
+            }
+            genesis_block = btcutil.Block(chaincfg.MainNetParams.genesis_block)
+            genesis_hash = chaincfg.MainNetParams.genesis_hash
+
+            def _test_put_vals(tx: database.Tx):
+                metadata_bucket = tx.metadata()
+                self.assertIsNotNone(metadata_bucket)
+
+                bucket1 = metadata_bucket.create_bucket(bucket1_key)
+
+                for k,v in store_values.items():
+                    bucket1.put(k.encode(), v.encode())
+
+                tx.store_block(genesis_block)
+
+                return
+
+            db.update(_test_put_vals)
+
+            # Close and reopen the database to ensure the values persist.
+            db.close()
+
+            db = database.open(dbType, db_path, blockDataNet)
+
+            def _test_get_vals(tx: database.Tx):
+                metadata_bucket = tx.metadata()
+                self.assertIsNotNone(metadata_bucket)
+
+                bucket1 = metadata_bucket.bucket(bucket1_key)
+                self.assertIsNotNone(bucket1)
+
+                for k, v in store_values.items():
+                    got_val = bucket1.get(k.encode())
+                    self.assertEqual(got_val, v.encode())
+
+                genesis_block_bytes = genesis_block.bytes()
+                got_bytes = tx.fetch_block(genesis_hash)
+                self.assertEqual(got_bytes, genesis_block_bytes)
+
+                return
+
+            db.view(_test_get_vals)
+
+            return
+        finally:
+            db.close()
+            tmp_dir.cleanup()

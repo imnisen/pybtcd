@@ -405,6 +405,11 @@ class Bucket(database.Bucket):
 # transaction is committed.
 class PendingBlock:
     def __init__(self, block_hash, block_bytes):
+        """
+
+        :param chainhash.Hash block_hash:
+        :param bytes block_bytes:
+        """
         self.block_hash = block_hash
         self.block_bytes = block_bytes
 
@@ -1010,9 +1015,9 @@ class Transaction(database.Tx):
 
         # Loop through all of the pending blocks to store and write them.
         for block_data in self.pending_block_data:
-            _logger.info("Storing block %s" % block_data.hash)
+            _logger.info("Storing block %s" % block_data.block_hash)
             try:
-                location = self.db.store.write_block(block_data.bytes)
+                location = self.db.store.write_block(block_data.block_bytes)
             except Exception as e:
                 rollback()
                 raise e
@@ -1022,9 +1027,8 @@ class Transaction(database.Tx):
             # on the filesystem as well as the block header since they are
             # so commonly needed.
             try:
-                block_row = BlockLocation()
-                block_row.deserialize(location)
-                self.block_idx_bucket.put(block_data.hash, block_row)
+                block_row = location.serialize()
+                self.block_idx_bucket.put(block_data.block_hash.to_bytes(), block_row)
             except Exception as e:
                 rollback()
                 raise e
@@ -1467,7 +1471,7 @@ class DB(database.DB):
         :param pyutil.RWLock close_lock:
         :param bool closed:
         :param BlockStore store:
-        :param *dbCache cache:
+        :param DBCache cache:
         """
 
         # Limit to one write transaction at a time.
@@ -1589,6 +1593,7 @@ class DB(database.DB):
                 tx.rollback()
             except:
                 pass
+            raise e
 
     # Update invokes the passed function in the context of a managed read-write
     # transaction with the root bucket for the namespace.  Any errors returned from
@@ -1625,6 +1630,8 @@ class DB(database.DB):
                 tx.rollback()
             except:
                 pass
+
+            raise e
 
     # Close cleanly shuts down the database and syncs all data.  It will block
     # until all database transactions have been finalized (rolled back or
@@ -1694,7 +1701,7 @@ def init_db(ldb):
     # there is no need to store the bucket index data for the metadata
     # bucket in the database.  However, the first bucket ID to use does
     # need to account for it to ensure there are no key collisions.
-    batch.put(bucketized_key(metadataBucketID, writeLocKeyName),
+    batch.put(bucketized_key(metadataBucketID, blockIdxBucketName),
               blockIdxBucketID)
     batch.put(curBucketIDKeyName, blockIdxBucketID)
 

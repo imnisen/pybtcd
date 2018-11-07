@@ -42,7 +42,7 @@ maxBlockFileSize = 512 * 1024 * 1024  # 512 Mi
 # byteOrder is the preferred byte order used through the database and
 # block files.  Sometimes big endian will be used to allow ordered byte
 # sortable integer values.
-byteOrder = "litter"
+byteOrder = "little"
 
 
 # Make the api better to use
@@ -102,22 +102,73 @@ def block_file_path(db_path: str, file_num: int) -> str:
     return os.path.join(db_path, file_name)
 
 
-# TODO
-class Filer:
-    def reader_at(self, *args, **kwargs):
-        pass
+# Filer class
 
-    def writer_at(self, *args, **kwargs):
-        pass
+class FilerErr(Exception):
+    pass
+
+
+class Filer:
+    def __init__(self, fo):
+        self.__file = fo
+
+    def check_valid(self):
+        if self.__file is None:
+            raise FilerErr
+
+    def reader_at(self, l: int, off: int) -> int:
+        self.check_valid()
+
+        if off < 0:
+            raise FilerErr("negative offset")
+
+        if l <= 0:
+            raise FilerErr("read length not positive")
+
+        before = self.__file.seek(off)
+        content = self.__file.read(l)
+        after = self.__file.tell()
+
+        if len(content) != l:
+            raise FilerErr("cannot read full length")
+
+        if after - before != l:
+            raise FilerErr("read off not match")
+
+        return content
+
+    def writer_at(self, b: bytes, off: int) -> int:
+        self.check_valid()
+
+        if off < 0:
+            raise FilerErr("negative offset")
+
+        before = self.__file.seek(off)
+        write_len = self.__file.write(b)
+        after = self.__file.tell()
+
+        if write_len != len(b):
+            raise FilerErr("cannot write full b")
+
+        if after - before != len(b):
+            raise FilerErr("write off not match")
+
+        return write_len
 
     def close(self):
-        pass
+        self.check_valid()
+        try:
+            self.__file.close()
+        except:
+            pass
 
     def truncate(self, size: int):
-        pass
+        self.check_valid()
+        self.__file.truncate(size)
 
     def sync(self):
-        pass
+        self.check_valid()
+        self.__file.flush()
 
 
 # lockableFile represents a block file on disk that has been opened for either
@@ -346,12 +397,13 @@ class BlockStore:
         # file.
         file_path = block_file_path(self.base_path, file_num)
         try:
-            file = os.open(file_path, os.O_RDWR | os.O_CREAT, mode=0o666)
+            fo = open(file_path, 'a+b')
+            # fd = os.open(file_path, os.O_RDWR | os.O_CREAT | os.O_, mode=0o666)
         except Exception as e:
             msg = "failed to open file %s: %s" % (file_path, e)
             raise DBError(ErrorCode.ErrDriverSpecific, msg, err=e)
 
-        return file  # TODO check the return file type
+        return Filer(fo)
 
     # openFile returns a read-only file handle for the passed flat file number.
     # The function also keeps track of the open files, performs least recently
@@ -364,11 +416,12 @@ class BlockStore:
         # Open the appropriate file as read-only.
         file_path = block_file_path(self.base_path, file_num)
         try:
-            file = open(file_path, 'r')  # TOCHECK the permission right?
+            fo = open(file_path, 'r+b')
+            # fd = os.open(file_path)  # TOCHECK the permission right?
         except Exception as e:
             raise DBError(ErrorCode.ErrDriverSpecific, str(e), e)
 
-        block_file = LockableFile(file=file)
+        block_file = LockableFile(file=Filer(fo))
 
         # Close the least recently used file if the file exceeds the max
         # allowed open files.  This is not done until after the file open in

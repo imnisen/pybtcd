@@ -59,7 +59,7 @@ class Block:
 
         # Serialize the MsgBlock.
         w = io.BytesIO()
-        self.msg_block.serilize(w)
+        self.msg_block.serialize(w)
         serialized_block = w.getvalue()
 
         # Cache the serialized bytes and return them.

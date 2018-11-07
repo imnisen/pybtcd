@@ -6,4 +6,4 @@ def bytes_to_uint32(b: bytes):
 
 def uint32_to_bytes(i: int):
     # TOADD the range of i
-    return int.to_bytes(4, "big")
+    return i.to_bytes(length=4, byteorder="big")

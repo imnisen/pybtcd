@@ -376,7 +376,7 @@ class DBCache:
     def commit_treaps(self, pending_keys: treap.Immutable, pending_remove: treap.Immutable):
 
         try:
-            with self.ldb.write_batch(transction=True) as b:
+            with self.ldb.write_batch(transaction=True) as b:
 
                 for k, v in pending_keys.for_each2():
                     b.put(k, v)
@@ -508,7 +508,7 @@ class DBCache:
         self.cache_lock.lock()
         self.cached_keys = new_cached_keys
         self.cached_remove = new_cached_remove
-        self.cache_lock.r_unlock()
+        self.cache_lock.unlock()
         return
 
     # Close cleanly shuts down the database cache by syncing all data and closing
