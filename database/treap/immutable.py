@@ -174,7 +174,7 @@ class Immutable:
 
         # when treap don't has key
         if node is None:
-            return
+            return self
 
         # when treap only has single node
         if parent is None and node.left is None and node.right is None:
