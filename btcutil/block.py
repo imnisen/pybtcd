@@ -17,7 +17,7 @@ class Block:
         :param *wire.MsgBlock msg_block: Underlying MsgBlock
         :param []byte serialized_block: Serialized bytes for the block
         :param []byte serialized_block_no_witness: Serialized bytes for block w/o witness data
-        :param *chainhash.Hash block_hash: Cached block hash
+        :param chainhash.Hash or None block_hash: Cached block hash
         :param int32 block_height: Height in the main block chain
         :param []*Tx transactions: Transactions
         :param bool txns_generated: ALL wrapped transactions generated
@@ -25,7 +25,7 @@ class Block:
         self.msg_block = msg_block
         self.serialized_block = serialized_block or bytes()
         self.serialized_block_no_witness = serialized_block_no_witness or bytes()
-        self.block_hash = block_hash or chainhash.Hash()
+        self.block_hash = block_hash or None
         self.block_height = block_height or BlockHeightUnknown
         self.transactions = transactions or []
         self.txns_generated = txns_generated or False

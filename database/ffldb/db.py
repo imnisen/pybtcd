@@ -638,7 +638,7 @@ class Transaction(database.Tx):
         # when the transaction is committed.  Also, add it to pending blocks
         # map so it is easy to determine the block is pending based on the
         # block hash.
-        self.pending_blocks.update(block_hash=len(self.pending_block_data))
+        self.pending_blocks[block_hash]=len(self.pending_block_data)
         self.pending_block_data.append(PendingBlock(
             block_hash=block_hash,
             block_bytes=block_bytes

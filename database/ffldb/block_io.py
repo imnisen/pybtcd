@@ -313,7 +313,7 @@ class BlockStore:
         #
         # Due to the high performance and multi-read concurrency requirements,
         # write locks should only be held for the minimum time necessary.
-        self.obf_mutex = obf_mutex
+        self.obf_mutex = obf_mutex or pyutil.RWLock()
         self.lru_mutex = lru_mutex or pyutil.Lock()
         self.open_blocks_lru = open_blocks_lru or LRUList()
         self.file_num_to_lru_elem = file_num_to_lru_elem or {}
@@ -669,8 +669,8 @@ class BlockStore:
         block_file = self.block_file(loc.block_file_num)
 
         try:
-            serialized_data = bytes()
-            n = block_file.file.reader_at(serialized_data, loc.file_offset)
+            need_length = loc.block_len
+            serialized_data = block_file.file.reader_at(need_length, loc.file_offset)
         except Exception as e:
             msg = "failed to read block %s from file %d, offset %d: %s" % (hash, loc.block_file_num, loc.file_offset, e)
             raise DBError(ErrorCode.ErrDriverSpecific, msg, e)
@@ -721,8 +721,8 @@ class BlockStore:
         # for block length.  Thus, add 8 bytes to adjust.
         read_offset = loc.file_offset + 8 + offset
         try:
-            serialized_data = bytes()
-            block_file.file.reader_at(serialized_data, read_offset)
+            need_length = num_bytes
+            serialized_data = block_file.file.reader_at(need_length, read_offset)
         except Exception as e:
             msg = "failed to read region from block file %d, offset %d, len %d: %s" % (
                 loc.block_file_num, read_offset, num_bytes, e)

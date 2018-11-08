@@ -4,6 +4,7 @@ from database.ffldb import *
 from tests.database.ffldb.test_interface import *
 import tempfile
 import chaincfg
+import shutil
 
 dbType = "ffldb"
 
@@ -58,30 +59,33 @@ class TestDriver(unittest.TestCase):
         db = database.create(dbType, db_path, blockDataNet)
         db.close()
 
-        want_err_code = database.ErrorCode.ErrDbNotOpen
-        with self.assertRaises(database.DBError) as cm:
-            db.view(lambda tx: None)
-        self.assertEqual(cm.exception.c, want_err_code)
+        try:
+            want_err_code = database.ErrorCode.ErrDbNotOpen
+            with self.assertRaises(database.DBError) as cm:
+                db.view(lambda tx: None)
+            self.assertEqual(cm.exception.c, want_err_code)
 
-        want_err_code = database.ErrorCode.ErrDbNotOpen
-        with self.assertRaises(database.DBError) as cm:
-            db.update(lambda tx: None)
-        self.assertEqual(cm.exception.c, want_err_code)
+            want_err_code = database.ErrorCode.ErrDbNotOpen
+            with self.assertRaises(database.DBError) as cm:
+                db.update(lambda tx: None)
+            self.assertEqual(cm.exception.c, want_err_code)
 
-        want_err_code = database.ErrorCode.ErrDbNotOpen
-        with self.assertRaises(database.DBError) as cm:
-            db.begin(False)
-        self.assertEqual(cm.exception.c, want_err_code)
+            want_err_code = database.ErrorCode.ErrDbNotOpen
+            with self.assertRaises(database.DBError) as cm:
+                db.begin(False)
+            self.assertEqual(cm.exception.c, want_err_code)
 
-        want_err_code = database.ErrorCode.ErrDbNotOpen
-        with self.assertRaises(database.DBError) as cm:
-            db.begin(True)
-        self.assertEqual(cm.exception.c, want_err_code)
+            want_err_code = database.ErrorCode.ErrDbNotOpen
+            with self.assertRaises(database.DBError) as cm:
+                db.begin(True)
+            self.assertEqual(cm.exception.c, want_err_code)
 
-        want_err_code = database.ErrorCode.ErrDbNotOpen
-        with self.assertRaises(database.DBError) as cm:
-            db.close()
-        self.assertEqual(cm.exception.c, want_err_code)
+            want_err_code = database.ErrorCode.ErrDbNotOpen
+            with self.assertRaises(database.DBError) as cm:
+                db.close()
+            self.assertEqual(cm.exception.c, want_err_code)
+        finally:
+            shutil.rmtree(tmp_dir.name)
 
 
     def test_persistence(self):
@@ -146,4 +150,4 @@ class TestDriver(unittest.TestCase):
             return
         finally:
             db.close()
-            tmp_dir.cleanup()
+            shutil.rmtree(tmp_dir.name)
