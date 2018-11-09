@@ -3,7 +3,7 @@ class Bucket:
     # Bucket retrieves a nested bucket with the given key.  Returns nil if
     # the bucket does not exist.
     def bucket(self, key: bytes) -> 'Bucket':
-        pass
+        raise NotImplementedError
 
     # CreateBucket creates and returns a new nested bucket with the given
     # key.
@@ -17,7 +17,7 @@ class Bucket:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def create_bucket(self, key: bytes) -> 'Bucket':
-        pass
+        raise NotImplementedError
 
     # CreateBucketIfNotExists creates and returns a new nested bucket with
     # the given key if it does not already exist.
@@ -30,7 +30,7 @@ class Bucket:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def create_bucket_if_not_exists(self, key: bytes) -> 'Bucket':
-        pass
+        raise NotImplementedError
 
     # DeleteBucket removes a nested bucket with the given key.  This also
     # includes removing all nested buckets and keys under the bucket being
@@ -42,7 +42,7 @@ class Bucket:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def delete_bucket(self, key: bytes):
-        pass
+        raise NotImplementedError
 
     # ForEach invokes the passed function with every key/value pair in the
     # bucket.  This does not include nested buckets or the key/value pairs
@@ -61,11 +61,11 @@ class Bucket:
     # results in undefined behavior.  Additionally, the slices must NOT
     # be modified by the caller.  These constraints prevent additional data
     # copies and allows support for memory-mapped database implementations.
-    def for_each(self):  # TODO
-        pass
+    # def for_each(self):
+    #     raise NotImplementedError
 
-    def for_each2(self):  # TODO
-        pass
+    def for_each2(self):
+        raise NotImplementedError
 
     # ForEachBucket invokes the passed function with the key of every
     # nested bucket in the current bucket.  This does not include any
@@ -84,11 +84,11 @@ class Bucket:
     # results in undefined behavior.  This constraint prevents additional
     # data copies and allows support for memory-mapped database
     # implementations.
-    def for_each_bucket(self):  # TODO
-        pass
+    # def for_each_bucket(self):
+    #     raise NotImplementedError
 
-    def for_each_bucket2(self):  # TODO
-        pass
+    def for_each_bucket2(self):
+        raise NotImplementedError
 
     # Cursor returns a new cursor, allowing for iteration over the bucket's
     # key/value pairs and nested buckets in forward or backward order.
@@ -99,11 +99,11 @@ class Bucket:
     # which is false for the Prev and Next functions and nil for Key and
     # Value functions.
     def cursor(self) -> 'Cursor':
-        pass
+        raise NotImplementedError
 
     # Writable returns whether or not the bucket is writable.
     def writable(self):
-        pass
+        raise NotImplementedError
 
     # Put saves the specified key/value pair to the bucket.  Keys that do
     # not already exist are added and keys that already exist are
@@ -120,7 +120,7 @@ class Bucket:
     # caller.  This constraint prevents the requirement for additional data
     # copies and allows support for memory-mapped database implementations.
     def put(self, key: bytes, value: bytes):
-        pass
+        raise NotImplementedError
 
     # Get returns the value for the given key.  Returns nil if the key does
     # not exist in this bucket.  An empty slice is returned for keys that
@@ -132,7 +132,7 @@ class Bucket:
     # be modified by the caller.  These constraints prevent additional data
     # copies and allows support for memory-mapped database implementations.
     def get(self, key: bytes) -> bytes:
-        pass
+        raise NotImplementedError
 
     # Delete removes the specified key from the bucket.  Deleting a key
     # that does not exist does not return an error.
@@ -144,7 +144,7 @@ class Bucket:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def delete(self, key: bytes):
-        pass
+        raise NotImplementedError
 
 
 # Cursor represents a cursor over key/value pairs and nested buckets of a
@@ -161,7 +161,7 @@ class Cursor:
 
     # As replacement of above
     def get_bucket(self) -> Bucket:
-        pass
+        raise NotImplementedError
 
     # Delete removes the current key/value pair the cursor is at without
     # invalidating the cursor.
@@ -173,42 +173,42 @@ class Cursor:
     #   - ErrTxNotWritable if attempted against a read-only transaction
     #   - ErrTxClosed if the transaction has already been closed
     def delete(self):
-        pass
+        raise NotImplementedError
 
     # First positions the cursor at the first key/value pair and returns
     # whether or not the pair exists.
     def first(self) -> bool:
-        pass
+        raise NotImplementedError
 
     # Last positions the cursor at the last key/value pair and returns
     # whether or not the pair exists.
     def last(self) -> bool:
-        pass
+        raise NotImplementedError
 
     # Next moves the cursor one key/value pair forward and returns whether
     # or not the pair exists.
     def next(self) -> bool:
-        pass
+        raise NotImplementedError
 
     # Prev moves the cursor one key/value pair backward and returns whether
     # or not the pair exists.
     def prev(self) -> bool:
-        pass
+        raise NotImplementedError
 
     # Seek positions the cursor at the first key/value pair that is greater
     # than or equal to the passed seek key.  Returns whether or not the
     # pair exists.
     def seek(self, seek: bytes) -> bool:
-        pass
+        raise NotImplementedError
 
     # Key returns the current key the cursor is pointing to.
     def key(self) -> bytes:
-        pass
+        raise NotImplementedError
 
     # Value returns the current value the cursor is pointing to.  This will
     # be nil for nested buckets.
     def value(self) -> bytes:
-        pass
+        raise NotImplementedError
 
 
 # BlockRegion specifies a particular region of a block identified by the
@@ -237,7 +237,7 @@ class BlockRegion:
 class Tx:
     #  Metadata returns the top-most bucket for all metadata storage.
     def metadata(self) -> Bucket:
-        pass
+        raise NotImplementedError
 
     # StoreBlock stores the provided block into the database.  There are no
     # checks to ensure the block connects to a previous block, contains
@@ -252,7 +252,7 @@ class Tx:
     #
     # Other errors are possible depending on the implementation.
     def store_block(self, block):
-        pass
+        raise NotImplementedError
 
     # HasBlock returns whether or not a block with the given hash exists
     # in the database.
@@ -263,7 +263,7 @@ class Tx:
     #
     # Other errors are possible depending on the implementation.
     def has_block(self, hash):
-        pass
+        raise NotImplementedError
 
     # HasBlocks returns whether or not the blocks with the provided hashes
     # exist in the database.
@@ -274,7 +274,7 @@ class Tx:
     #
     # Other errors are possible depending on the implementation.
     def has_blocks(self, hashes):
-        pass
+        raise NotImplementedError
 
     # FetchBlockHeader returns the raw serialized bytes for the block
     # header identified by the given hash.  The raw bytes are in the format
@@ -298,7 +298,7 @@ class Tx:
     # additional data copies and allows support for memory-mapped database
     # implementations.
     def fetch_block_header(self, hash):
-        pass
+        raise NotImplementedError
 
     # FetchBlockHeaders returns the raw serialized bytes for the block
     # headers identified by the given hashes.  The raw bytes are in the
@@ -326,7 +326,7 @@ class Tx:
     # additional data copies and allows support for memory-mapped database
     # implementations.
     def fetch_block_headers(self, hash):
-        pass
+        raise NotImplementedError
 
     # FetchBlock returns the raw serialized bytes for the block identified
     # by the given hash.  The raw bytes are in the format returned by
@@ -344,7 +344,7 @@ class Tx:
     # additional data copies and allows support for memory-mapped database
     # implementations.
     def fetch_block(self, hash):
-        pass
+        raise NotImplementedError
 
     # FetchBlocks returns the raw serialized bytes for the blocks
     # identified by the given hashes.  The raw bytes are in the format
@@ -363,7 +363,7 @@ class Tx:
     # additional data copies and allows support for memory-mapped database
     # implementations.
     def fetch_blocks(self, hashes):
-        pass
+        raise NotImplementedError
 
     # FetchBlockRegion returns the raw serialized bytes for the given
     # block region.
@@ -391,7 +391,7 @@ class Tx:
     # additional data copies and allows support for memory-mapped database
     # implementations.
     def fetch_block_region(self, region):
-        pass
+        raise NotImplementedError
 
     # FetchBlockRegions returns the raw serialized bytes for the given
     # block regions.
@@ -421,7 +421,7 @@ class Tx:
     # implementations.
 
     def fetch_block_regions(self, regions):
-        pass
+        raise NotImplementedError
 
     # ******************************************************************
     # Methods related to both atomic metadata storage and block storage.
@@ -435,13 +435,13 @@ class Tx:
     # by this transaction.  Calling this function on a managed transaction
     # will result in a panic.
     def commit(self):
-        pass
+        raise NotImplementedError
 
     # Rollback undoes all changes that have been made to the metadata or
     # block storage.  Calling this function on a managed transaction will
     # result in a panic.
     def rollback(self):
-        pass
+        raise NotImplementedError
 
 
 # DB provides a generic interface that is used to store bitcoin blocks and
@@ -464,7 +464,7 @@ class DB:
     # Type returns the database driver type the current database instance
     # was created with.
     def type(self) -> str:
-        pass
+        raise NotImplementedError
 
     # Begin starts a transaction which is either read-only or read-write
     # depending on the specified flag.  Multiple read-only transactions
@@ -477,7 +477,7 @@ class DB:
     # unclaimed memory and/or inablity to close the database due to locks
     # depending on the specific database implementation.
     def begin(self, writeable: bool) -> Tx:
-        pass
+        raise NotImplementedError
 
     # View invokes the passed function in the context of a managed
     # read-only transaction.  Any errors returned from the user-supplied
@@ -486,7 +486,7 @@ class DB:
     # Calling Rollback or Commit on the transaction passed to the
     # user-supplied function will result in a panic.
     def view(self, fn):  # TODO
-        pass
+        raise NotImplementedError
 
     # Update invokes the passed function in the context of a managed
     # read-write transaction.  Any errors returned from the user-supplied
@@ -497,10 +497,10 @@ class DB:
     # Calling Rollback or Commit on the transaction passed to the
     # user-supplied function will result in a panic.
     def update(self, fn):
-        pass
+        raise NotImplementedError
 
     # Close cleanly shuts down the database and syncs all data.  It will
     # block until all database transactions have been finalized (rolled
     # back or committed).
     def close(self):
-        pass
+        raise NotImplementedError

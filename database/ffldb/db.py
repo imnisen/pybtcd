@@ -331,7 +331,7 @@ class Bucket(database.Bucket):
     # Writable returns whether or not the bucket is writable.
     #
     # This function is part of the database.Bucket interface implementation.
-    def writeable(self):
+    def writable(self):
         return self.tx.writable
 
     # Put saves the specified key/value pair to the bucket.  Keys that do not
@@ -439,13 +439,13 @@ class Transaction(database.Tx):
         :param []*treap.Iterator active_iters:
         """
         # Is the transaction managed?
-        self.managed = managed
+        self.managed = managed or False
 
         # Is the transaction closed?
-        self.closed = closed
+        self.closed = closed or False
 
         # Is the transaction writable?
-        self.writable = writable
+        self.writable = writable or False
 
         # DB instance the tx was created from.
         self.db = db

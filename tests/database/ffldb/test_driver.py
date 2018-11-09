@@ -1,5 +1,6 @@
 import unittest
 import database
+import database.ffldb as ffldb
 from database.ffldb import *
 from tests.database.ffldb.test_interface import *
 import tempfile
@@ -10,6 +11,8 @@ dbType = "ffldb"
 
 
 class TestDriver(unittest.TestCase):
+    # TestCreateOpenFail ensures that errors related to creating and opening a
+    # database are handled properly.
     def test_create_open_fail(self):
         # TOADD parapllel
 
@@ -87,7 +90,8 @@ class TestDriver(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_dir.name)
 
-
+    # TestPersistence ensures that values stored are still valid after closing and
+    # reopening the database.
     def test_persistence(self):
         # TOADD parallel
 
@@ -114,7 +118,7 @@ class TestDriver(unittest.TestCase):
 
                 bucket1 = metadata_bucket.create_bucket(bucket1_key)
 
-                for k,v in store_values.items():
+                for k, v in store_values.items():
                     bucket1.put(k.encode(), v.encode())
 
                 tx.store_block(genesis_block)
@@ -151,3 +155,27 @@ class TestDriver(unittest.TestCase):
         finally:
             db.close()
             shutil.rmtree(tmp_dir.name)
+
+    # TestInterface performs all interfaces tests for this database driver.
+    def test_interface(self):
+        # TOADD parallel
+        tmp_dir = tempfile.TemporaryDirectory()
+        db_path = os.path.join(tmp_dir.name, "ffldb-persistencetest")
+        tmp_dir.cleanup()
+        db = database.create(dbType, db_path, blockDataNet)
+        try:
+            self.assertEqual(db.type(), dbType)
+
+            def f():
+                TestInterface()._test_interface(db)
+            test_run_with_max_block_file_size(db, 2048, f)
+        finally:
+            db.close()
+            shutil.rmtree(tmp_dir.name)
+
+def test_run_with_max_block_file_size(idb, size:int, fn):
+    origin_size = idb.store.max_block_file_size
+
+    idb.store.max_block_file_size = size
+    fn()
+    idb.store.max_block_file_size = origin_size

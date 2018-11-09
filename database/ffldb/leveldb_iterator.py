@@ -4,34 +4,34 @@ from functools import wraps
 # This is interface
 class Iterator:
     def first(self) -> bool:
-        pass
+        raise NotImplementedError
 
     def last(self) -> bool:
-        pass
+        raise NotImplementedError
 
     def seek(self, key: bytes) -> bool:
-        pass
+        raise NotImplementedError
 
     def next(self) -> bool:
-        pass
+        raise NotImplementedError
 
     def prev(self) -> bool:
-        pass
+        raise NotImplementedError
 
     def key(self) -> bytes:
-        pass
+        raise NotImplementedError
 
     def value(self) -> bytes:
-        pass
+        raise NotImplementedError
 
     def release(self):
-        pass
+        raise NotImplementedError
 
     def release_setter(self):
         pass
 
     def valid(self) -> bool:
-        pass
+        raise NotImplementedError
 
     def error(self):
         pass

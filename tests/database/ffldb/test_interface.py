@@ -389,7 +389,7 @@ class TestInterface(unittest.TestCase):
             # TODO rollback on panic
 
             metadata_bucket = tx.metadata()
-            print("metadata bucket", metadata_bucket)
+            # print("metadata bucket", metadata_bucket)
             self.assertIsNotNone(metadata_bucket)
 
             bucket1 = metadata_bucket.bucket(bucket1_name)
