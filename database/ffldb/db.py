@@ -542,7 +542,7 @@ class Transaction(database.Tx):
         # When the transaction is writable, check the pending transaction
         # state first.
         if self.writable:
-            if self.pending_keys.has(key):
+            if self.pending_remove.has(key):
                 return None
 
             value = self.pending_keys.get(key)
@@ -1342,6 +1342,9 @@ class Cursor(database.Cursor):
         # The key is after the bucket index prefix and parent ID when the
         # cursor is pointing to a nested bucket.
         key = self.current_iter.key()
+        if key is None:
+            return None
+
         if bytes_has_prefix(key, bucketIndexPrefix):
             key = key[len(bucketIndexPrefix) + 4:]
             return copy_slice(key)

@@ -43,6 +43,10 @@ class Immutable:
 
     @staticmethod
     def _key_compare(key1, key2):
+        if key1 is None:
+            key1 = bytes()
+        if key2 is None:
+            key2 = bytes()
 
         if key1 > key2:
             return 1

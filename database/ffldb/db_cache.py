@@ -4,6 +4,7 @@ import pyutil
 import database.treap as treap
 import time
 from .leveldb_iterator import Iterator
+from functools import wraps
 
 # defaultCacheSize is the default size for the database cache.
 defaultCacheSize = 100 * 1024 * 1024  # 100 MB
@@ -212,6 +213,117 @@ def new_ldb_cache_iter(snap, start, limit) -> LdbCacheIter:
     return LdbCacheIter(iter=iter)
 
 
+def exception_return_as_false(fn):
+    @wraps(fn)
+    def inner_fn(self, *args, **kwargs):
+        try:
+            fn(self, *args, **kwargs)
+            return True
+        except:
+            return False
+
+    return inner_fn
+
+
+def exception_return_as_None(fn):
+    @wraps(fn)
+    def inner_fn(self, *args, **kwargs):
+        try:
+            return fn(self, *args, **kwargs)
+        except:
+            return None
+
+    return inner_fn
+
+
+class snapshotRangedIter(Iterator):
+    def __init__(self, iter, start=None, limit=None):
+        self.raw_iter = iter
+        self.start = start
+        self.limit = limit
+
+    def _check_range(self, key):
+
+        if self.start and self.limit and not self.start <= key < self.limit:
+            raise Exception
+
+        if self.start and not self.limit and not self.start <= key:
+            raise Exception
+
+        if not self.start and self.limit and not key < self.limit:
+            raise Exception
+
+        return
+
+    @exception_return_as_false
+    def first(self) -> bool:
+        if self.start is None:
+            return self.raw_iter.seek_to_first()
+        else:
+            return self.raw_iter.seek(self.start)
+
+    @exception_return_as_false
+    def last(self) -> bool:
+        if self.limit is None:
+            return self.raw_iter.seek_to_last()
+        else:
+            return self.raw_iter.seek(self.limit)
+
+    @exception_return_as_false
+    def seek(self, key: bytes) -> bool:
+        self._check_range(key)
+
+        return self.raw_iter.seek(key)
+
+    @exception_return_as_false
+    def next(self) -> bool:
+
+        self.raw_iter.next()
+        key = self.raw_iter.key()
+
+        self._check_range(key)
+
+        return
+
+    @exception_return_as_false
+    def prev(self) -> bool:
+        self.raw_iter.prev()
+        key = self.raw_iter.key()
+
+        self._check_range(key)
+
+        return
+
+    @exception_return_as_None
+    def key(self) -> bytes:
+        key = self.raw_iter.key()
+
+        self._check_range(key)
+
+        return key
+
+    @exception_return_as_None
+    def value(self) -> bytes:
+        self._check_range(self.raw_iter.key())
+
+        value = self.raw_iter.value()
+
+        return value
+
+    def release(self):
+        return self.raw_iter.close()
+
+    @exception_return_as_false
+    def valid(self) -> bool:
+        return self.raw_iter.valid()
+
+    def release_setter(self):
+        pass
+
+    def error(self):
+        pass
+
+
 # dbCacheSnapshot defines a snapshot of the database cache and underlying
 # database at a particular point in time.
 class DBCacheSnapshot:
@@ -268,12 +380,15 @@ class DBCacheSnapshot:
     # can be nil if the functionality is not desired.
     def new_iterator(self, start, limit):
 
-        db_iter = self.db_snapshot.raw_iterator(start=start, limit=limit),  # TODO check the params correct
+        raw_db_iter = self.db_snapshot.raw_iterator()
 
-        # Modify the plyvel.RawIterator to statisfy leveldb_iterator.Iterator inteface
-        db_iter.first = db_iter.seek_to_first
-        db_iter.last = db_iter.seek_to_last
-        db_iter.release = db_iter.close
+        # # Modify the plyvel.RawIterator to statisfy leveldb_iterator.Iterator inteface
+        # db_iter.first = db_iter.seek_to_start
+        # db_iter.last = db_iter.seek_to_stop
+        # db_iter.release = db_iter.close
+        # TODO
+
+        db_iter = snapshotRangedIter(raw_db_iter, start=start, limit=limit)
 
         return DBCacheIterator(
             db_iter=db_iter,

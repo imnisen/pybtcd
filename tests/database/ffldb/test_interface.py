@@ -404,7 +404,7 @@ class TestInterface(unittest.TestCase):
                 # the commit.
 
                 # test_name = "unwritable tx commit"
-                with self.assertRaises(database.DB) as cm:
+                with self.assertRaises(database.DBError) as cm:
                     tx.commit()  # TOCHANGE TODO commit and rollback raise a exception that not catch here
                 self.assertEqual(cm.exception.c, database.ErrorCode.ErrTxNotWritable)
             else:
