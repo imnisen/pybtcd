@@ -101,7 +101,7 @@ class TestInterface(unittest.TestCase):
 
     def _test_delete_values(self, tc, bucket, values):
         for item in values:
-            bucket.delete(item.key, item.value)
+            bucket.delete(item.key)
         return
 
     # toGetValues returns a copy of the provided keypairs with all of the nil
@@ -149,7 +149,7 @@ class TestInterface(unittest.TestCase):
 
         tc.bucket_depth += 1
         try:
-            return self._test_bucket_inteface(tc, test_bucket)
+            return self._test_bucket_interface(tc, test_bucket)
         finally:
             tc.bucket_depth -= 1
 
@@ -243,7 +243,7 @@ class TestInterface(unittest.TestCase):
     # testBucketInterface ensures the bucket interface is working properly by
     # exercising all of its functions.  This includes the cursor interface for the
     # cursor returned from the bucket.
-    def _test_bucket_inteface(self, tc: TestContext, bucket: database.Bucket):
+    def _test_bucket_interface(self, tc: TestContext, bucket: database.Bucket):
         self.assertEqual(bucket.writable(), tc.is_writeable)
 
         if tc.is_writeable:
@@ -397,7 +397,7 @@ class TestInterface(unittest.TestCase):
 
             tc.is_writeable = writable
 
-            self._test_bucket_inteface(tc, bucket1)
+            self._test_bucket_interface(tc, bucket1)
 
             if not writable:
                 # The transaction is not writable, so it should fail
@@ -512,7 +512,7 @@ class TestInterface(unittest.TestCase):
             self.assertIsNotNone(bucket1)
 
             tc.is_writeable = False
-            self._test_bucket_inteface(tc, bucket1)
+            self._test_bucket_interface(tc, bucket1)
 
         tc.db.view(test_read_only)
 
@@ -543,7 +543,7 @@ class TestInterface(unittest.TestCase):
             self.assertIsNotNone(bucket1)
 
             tc.is_writeable = True
-            self._test_bucket_inteface(tc, bucket1)
+            self._test_bucket_interface(tc, bucket1)
 
             self._test_put_values(tc, bucket1, key_values)
 

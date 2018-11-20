@@ -111,7 +111,7 @@ class DBCacheIterator(Iterator):
     #
     # This is part of the leveldb iterator.Iterator interface implementation.
     def first(self) -> bool:
-        self.db_iter.first()
+        self.db_iter.first()  # should return false not true
         self.cache_iter.first()
         return self._choose_iterator(True)
 
@@ -198,10 +198,10 @@ class DBCacheIterator(Iterator):
 # needed to satisfy the leveldb iterator.Iterator interface.
 class LdbCacheIter:
     def __init__(self, iter):
-        self.__iter = iter
+        self.the_iter = iter
 
     def __getattr__(self, attr):
-        return getattr(self.__iter, attr)
+        return getattr(self.the_iter, attr)
 
     # required by leveldb Iterator
     def release(self):
@@ -217,8 +217,8 @@ def exception_return_as_false(fn):
     @wraps(fn)
     def inner_fn(self, *args, **kwargs):
         try:
-            fn(self, *args, **kwargs)
-            return True
+            x = fn(self, *args, **kwargs)
+            return x
         except:
             return False
 
@@ -235,87 +235,75 @@ def exception_return_as_None(fn):
 
     return inner_fn
 
-
+# Need to decide use valid to check valid every time
+# or use the return value of first(), next(), etc.
+# Let's try make a compatible way
 class snapshotRangedIter(Iterator):
     def __init__(self, iter, start=None, limit=None):
         self.raw_iter = iter
         self.start = start
         self.limit = limit
 
+    # Use return value True or False
     def _check_range(self, key):
 
         if self.start and self.limit and not self.start <= key < self.limit:
-            raise Exception
+            return False
 
         if self.start and not self.limit and not self.start <= key:
-            raise Exception
+            return False
 
         if not self.start and self.limit and not key < self.limit:
-            raise Exception
+            return False
 
-        return
+        return True
 
-    @exception_return_as_false
+    def valid(self) -> bool:
+        return self._check_range(self.raw_iter.key()) and self.raw_iter.valid()
+
+    def key(self) -> bytes or None:
+        if self.valid():
+            return self.raw_iter.key()
+        else:
+            return None
+
+    def value(self) -> bytes or None:
+        if self.valid():
+            return self.raw_iter.value()
+        else:
+            return None
+
     def first(self) -> bool:
         if self.start is None:
-            return self.raw_iter.seek_to_first()
+            self.raw_iter.seek_to_first()
         else:
-            return self.raw_iter.seek(self.start)
+            self.raw_iter.seek(self.start)
+        return self.valid()
 
-    @exception_return_as_false
     def last(self) -> bool:
         if self.limit is None:
-            return self.raw_iter.seek_to_last()
+            self.raw_iter.seek_to_last()
         else:
-            return self.raw_iter.seek(self.limit)
+            self.raw_iter.seek(self.limit)
+        return self.valid()
 
-    @exception_return_as_false
     def seek(self, key: bytes) -> bool:
-        self._check_range(key)
+        if self._check_range(key):
+            self.raw_iter.seek(key)
+            return self.valid()
+        else:
+            return False
 
-        return self.raw_iter.seek(key)
-
-    @exception_return_as_false
     def next(self) -> bool:
-
         self.raw_iter.next()
-        key = self.raw_iter.key()
+        return self.valid()
 
-        self._check_range(key)
-
-        return
-
-    @exception_return_as_false
     def prev(self) -> bool:
         self.raw_iter.prev()
-        key = self.raw_iter.key()
-
-        self._check_range(key)
-
-        return
-
-    @exception_return_as_None
-    def key(self) -> bytes:
-        key = self.raw_iter.key()
-
-        self._check_range(key)
-
-        return key
-
-    @exception_return_as_None
-    def value(self) -> bytes:
-        self._check_range(self.raw_iter.key())
-
-        value = self.raw_iter.value()
-
-        return value
+        return self.valid()
 
     def release(self):
         return self.raw_iter.close()
-
-    @exception_return_as_false
-    def valid(self) -> bool:
-        return self.raw_iter.valid()
 
     def release_setter(self):
         pass

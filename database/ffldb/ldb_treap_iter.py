@@ -4,17 +4,17 @@
 
 class LdbTreapIter(object):
     def __init__(self, iter, tx, released=None):
-        self.__iter = iter
+        self.the_iter = iter
         self.tx = tx
         self.released = released or False
 
     def release(self):
         if not self.released:
-            self.tx.remove_active_iter(self.__iter)  # TOCHECK TODO
+            self.tx.remove_active_iter(self.the_iter)  # TOCHECK TODO
             self.released = True
 
     def __getattr__(self, attr):
-        return getattr(self.__iter, attr)
+        return getattr(self.the_iter, attr)
 
         # def __setattr__(self, attr, val):
         #     if attr == '_LdbTreapIter__iter':

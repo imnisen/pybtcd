@@ -398,7 +398,7 @@ class Bucket(database.Bucket):
         if len(key) == 0:
             return None
 
-        return self.tx.delete_key(bucketized_key(self.id, key))
+        return self.tx.delete_key(bucketized_key(self.id, key), notify_iterators=True)
 
 
 # pendingBlock houses a block that will be written to disk when the database
@@ -1342,8 +1342,8 @@ class Cursor(database.Cursor):
         # The key is after the bucket index prefix and parent ID when the
         # cursor is pointing to a nested bucket.
         key = self.current_iter.key()
-        if key is None:
-            return None
+        # if key is None:  # TODO
+        #     return None
 
         if bytes_has_prefix(key, bucketIndexPrefix):
             key = key[len(bucketIndexPrefix) + 4:]
@@ -1376,12 +1376,16 @@ class Cursor(database.Cursor):
         if self.current_iter is None:
             return None
 
+        # # TODO
+        # if self.current_iter.key() is None:
+        #     return None
+
         # Return nil for the value when the cursor is pointing to a nested
         # bucket.
         if bytes_has_prefix(self.current_iter.key(), bucketIndexPrefix):
             return None
 
-        return copy_slice(self.current_iter.value)
+        return copy_slice(self.current_iter.value())
 
 
 # cursorType defines the type of cursor to create.
@@ -1413,7 +1417,7 @@ def helper_bytes_prefix(prefix: bytes):
     while i >= 0:
         c = prefix[i]
         if c < 0xff:
-            limit = prefix[:i + 1] + bytes([c + 1])
+            limit = prefix[:i] + bytes([c + 1])
             break
         i -= 1
     return prefix, limit

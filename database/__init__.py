@@ -1,3 +1,3 @@
-from .inteface import *
+from .interface import *
 from .error import *
 from .driver import *

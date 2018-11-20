@@ -1,5 +1,5 @@
 from .error import *
-from .inteface import *
+from .interface import *
 
 
 # Driver defines a structure for backend drivers to use when they registered

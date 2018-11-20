@@ -69,3 +69,6 @@
 * Reconsider of time struct of python, now is int, need a class?
 * Use subclass of Enum or Int  to refactor some class
 * Add helper decorator to database, to easy life
+* Tmp
+** check db_iter.first() correctly
+** check limit key correct?
