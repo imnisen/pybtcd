@@ -111,8 +111,8 @@ class DBCacheIterator(Iterator):
     #
     # This is part of the leveldb iterator.Iterator interface implementation.
     def first(self) -> bool:
-        self.db_iter.first()  # should return false not true
-        self.cache_iter.first()
+        x = self.db_iter.first()  # should return false not true
+        y = self.cache_iter.first()
         return self._choose_iterator(True)
 
     # Last positions the iterator at the last key/value pair and returns whether or
@@ -212,28 +212,28 @@ def new_ldb_cache_iter(snap, start, limit) -> LdbCacheIter:
     iter = snap.pending_keys.iterator(start, limit)
     return LdbCacheIter(iter=iter)
 
-
-def exception_return_as_false(fn):
-    @wraps(fn)
-    def inner_fn(self, *args, **kwargs):
-        try:
-            x = fn(self, *args, **kwargs)
-            return x
-        except:
-            return False
-
-    return inner_fn
-
-
-def exception_return_as_None(fn):
-    @wraps(fn)
-    def inner_fn(self, *args, **kwargs):
-        try:
-            return fn(self, *args, **kwargs)
-        except:
-            return None
-
-    return inner_fn
+#
+# def exception_return_as_false(fn):
+#     @wraps(fn)
+#     def inner_fn(self, *args, **kwargs):
+#         try:
+#             x = fn(self, *args, **kwargs)
+#             return x
+#         except:
+#             return False
+#
+#     return inner_fn
+#
+#
+# def exception_return_as_None(fn):
+#     @wraps(fn)
+#     def inner_fn(self, *args, **kwargs):
+#         try:
+#             return fn(self, *args, **kwargs)
+#         except:
+#             return None
+#
+#     return inner_fn
 
 # Need to decide use valid to check valid every time
 # or use the return value of first(), next(), etc.
@@ -485,7 +485,7 @@ class DBCache:
                     b.put(k, v)
 
                 for k, v in pending_remove.for_each2():
-                    b.delete(k, v)
+                    b.delete(k)
         except Exception as e:
             raise convert_err("failed to commit", e)
         return

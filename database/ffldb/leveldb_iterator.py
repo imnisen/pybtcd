@@ -84,7 +84,7 @@ def exception_return_as_false(fn):
     def inner_fn(self, *args, **kwargs):
         try:
             return fn(self, *args, **kwargs)
-        except:
+        except  Exception as e:
             self.err = True  # TOchange strange here
             return False
 
@@ -163,7 +163,7 @@ class MergedIterator:
             key = self.keys[self.index]
 
         for x, tkey in enumerate(self.keys):
-            if tkey is not None and byte_compare(tkey, key) < 0:
+            if tkey is not None and (key is None or byte_compare(tkey, key) < 0):
                 key = tkey
                 self.index = x
 
@@ -206,7 +206,7 @@ class MergedIterator:
             key = self.keys[self.index]
 
         for x, tkey in enumerate(self.keys):
-            if tkey is not None and byte_compare(tkey, key) > 0:
+            if tkey is not None and (key is None or byte_compare(tkey, key) > 0):
                 key = tkey
                 self.index = x
 
@@ -229,11 +229,11 @@ class MergedIterator:
         elif self.dir == dirForward:
             key = self.keys[self.index]  # TOCHECK
 
-            for x, iter in self.iters:
+            for x, iter in enumerate(self.iters):
                 if x == self.index:
                     continue
                 seek = iter.seek(key)
-                if seek and iter.prev or (not seek and self.last()):
+                if seek and iter.prev() or (not seek and iter.last()):
                     self.keys[x] = assert_key(iter.key())
                 else:
                     self.keys[x] = None

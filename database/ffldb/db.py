@@ -236,8 +236,44 @@ class Bucket(database.Bucket):
             msg = "bucket %s does not exist" % key
             raise DBError(ErrorCode.ErrBucketNotFound, msg)
 
-            # Remove all nested buckets and their keys.
-            # TODO
+        # Remove all nested buckets and their keys.
+        child_ids = [child_id]
+        while len(child_ids) > 0:
+            child_id = child_ids[-1]
+            child_ids = child_ids[:-1]
+
+            # Delete all keys in the nested bucket.
+            key_cursor = new_cursor(self, child_id, CursorType.ctKeys)
+            ok = key_cursor.first()
+            while ok:
+                self.tx.delete_key(key_cursor.raw_key(), notify_iterators=False)
+                ok = key_cursor.next()
+
+            cursor_finalizer(key_cursor)
+
+            # Iterate through all nested buckets.
+            bucket_cursor = new_cursor(self, child_id, CursorType.ctBuckets)
+            ok = bucket_cursor.first()
+            while ok:
+                # Push the id of the nested bucket onto the stack for
+                # the next iteration.
+                child_id = bucket_cursor.raw_value()
+                child_ids.append(child_id)
+
+                # Remove the nested bucket from the bucket index.
+                self.tx.delete_key(bucket_cursor.raw_key(), notify_iterators=False)
+
+                ok = bucket_cursor.next()
+            cursor_finalizer(bucket_cursor)
+
+        # Remove the nested bucket from the bucket index.  Any buckets nested
+        # under it were already removed above.
+        self.tx.delete_key(bidx_key, notify_iterators=True)
+        return
+
+
+
+
 
     # Cursor returns a new cursor, allowing for iteration over the bucket's
     # key/value pairs and nested buckets in forward or backward order.
@@ -1227,8 +1263,8 @@ class Cursor(database.Cursor):
 
         # Seek to the first key in both the database and pending iterators and
         # choose the iterator that is both valid and has the smaller key.
-        self.db_iter.first()
-        self.pending_iter.first()
+        x = self.db_iter.first()
+        y = self.pending_iter.first()
         return self.choose_iterator(forwards=True)
 
     # Last positions the cursor at the last key/value pair and returns whether or
@@ -1289,7 +1325,7 @@ class Cursor(database.Cursor):
 
         # Move the current iterator to the previous entry and choose the
         # iterator that is both valid and has the larger key.
-        self.current_iter.prev()
+        x = self.current_iter.prev()
         return self.choose_iterator(forwards=False)
 
     # Seek positions the cursor at the first key/value pair that is greater than or
@@ -1576,31 +1612,32 @@ class DB(database.DB):
         tx = self._begin(writeable=False)
 
         # TOCHANGE So strange here     # golang defer rollbackOnPanic(tx) pattern
+        # try:
+        tx.managed = True
         try:
-            tx.managed = True
-            try:
-                fn(tx)
-            except Exception as e:
-                try:
-                    tx.rollback()
-                except:
-                    pass
-                raise e
-
-            tx.managed = False
-            return tx.rollback()
-
+            fn(tx)
         except Exception as e:
-            # Since the user-provided function might panic, ensure the transaction
-            # releases all mutexes and resources.  There is no guarantee the caller
-            # won't use recover and keep going.  Thus, the database must still be
-            # in a usable state on panics due to caller issues.
-            tx.managed = False
             try:
+                tx.managed = False
                 tx.rollback()
-            except:
+            except Exception as e2:
                 pass
             raise e
+
+        tx.managed = False
+        return tx.rollback()
+
+        # except Exception as e:
+        #     # Since the user-provided function might panic, ensure the transaction
+        #     # releases all mutexes and resources.  There is no guarantee the caller
+        #     # won't use recover and keep going.  Thus, the database must still be
+        #     # in a usable state on panics due to caller issues.
+        #     tx.managed = False
+        #     try:
+        #         tx.rollback()
+        #     except:
+        #         pass
+        #     raise e
 
     # Update invokes the passed function in the context of a managed read-write
     # transaction with the root bucket for the namespace.  Any errors returned from
@@ -1613,32 +1650,39 @@ class DB(database.DB):
         tx = self._begin(writeable=True)
 
         # TOCHANGE So strange here     # golang defer rollbackOnPanic(tx) pattern
+        # try:
+        tx.managed = True
         try:
-            tx.managed = True
-            try:
-                fn(tx)
-            except Exception as e:
-                try:
-                    tx.rollback()
-                except:
-                    pass
-                raise e
-
-            tx.managed = False
-            return tx.commit()
-
+            fn(tx)
         except Exception as e:
-            # Since the user-provided function might panic, ensure the transaction
-            # releases all mutexes and resources.  There is no guarantee the caller
-            # won't use recover and keep going.  Thus, the database must still be
-            # in a usable state on panics due to caller issues.
-            tx.managed = False
             try:
+                tx.managed = False  # ?
                 tx.rollback()
-            except:
+            except Exception as e2:
                 pass
-
             raise e
+
+        tx.managed = False
+        try:
+            tx.commit()
+        except Exception as e:
+            tx.rollback()
+            raise e
+
+        return
+
+        # except Exception as e:
+        #     # Since the user-provided function might panic, ensure the transaction
+        #     # releases all mutexes and resources.  There is no guarantee the caller
+        #     # won't use recover and keep going.  Thus, the database must still be
+        #     # in a usable state on panics due to caller issues.
+        #     tx.managed = False
+        #     try:
+        #         tx.rollback()
+        #     except:
+        #         pass
+        #
+        #     raise e
 
     # Close cleanly shuts down the database and syncs all data.  It will block
     # until all database transactions have been finalized (rolled back or
