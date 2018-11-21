@@ -563,7 +563,7 @@ class Transaction(database.Tx):
         self.pending_keys.delete(key)
 
         # Add the key to the list to be deleted on transaction    commit.
-        self.pending_keys.put(key, None)
+        self.pending_remove.put(key, None)
 
         # Notify the active iterators about the change if the flag is set.
         if notify_iterators:
