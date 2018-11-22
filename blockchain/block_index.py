@@ -8,7 +8,6 @@ import database
 from .chainio import *
 
 
-
 # blockStatus is a bit field representing the validation state of the block.
 class BlockStatus(Flag):
     # statusDataStored indicates that the block's payload is stored on disk.
@@ -52,6 +51,7 @@ class BlockStatus(Flag):
 # a package level variable to avoid the need to create a new instance
 # every time a check is needed.
 zeroHash = chainhash.Hash()
+
 
 # blockNode represents a block within the block chain and is primarily used to
 # aid in selecting the best chain to be the main chain.  The main chain is
@@ -151,8 +151,8 @@ class BlockNode:
     # than zero.
     #
     # This function is safe for concurrent access.
-    def ancestor(self, height:int) -> 'BlockNode':
-        if height < 0 or height> self.height:
+    def ancestor(self, height: int) -> 'BlockNode':
+        if height < 0 or height > self.height:
             return None
 
         n = self
@@ -160,7 +160,6 @@ class BlockNode:
             n = n.parent
 
         return n
-
 
     # RelativeAncestor returns the ancestor block node a relative 'distance' blocks
     # before this node.  This is equivalent to calling Ancestor with the node's
@@ -199,7 +198,7 @@ class BlockNode:
         # This code follows suit to ensure the same rules are used, however, be
         # aware that should the medianTimeBlocks constant ever be changed to an
         # even number, this code will be wrong.
-        median_timestamp = timestamps[len(timestamps)//2]
+        median_timestamp = timestamps[len(timestamps) // 2]
         return median_timestamp
 
 
@@ -231,12 +230,11 @@ class BlockIndex:
     # HaveBlock returns whether or not the block index contains the provided hash.
     #
     # This function is safe for concurrent access.
-    def have_block(self, hash: chainhash.Hash)-> bool:
+    def have_block(self, hash: chainhash.Hash) -> bool:
         self.lock.reader_acquire()
         has_block = hash in self.index
         self.lock.reader_release()
         return has_block
-
 
     # LookupNode returns the block node identified by the provided hash.  It will
     # return nil if there is no entry for the hash.
@@ -255,7 +253,7 @@ class BlockIndex:
     def add_node(self, node: BlockNode):
         self.lock.writer_acquire()
         self._add_node(node)
-        self.dirty[node] = {} # TODO
+        self.dirty[node] = {}  # TODO
         self.lock.writer_acquire()
         return
 
@@ -275,26 +273,24 @@ class BlockIndex:
         self.lock.reader_release()
         return status
 
-
     # SetStatusFlags flips the provided status flags on the block node to on,
     # regardless of whether they were on or off previously. This does not unset any
     # flags currently on.
     #
     # This function is safe for concurrent access.
-    def set_status_flags(self, node:BlockNode, flags: BlockStatus):
+    def set_status_flags(self, node: BlockNode, flags: BlockStatus):
         self.lock.writer_acquire()
         node.status |= flags
         self.dirty[node] = {}
         self.lock.writer_acquire()
 
-
     # UnsetStatusFlags flips the provided status flags on the block node to off,
     # regardless of whether they were on or off previously.
     #
     # This function is safe for concurrent access.
-    def unset_status_flags(self, node:BlockNode, flags: BlockStatus):
+    def unset_status_flags(self, node: BlockNode, flags: BlockStatus):
         self.lock.writer_acquire()
-        node.status = node.status &(~ flags)  # TOCHECK it the operator right?
+        node.status = node.status & (~ flags)  # TOCHECK it the operator right?
         self.dirty[node] = {}
         self.lock.writer_acquire()
 
@@ -318,8 +314,9 @@ class BlockIndex:
 
         try:
             self.db.update(f)
-        except:
-            pass
+        except Exception as e:
+            self.lock.writer_acquire()
+            raise e
         else:
             self.dirty = {}
 

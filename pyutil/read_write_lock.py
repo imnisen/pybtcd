@@ -56,7 +56,6 @@ class RWLock:
         self.__no_writers.release()
         self.__write_switch.release(self.__no_readers)
 
-
     # Alias. Union them latter
     def r_lock(self):
         self.reader_acquire()

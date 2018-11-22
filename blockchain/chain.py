@@ -4,6 +4,8 @@ import wire
 import btcutil
 import database
 import txscript
+import pyutil
+from .chainio import *
 
 
 # orphanBlock represents a block that we don't yet have the parent for.  It
@@ -13,9 +15,6 @@ class OrphanBlock:
     def __init__(self, block, expiration):
         self.block = block
         self.expiration = expiration
-
-
-
 
 
 # BestState houses information about the current best block and other info
@@ -230,12 +229,12 @@ class BlockChain:
         :param int64 max_retarget_timespan:
         :param int32 blocks_per_retarget:
 
-        :param RWLock chain_lock:
+        :param pyutil.RWLock chain_lock:
 
         :param *blockIndex index:
-        :param *chainView chain_lock:
+        :param *chainView best_chainin:
 
-        :param RWLock orphan_lock:
+        :param pyutil.RWLock orphan_lock:
         :param map[chainhash.Hash]*orphanBlock orphans:
         :param map[chainhash.Hash][]*orphanBlock prev_orphans:
         :param *orphanBlock oldest_orphan:
@@ -243,7 +242,7 @@ class BlockChain:
         :param *chaincfg.Checkpointnext_checkpoint:
         :param *blockNode checkpoint_node:
 
-        :param RWLock state_lock:
+        :param pyutil.RWLockRWLock state_lock:
         :param *BestState stateSnapshot:
 
         :param []thresholdStateCache warning_caches:
@@ -252,7 +251,7 @@ class BlockChain:
         :param bool unknown_rules_warned:
         :param bool unknown_version_warned:
 
-        :param RWLOCK notifications_lock:
+        :param pyutil.RWLockRWLOCK notifications_lock:
         :param []NotificationCallback notifications:
 
 
@@ -280,7 +279,7 @@ class BlockChain:
 
         # chainLock protects concurrent access to the vast majority of the
         # fields in this struct below this point.
-        self.chain_lock = chain_lock
+        self.chain_lock = chain_lock or pyutil.RWLock()
 
         # These fields are related to the memory block index.  They both have
         # their own locks, however they are often also protected by the chain
@@ -296,7 +295,7 @@ class BlockChain:
 
         # These fields are related to handling of orphan blocks.  They are
         # protected by a combination of the chain lock and the orphan lock.
-        self.orphan_lock = orphan_lock
+        self.orphan_lock = orphan_lock or pyutil.RWLock()
         self.orphans = orphans
         self.prev_orphans = prev_orphans
         self.oldest_orphan = oldest_orphan
@@ -317,7 +316,7 @@ class BlockChain:
         #
         # In addition, some of the fields are stored in the database so the
         # chain state can be quickly reconstructed on load.
-        self.state_lock = state_lock
+        self.state_lock = state_lock or pyutil.RWLock()
         self.state_snapshot = state_snapshot
 
         # The following caches are used to efficiently keep track of the
@@ -350,16 +349,54 @@ class BlockChain:
 
         # The notifications field stores a slice of callbacks to be executed on
         # certain blockchain events.
-        self.notifications_lock = notifications_lock
+        self.notifications_lock = notifications_lock or pyutil.RWLock()
         self.notifications = notifications
+
+    # blockExists determines whether a block with the given hash exists either in
+    # the main chain or any side chains.
+    #
+    # This function is safe for concurrent access.
+    def _block_exists(self, hash: chainhash.Hash) -> bool:
+        # Check block index first (could be main chain or side chain blocks).
+        if self.index.have_block(hash):
+            return True
+
+        # Check in the database
+        exists = False
+
+        def f(db_tx: database.Tx):
+            nonlocal exists
+            exists = db_tx.has_block(hash)
+
+            if not exists:
+                return
+
+            # Ignore side chain blocks in the database.  This is necessary
+            # because there is not currently any record of the associated
+            # block index data such as its block height, so it's not yet
+            # possible to efficiently load the block and do anything useful
+            # with it.
+            #
+            # Ultimately the entire block index should be serialized
+            # instead of only the current main chain so it can be consulted
+            # directly.
+            try:
+                db_fetch_height_by_hash(db_tx, hash)
+            except NotInMainChainErr as e:
+                exists = False
+                return
+
+        self.db.view(f)
+
+        return exists
 
     # HaveBlock returns whether or not the chain instance has the block represented
     # by the passed hash.  This includes checking the various places a block can
     # be like part of the main chain, on a side chain, or in the orphan pool.
     #
     # This function is safe for concurrent access.
-    def have_block(self, hash) -> bool:
-        pass
+    def have_block(self, hash: chainhash.Hash) -> bool:
+        return self._block_exists(hash) or self.is_known_orphan(hash)
 
     # IsKnownOrphan returns whether the passed hash is currently a known orphan.
     # Keep in mind that only a limited number of orphans are held onto for a
@@ -371,20 +408,58 @@ class BlockChain:
     # duplicate orphans and react accordingly.
     #
     # This function is safe for concurrent access.
-    def is_known_orphan(self, hash):
-        pass
+    def is_known_orphan(self, hash: chainhash.Hash) -> bool:
+        # Protect concurrent access.  Using a read lock only so multiple
+        # readers can query without blocking each other.
+        self.orphan_lock.r_lock()
+        exists = hash in self.orphans
+        self.orphan_lock.r_unlock()
+        return exists
 
     # GetOrphanRoot returns the head of the chain for the provided hash from the
     # map of orphan blocks.
     #
     # This function is safe for concurrent access.
-    def get_orphan_root(self, hash):
-        pass
+    def get_orphan_root(self, hash: chainhash.Hash):
+        self.orphan_lock.r_lock()  # TOCHANGE use `with`
+        try:
+            orphan_root = hash
+            prev_hash = hash
+            while prev_hash in self.orphans:
+                orphan = self.orphans[prev_hash]
+                orphan_root = prev_hash
+                prev_hash = orphan.block.msg_block().header.prev_block
+            return orphan_root
+        finally:
+            self.orphan_lock.r_unlock()
 
     # removeOrphanBlock removes the passed orphan block from the orphan pool and
     # previous orphan index.
-    def remove_orphan_block(self, orphan):
-        pass
+    def remove_orphan_block(self, orphan: OrphanBlock):
+        self.orphan_lock.lock()
+        try:
+            # Remove the orphan block from the orphan pool.
+            orphan_hash = orphan.block.hash()
+            del self.orphans[orphan_hash]
+
+            # Remove the reference from the previous orphan index too.  An indexing
+            # for loop is intentionally used over a range here as range does not
+            # reevaluate the slice on each iteration nor does it adjust the index
+            # for the modified slice.
+            prev_hash = orphan.block.msg_block().header.prev_block
+            orphans = self.prev_orphans[prev_hash]
+
+            orphans = [x for x in orphans if x.block.hash() != orphan_hash]
+            self.prev_orphans[prev_hash] = orphans
+
+            # Remove the map entry altogether if there are no longer any orphans
+            # which depend on the parent hash.
+            if len(self.prev_orphans[prev_hash]) == 0:
+                del self.prev_orphans[prev_hash]
+
+            return
+        finally:
+            self.orphan_lock.unlock()
 
     # addOrphanBlock adds the passed block (which is already determined to be
     # an orphan prior calling this function) to the orphan pool.  It lazily cleans
