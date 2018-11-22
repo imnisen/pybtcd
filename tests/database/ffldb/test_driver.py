@@ -168,15 +168,17 @@ class TestDriver(unittest.TestCase):
 
             def f():
                 TestInterface()._test_interface(db)
+
             test_run_with_max_block_file_size(db, 2048, f)
         except Exception as e:
             pass
 
         finally:
-            # db.close()
+            db.close()
             shutil.rmtree(tmp_dir.name)
 
-def test_run_with_max_block_file_size(idb, size:int, fn):
+
+def test_run_with_max_block_file_size(idb, size: int, fn):
     origin_size = idb.store.max_block_file_size
 
     idb.store.max_block_file_size = size

@@ -271,10 +271,6 @@ class Bucket(database.Bucket):
         self.tx.delete_key(bidx_key, notify_iterators=True)
         return
 
-
-
-
-
     # Cursor returns a new cursor, allowing for iteration over the bucket's
     # key/value pairs and nested buckets in forward or backward order.
     #
@@ -674,7 +670,7 @@ class Transaction(database.Tx):
         # when the transaction is committed.  Also, add it to pending blocks
         # map so it is easy to determine the block is pending based on the
         # block hash.
-        self.pending_blocks[block_hash]=len(self.pending_block_data)
+        self.pending_blocks[block_hash] = len(self.pending_block_data)
         self.pending_block_data.append(PendingBlock(
             block_hash=block_hash,
             block_bytes=block_bytes

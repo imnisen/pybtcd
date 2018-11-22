@@ -21,12 +21,11 @@ blockDataFile = os.path.join(dataDirPath, "testdata", "blocks1-256.bz2")
 
 # print("blockDataFile", blockDataFile)
 
-def byte_equal(a: bytes or None, b : bytes or None) -> bool:
+def byte_equal(a: bytes or None, b: bytes or None) -> bool:
     if a is None or b is None:
         return True
 
     return a == b
-
 
 
 class TestContext:
@@ -460,6 +459,8 @@ class TestInterface(unittest.TestCase):
 
             self._test_get_values(tc, bucket1, self._roll_back_values(values))
 
+            tx.commit()
+
             return
 
         # keyValues holds the keys and values to use when putting values into a
@@ -496,31 +497,6 @@ class TestInterface(unittest.TestCase):
     # them.
     def _test_metadata_tx_interface(self, tc):
         self._test_managed_tx_panics(tc)
-
-        # # Test the bucket interface via a managed read-write transaction.
-        # # Also, put a series of values and force a rollback so the following
-        # # code can ensure the values were not stored.
-        # class forceRollbackError(Exception):
-        #     pass
-        #
-        # def test_read_write(tx):
-        #     metadata_bucket = tx.metadata()
-        #     self.assertIsNotNone(metadata_bucket)
-        #
-        #     bucket1 = metadata_bucket.bucket(bucket1_name)
-        #     self.assertIsNotNone(bucket1)
-        #
-        #     tc.is_writeable = True
-        #     self._test_bucket_interface(tc, bucket1)
-        #
-        #     self._test_put_values(tc, bucket1, key_values)
-        #
-        #     raise forceRollbackError
-        #
-        # with self.assertRaises(forceRollbackError) as cm:
-        #     tc.db.update(test_read_write)
-        # self.assertIsInstance(cm.exception, forceRollbackError)  # TOCHECK TOREMOVE
-
 
         bucket1_name = b"bucket1"
         tc.db.update(lambda tx: tx.metadata().create_bucket(bucket1_name))
@@ -562,10 +538,6 @@ class TestInterface(unittest.TestCase):
             tc.db.view(test_user_error)
         self.assertIsInstance(cm.exception, viewError)  # TOCHECK TOREMOVE
 
-
-
-
-
         # Test the bucket interface via a managed read-write transaction.
         # Also, put a series of values and force a rollback so the following
         # code can ensure the values were not stored.
@@ -589,10 +561,6 @@ class TestInterface(unittest.TestCase):
         with self.assertRaises(forceRollbackError) as cm:
             tc.db.update(test_read_write)
         self.assertIsInstance(cm.exception, forceRollbackError)  # TOCHECK TOREMOVE
-
-
-
-
 
         # Ensure the values that should not have been stored due to the forced
         # rollback above were not actually stored.
