@@ -60,3 +60,21 @@ def db_fetch_height_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
 
 class NotInMainChainErr(Exception):
     pass
+
+
+
+# TODO
+class SpentTxOut:
+    def __init__(self):
+        pass
+
+
+# TODO
+def db_put_best_state(db_tx: database.Tx, snapshot, work_sum):
+    pass
+
+
+def db_put_block_index(db_tx, hash, height):
+    pass
+
+

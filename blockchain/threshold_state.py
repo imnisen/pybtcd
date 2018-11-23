@@ -72,6 +72,7 @@ def new_threshold_caches(num_caches: int):
         caches.append(ThresholdStateCache())
     return caches
 
+
 # An interface
 # thresholdConditionChecker provides a generic interface that is invoked to
 # determine when a consensus rule change threshold should be changed.

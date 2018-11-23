@@ -332,7 +332,6 @@ class ErrorCode(Enum):
     # entry MUST be the last entry in the enum.
     numErrorCodes = 63
 
-
     def __str__(self):
         return errorCodeStrings[self]
 

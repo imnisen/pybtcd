@@ -5,7 +5,20 @@ import btcutil
 import database
 import txscript
 import pyutil
-from .chainio import *
+import time
+from .chain_view import *
+from .utxo_viewpoint import *
+from .threshold_state import *
+from .error import *
+from .version_bits import *
+
+import logging
+logger = logging.getLogger(__name__)
+
+# Constants
+# maxOrphanBlocks is the maximum number of orphan blocks that can be
+# queued.
+maxOrphanBlocks = 100
 
 
 # orphanBlock represents a block that we don't yet have the parent for.  It
@@ -13,6 +26,11 @@ from .chainio import *
 # forever.
 class OrphanBlock:
     def __init__(self, block, expiration):
+        """
+
+        :param btcutil.Block block:
+        :param int expiration:
+        """
         self.block = block
         self.expiration = expiration
 
@@ -27,7 +45,7 @@ class OrphanBlock:
 # However, the returned snapshot must be treated as immutable since it is
 # shared by all callers.
 class BestState:
-    def __init__(self, hash, height, bits, block_size, block_weight, num_txns, total_txns, media_time):
+    def __init__(self, hash, height, bits, block_size, block_weight, num_txns, total_txns, median_time):
         """
 
         :param chainhash.Hash hash:
@@ -37,7 +55,7 @@ class BestState:
         :param uint64 block_weight:
         :param uint64 num_txns:
         :param uint64 total_txns:
-        :param time.Time media_time:
+        :param time.Time median_time:
         """
         self.hash = hash  # The hash of the block.
         self.height = height  # The height of the block.
@@ -46,7 +64,7 @@ class BestState:
         self.block_weight = block_weight  # The weight of the block.
         self.num_txns = num_txns  # The number of txns in the block.
         self.total_txns = total_txns  # The total number of txns in the chain.
-        self.media_time = media_time  # Median time as per CalcPastMedianTime.
+        self.median_time = median_time  # Median time as per CalcPastMedianTime.
 
 
 # SequenceLock represents the converted relative lock-time in seconds, and
@@ -219,11 +237,11 @@ class BlockChain:
         :param []chaincfg.Checkpoint checkpoints:
         :param map[int32]*chaincfg.Checkpoint checkpoints_by_height:
         :param database.DB db:
-        :param *chaincfg.Params chain_params:
+        :param chaincfg.Params chain_params:
         :param MedianTimeSource time_source:
-        :param *txscript.SigCache sig_cache:
+        :param txscript.SigCache sig_cache:
         :param IndexManager index_manager:
-        :param *txscript.HashCache hash_cache:
+        :param txscript.HashCache hash_cache:
 
         :param int64 min_retarget_timespan:
         :param int64 max_retarget_timespan:
@@ -231,8 +249,8 @@ class BlockChain:
 
         :param pyutil.RWLock chain_lock:
 
-        :param *blockIndex index:
-        :param *chainView best_chainin:
+        :param BlockIndex index:
+        :param ChainView best_chain:
 
         :param pyutil.RWLock orphan_lock:
         :param map[chainhash.Hash]*orphanBlock orphans:
@@ -467,8 +485,43 @@ class BlockChain:
     # It also imposes a maximum limit on the number of outstanding orphan
     # blocks and will remove the oldest received orphan block if the limit is
     # exceeded.
-    def add_orphan_block(self):
-        pass
+    def add_orphan_block(self, block:btcutil.Block):
+        # Remove expired orphan blocks.
+        for _, o_block in self.orphans.items():
+            if int(time.time()) > o_block.expiration:
+                self.remove_orphan_block(o_block)
+                continue
+
+            # Update the oldest orphan block pointer so it can be discarded
+            # in case the orphan pool fills up.
+            if self.oldest_orphan is None or o_block.expiration < self.oldest_orphan.expiration:
+                self.oldest_orphan = o_block
+
+
+        # Limit orphan blocks to prevent memory exhaustion.
+        if len(self.orphans) + 1 > maxOrphanBlocks:
+            # Remove the oldest orphan to make room for the new one.
+            self.remove_orphan_block(self.oldest_orphan)
+            self.oldest_orphan = None
+
+        # Protect concurrent access.  This is intentionally done here instead
+        # of near the top since removeOrphanBlock does its own locking and
+        # the range iterator is not invalidated by removing map entries.
+        self.orphan_lock.lock()
+        try:
+            # Insert the block into the orphan map with an expiration time
+            # 1 hour from now.
+            expiration = int(time.time()) + 3600
+            o_block = OrphanBlock(block=block, expiration=expiration)
+            self.orphans[block.hash()] = o_block
+
+            # Add to previous hash lookup index for faster dependency lookups.
+            prev_hash = block.msg_block().header.prev_block
+            self.prev_orphans[prev_hash].append(o_block)
+            return
+
+        finally:
+            self.orphan_lock.unlock()
 
     # CalcSequenceLock computes a relative lock-time SequenceLock for the passed
     # transaction using the passed UtxoViewpoint to obtain the past median time
@@ -479,11 +532,112 @@ class BlockChain:
     # the candidate transaction to be included in a block.
     #
     # This function is safe for concurrent access.
-    def calc_sequence_lock(self, tx, utxo, mempool):
-        pass
+    def calc_sequence_lock(self, tx: btcutil.Tx, utxo_view: UtxoViewpoint, mempool: bool) -> SequenceLock:
+        self.chain_lock.lock()
+        try:
+            self._calc_sequence_lock(self.best_chain.tip(), tx, utxo_view, mempool)
+        finally:
+            self.chain_lock.unlock()
 
-    def _calc_sequence_lock(self, node, tx, utxo, mempool):
-        pass
+
+    # calcSequenceLock computes the relative lock-times for the passed
+    # transaction. See the exported version, CalcSequenceLock for further details.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _calc_sequence_lock(self, node: BlockNode, tx:btcutil.Tx, utxo_view: UtxoViewpoint, mempool: bool):
+        # A value of -1 for each relative lock type represents a relative time
+        # lock value that will allow a transaction to be included in a block
+        # at any given height or time. This value is returned as the relative
+        # lock time in the case that BIP 68 is disabled, or has not yet been
+        # activated.
+        sequence_lock = SequenceLock(seconds=-1, block_height=-1)
+
+        # The sequence locks semantics are always active for transactions
+        # within the mempool.
+        csv_soft_fork_active = mempool
+
+        # If we're performing block validation, then we need to query the BIP9
+        # state.
+        if not csv_soft_fork_active:
+            # Obtain the latest BIP9 version bits state for the
+            # CSV-package soft-fork deployment. The adherence of sequence
+            # locks depends on the current soft-fork state.
+            csv_state = self._deployment_state(node.parent, chaincfg.DeploymentCSV)
+            csv_soft_fork_active = csv_state == ThresholdState.ThresholdActive
+
+
+        # If the transaction's version is less than 2, and BIP 68 has not yet
+        # been activated then sequence locks are disabled. Additionally,
+        # sequence locks don't apply to coinbase transactions Therefore, we
+        # return sequence lock values of -1 indicating that this transaction
+        # can be included within a block at any given height or time.
+        m_tx = tx.msg_tx()
+        sequence_lock_active = m_tx.version >=2 and csv_soft_fork_active
+        if not sequence_lock_active or is_coin_base(tx):
+            return sequence_lock
+
+        # Grab the next height from the PoV of the passed blockNode to use for
+        # inputs present in the mempool.
+        next_height = node.height + 1
+
+        for tx_in_index, tx_in in enumerate(m_tx.tx_ins):
+            utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
+            if utxo is None:
+                msg = "output %s referenced from transaction %s:%d either does not exist or has already been spent" % (tx_in.previous_out_point, tx.hash(),tx_in_index)
+                raise RuleError(ErrorCode.ErrMissingTxOut, msg)
+
+            # If the input height is set to the mempool height, then we
+            # assume the transaction makes it into the next block when
+            # evaluating its sequence blocks.
+            input_height = utxo.block_height() # TODO
+            if input_height == 0x7fffffff:
+                input_height = next_height
+
+            # Given a sequence number, we apply the relative time lock
+            # mask in order to obtain the time lock delta required before
+            # this input can be spent.
+            sequence_num = tx_in.sequence
+            relative_lock = sequence_num & wire.SequenceLockTimeMask
+
+            if sequence_num & wire.SequenceLockTimeDisabled == wire.SequenceLockTimeDisabled:
+                # Relative time locks are disabled for this input, so we can
+                # skip any further calculation.
+                continue
+            elif sequence_num & wire.SequenceLockTimeIsSeconds == wire.SequenceLockTimeIsSeconds:
+                # This input requires a relative time lock expressed
+                # in seconds before it can be spent.  Therefore, we
+                # need to query for the block prior to the one in
+                # which this input was included within so we can
+                # compute the past median time for the block prior to
+                # the one which included this referenced output.
+                prev_input_height = input_height - 1
+                if prev_input_height < 0:
+                    prev_input_height = 0
+
+                block_node = node.ancestor(prev_input_height)
+                median_time = block_node.calc_past_median_time()
+
+                # Time based relative time-locks as defined by BIP 68
+                # have a time granularity of RelativeLockSeconds, so
+                # we shift left by this amount to convert to the
+                # proper relative time-lock. We also subtract one from
+                # the relative lock to maintain the original lockTime
+                # semantics.
+                time_lock_seconds = (relative_lock << wire.SequenceLockTimeGranularity) - 1
+                time_lock = median_time + time_lock_seconds
+                if time_lock > sequence_lock.seconds:
+                    sequence_lock.seconds = time_lock
+            else:
+                # The relative lock-time for this input is expressed
+                # in blocks so we calculate the relative offset from
+                # the input's height as its converted absolute
+                # lock-time. We subtract one from the relative lock in
+                # order to maintain the original lockTime semantics.
+                block_height = input_height + relative_lock -1
+                if block_height > sequence_lock.block_height:
+                    sequence_lock.block_height = block_height
+
+        return sequence_lock
 
     # getReorganizeNodes finds the fork point between the main chain and the passed
     # node and returns a list of block nodes that would need to be detached from
@@ -496,8 +650,51 @@ class BlockChain:
     # This function may modify node statuses in the block index without flushing.
     #
     # This function MUST be called with the chain state lock held (for reads).
-    def get_reorganize_nodes(self, node):
-        pass
+    def _get_reorganize_nodes(self, node: BlockNode):
+        attach_nodes = []
+        detach_nodes = []
+
+        # Do not reorganize to a known invalid chain. Ancestors deeper than the
+        # direct parent are checked below but this is a quick check before doing
+        # more unnecessary work.
+        if self.index.node_status(node.parent).known_invalid():
+            self.index.set_status_flags(node, BlockStatus.statusInvalidAncestor)
+            return detach_nodes, attach_nodes
+
+        # Find the fork point (if any) adding each block to the list of nodes
+        # to attach to the main tree.  Push them onto the list in reverse order
+        # so they are attached in the appropriate order when iterating the list
+        # later.
+        fork_node = self.best_chain.find_fork(node)
+        invalid_chain = False
+
+        n = node
+        while n is not None and n != fork_node:
+            if self.index.node_status(n).known_invalid():
+                invalid_chain = True
+                break
+            attach_nodes.append(n)
+
+            n = n.parent
+        attach_nodes.reverse()
+
+        # If any of the node's ancestors are invalid, unwind attachNodes, marking
+        # each one as invalid for future reference.
+        if invalid_chain:
+            for n in attach_nodes:
+                self.index.set_status_flags(n, BlockStatus.statusInvalidAncestor)
+
+            return [], []
+
+        # Start from the end of the main chain and work backwards until the
+        # common ancestor adding each block to the list of nodes to detach from
+        # the main chain.
+        n = self.best_chain.tip()
+        while n is not None and n != fork_node:
+            detach_nodes.append(n)
+            n = n.parent
+
+        return detach_nodes, attach_nodes
 
     # connectBlock handles connecting the passed node/block to the end of the main
     # (best) chain.
@@ -510,8 +707,114 @@ class BlockChain:
     # it would be inefficient to repeat it.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def connect_block(self, node, block, view, stxos):
-        pass
+    def _connect_block(self, node: BlockNode, block: btcutil.Block,
+                       view: UtxoViewpoint, stxos: [SpentTxOut]):
+        # Make sure it's extending the end of the best chain.
+        prev_hash = block.msg_block().header.prev_block
+        if prev_hash != self.best_chain.tip().hash:
+            raise AssertionError("connectBlock must be called with a block that extends the main chain")
+
+        # Sanity check the correct number of stxos are provided.
+        if len(stxos) != self._count_spent_outputs(block):
+            raise AssertionError("connectBlock called with inconsistent spent transaction out information")
+
+        # No warnings about unknown rules or versions until the chain is
+        # current.
+        if self._is_current():
+            # Warn if any unknown new rules are either about to activate or
+            # have already been activated.
+            self._warn_unknown_rule_activations(node)
+
+            # Warn if a high enough percentage of the last blocks have
+            # unexpected versions.
+            self._warn_unknown_versions(node)
+
+        # Write any block status changes to DB before updating best state.
+        self.index.flush_to_db()
+
+        # Generate a new best state snapshot that will be used to update the
+        # database and later memory if all database updates are successful.
+        self.state_lock.r_lock()
+        cur_total_txns = self.state_snapshot.total_txns
+        self.state_lock.r_unlock()
+
+        num_txns = len(block.msg_block().transactions)
+        block_size = block.msg_block().serialize_size()
+        block_weight = get_block_weight(block)  # TODO
+        state = BestState(
+            hash=node.hash,  # The hash of the block.
+            height=node.height,  # The height of the block.
+            bits=node.bits,  # The difficulty bits of the block.
+            block_size=block_size,  # The size of the block.
+            block_weight=block_weight,  # The weight of the block.
+            num_txns=num_txns,  # The number of txns in the block.
+            total_txns=cur_total_txns + num_txns,  # The total number of txns in the chain.
+            median_time=node.calc_past_median_time(),  # Median time as per CalcPastMedianTime.
+        )
+
+        # Atomically insert info into the database.
+        def f(db_tx: database.Tx):
+            # Update best block state.
+            db_put_best_state(db_tx, state, node.work_sum)  # TODO
+
+            # Add the block hash and height to the block index which tracks
+            # the main chain.
+            db_put_block_index(db_tx, block.hash(), node.height) # TODO
+
+            # Update the utxo set using the state of the utxo view.  This
+            # entails removing all of the utxos spent and adding the new
+            # ones created by the block.
+            db_put_utxo_view(db_tx, view) # TODO
+
+            # Update the transaction spend journal by adding a record for
+            # the block that contains all txos spent by it.
+            db_put_spend_journal_entry(db-tx, block.hash(), stxos)
+
+            # Allow the index manager to call each of the currently active
+            # optional indexes with the block being connected so they can
+            # update themselves accordingly.
+            if self.index_manager is not None:
+                self.index_manager.connect_block(db_tx, block, stxos)
+
+
+        self.db.update(f)
+
+        # Prune fully spent entries and mark all entries in the view unmodified
+        # now that the modifications have been committed to the database.
+        view.commit()  # TODO
+
+        # This node is now the end of the best chain.
+        self.best_chain.set_tip(node)
+
+        # Update the state for the best block.  Notice how this replaces the
+        # entire struct instead of updating the existing one.  This effectively
+        # allows the old version to act as a snapshot which callers can use
+        # freely without needing to hold a lock for the duration.  See the
+        # comments on the state variable for more details.
+        self.state_lock.lock()
+        self.state_snapshot = state
+        self.state_lock.unlock()
+
+        # Notify the caller that the block was connected to the main chain.
+        # The caller would typically want to react with actions such as
+        # updating wallets.
+        self.chain_lock.unlock()
+        self._send_notification()  #TODO
+        self.chain_lock.lock()
+        return
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     # disconnectBlock handles disconnecting the passed node/block from the end of
     # the main (best) chain.
@@ -521,7 +824,8 @@ class BlockChain:
         pass
 
     # countSpentOutputs returns the number of utxos the passed block spends.
-    def count_spent_outputs(self, block):
+    @staticmethod
+    def _count_spent_outputs(block: btcutil.Block):
         pass
 
     # reorganizeChain reorganizes the block chain by disconnecting the nodes in the
@@ -653,6 +957,118 @@ class BlockChain:
         pass
 
         # TODO
+
+
+    # ------------------------------------
+    # Methods add from threshold_state.py
+    # ------------------------------------
+    # TODO
+    def _threshold_state(self, prev_node: BlockNode, checker: ThresholdConditionChecker, cache):
+        pass
+
+
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
+
+    # --------------------------------
+    # Methods add from version_bits.py
+    # --------------------------------
+
+    # warnUnknownRuleActivations displays a warning when any unknown new rules are
+    # either about to activate or have been activated.  This will only happen once
+    # when new rules have been activated and every block for those about to be
+    # activated.
+    #
+    # This function MUST be called with the chain state lock held (for writes)
+    def _warn_unknown_rule_activations(self, node: BlockNode):
+        #  Warn if any unknown new rules are either about to activate or have
+        # already been activated.
+        for bit in range(vbNumBits):
+            checker = BitConditionChecker(bit=bit, chain=self)
+            cache = self.warning_caches[bit]
+            state = self._threshold_state(node.parent, checker, cache)
+
+            if state == ThresholdState.ThresholdActive:
+                if not self.unknown_rules_warned:
+                    logger.warning("Unknown new rules activated (bit %d)" % bit)
+                    self.unknown_rules_warned = True
+            elif state == ThresholdState.ThresholdLockedIn:
+                window = checker.miner_confirmation_window()
+                activation_height = window - (node.height % window)
+                logger.warning("Unknown new rules are about to activate in %d blocks (bit %d)" % (activation_height, bit))
+
+        return
+
+    # warnUnknownVersions logs a warning if a high enough percentage of the last
+    # blocks have unexpected versions.
+    #
+    # This function MUST be called with the chain state lock held (for writes)
+    def _warn_unknown_versions(self, node: BlockNode):
+        # Nothing to do if already warned.
+        if self.unknown_version_warned:
+            return
+
+        # Warn if enough previous blocks have unexpected versions.
+        num_upgraded = 0
+        i = 0
+        while i < unknownVerNumToCheck and node is not None:
+            expected_version = self._calc_next_block_version(node.parent)
+            if expected_version > vbLegacyBlockVersion and ((node.version & ~expected_version) != 0):
+                num_upgraded += 1
+
+            node = node.parent
+            i += 1
+        if num_upgraded > unknownVerWarnNum:
+            logger.warning("Unknown block versions are being mined, so new rules might be in effect.  Are you running the latest version of the software?")
+            self.unknown_version_warned = True
+
+        return
+
+
+    # TODO
+    # calcNextBlockVersion calculates the expected version of the block after the
+    # passed previous block node based on the state of started and locked in
+    # rule change deployments.
+    #
+    # This function differs from the exported CalcNextBlockVersion in that the
+    # exported version uses the current best chain as the previous block node
+    # while this function accepts any block node.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _calc_next_block_version(self, prev_node: BlockNode):
+        pass
+
+
+    # CalcNextBlockVersion calculates the expected version of the block after the
+    # end of the current best chain based on the state of started and locked in
+    # rule change deployments.
+    #
+    # This function is safe for concurrent access.
+    def calc_next_block_version(self):
+        pass
+        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # --------------------------------
+    # END
+    # --------------------------------
+
+
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
