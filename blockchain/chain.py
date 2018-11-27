@@ -755,16 +755,16 @@ class BlockChain:
         # Atomically insert info into the database.
         def f(db_tx: database.Tx):
             # Update best block state.
-            db_put_best_state(db_tx, state, node.work_sum)  # TODO
+            db_put_best_state(db_tx, state, node.work_sum)
 
             # Add the block hash and height to the block index which tracks
             # the main chain.
-            db_put_block_index(db_tx, block.hash(), node.height) # TODO
+            db_put_block_index(db_tx, block.hash(), node.height)
 
             # Update the utxo set using the state of the utxo view.  This
             # entails removing all of the utxos spent and adding the new
             # ones created by the block.
-            db_put_utxo_view(db_tx, view) # TODO
+            db_put_utxo_view(db_tx, view)
 
             # Update the transaction spend journal by adding a record for
             # the block that contains all txos spent by it.
