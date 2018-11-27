@@ -11,6 +11,7 @@ from .utxo_viewpoint import *
 from .threshold_state import *
 from .error import *
 from .version_bits import *
+from .weight import *
 
 import logging
 logger = logging.getLogger(__name__)
@@ -446,7 +447,7 @@ class BlockChain:
             while prev_hash in self.orphans:
                 orphan = self.orphans[prev_hash]
                 orphan_root = prev_hash
-                prev_hash = orphan.block.msg_block().header.prev_block
+                prev_hash = orphan.block.get_msg_block().header.prev_block
             return orphan_root
         finally:
             self.orphan_lock.r_unlock()
@@ -464,7 +465,7 @@ class BlockChain:
             # for loop is intentionally used over a range here as range does not
             # reevaluate the slice on each iteration nor does it adjust the index
             # for the modified slice.
-            prev_hash = orphan.block.msg_block().header.prev_block
+            prev_hash = orphan.block.get_msg_block().header.prev_block
             orphans = self.prev_orphans[prev_hash]
 
             orphans = [x for x in orphans if x.block.hash() != orphan_hash]
@@ -497,7 +498,6 @@ class BlockChain:
             if self.oldest_orphan is None or o_block.expiration < self.oldest_orphan.expiration:
                 self.oldest_orphan = o_block
 
-
         # Limit orphan blocks to prevent memory exhaustion.
         if len(self.orphans) + 1 > maxOrphanBlocks:
             # Remove the oldest orphan to make room for the new one.
@@ -516,7 +516,7 @@ class BlockChain:
             self.orphans[block.hash()] = o_block
 
             # Add to previous hash lookup index for faster dependency lookups.
-            prev_hash = block.msg_block().header.prev_block
+            prev_hash = block.get_msg_block().header.prev_block
             self.prev_orphans[prev_hash].append(o_block)
             return
 
@@ -589,7 +589,7 @@ class BlockChain:
             # If the input height is set to the mempool height, then we
             # assume the transaction makes it into the next block when
             # evaluating its sequence blocks.
-            input_height = utxo.block_height() # TODO
+            input_height = utxo.block_height()
             if input_height == 0x7fffffff:
                 input_height = next_height
 
@@ -710,13 +710,13 @@ class BlockChain:
     def _connect_block(self, node: BlockNode, block: btcutil.Block,
                        view: UtxoViewpoint, stxos: [SpentTxOut]):
         # Make sure it's extending the end of the best chain.
-        prev_hash = block.msg_block().header.prev_block
+        prev_hash = block.get_msg_block().header.prev_block
         if prev_hash != self.best_chain.tip().hash:
-            raise AssertionError("connectBlock must be called with a block that extends the main chain")
+            raise AssertError("connectBlock must be called with a block that extends the main chain")
 
         # Sanity check the correct number of stxos are provided.
         if len(stxos) != self._count_spent_outputs(block):
-            raise AssertionError("connectBlock called with inconsistent spent transaction out information")
+            raise AssertError("connectBlock called with inconsistent spent transaction out information")
 
         # No warnings about unknown rules or versions until the chain is
         # current.
@@ -738,9 +738,9 @@ class BlockChain:
         cur_total_txns = self.state_snapshot.total_txns
         self.state_lock.r_unlock()
 
-        num_txns = len(block.msg_block().transactions)
-        block_size = block.msg_block().serialize_size()
-        block_weight = get_block_weight(block)  # TODO
+        num_txns = len(block.get_msg_block().transactions)
+        block_size = block.get_msg_block().serialize_size()
+        block_weight = get_block_weight(block)
         state = BestState(
             hash=node.hash,  # The hash of the block.
             height=node.height,  # The height of the block.
@@ -768,7 +768,7 @@ class BlockChain:
 
             # Update the transaction spend journal by adding a record for
             # the block that contains all txos spent by it.
-            db_put_spend_journal_entry(db-tx, block.hash(), stxos)
+            db_put_spend_journal_entry(db_tx, block.hash(), stxos)
 
             # Allow the index manager to call each of the currently active
             # optional indexes with the block being connected so they can
@@ -962,9 +962,164 @@ class BlockChain:
     # ------------------------------------
     # Methods add from threshold_state.py
     # ------------------------------------
-    # TODO
-    def _threshold_state(self, prev_node: BlockNode, checker: ThresholdConditionChecker, cache):
-        pass
+    # ThresholdState returns the current rule change threshold state of the given
+    # deployment ID for the block AFTER the end of the current best chain.
+    #
+    # This function is safe for concurrent access.
+    def threshold_state(self, deployment_id:int):
+        self.chain_lock.lock()
+        try:
+            state = self._deployment_state(self.best_chain.tip(), deployment_id)
+            return state
+        finally:
+            self.chain_lock.unlock()
+
+    # thresholdState returns the current rule change threshold state for the block
+    # AFTER the given node and deployment ID.  The cache is used to ensure the
+    # threshold states for previous windows are only calculated once.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _threshold_state(self, prev_node: BlockNode or None, checker: ThresholdConditionChecker, cache: ThresholdStateCache):
+        # The threshold state for the window that contains the genesis block is
+	    # defined by definition.
+        confirmation_window = checker.miner_confirmation_window()
+        if prev_node is None or prev_node.height + 1 < confirmation_window:
+            return ThresholdState.ThresholdDefined
+
+        # Get the ancestor that is the last block of the previous confirmation
+        # window in order to get its threshold state.  This can be done because
+        # the state is the same for all blocks within a given window.
+        # TOConsider
+        prev_node = prev_node.ancestor(prev_node.height - (prev_node.height + 1) % confirmation_window)
+
+        # Iterate backwards through each of the previous confirmation windows
+	    # to find the most recently cached threshold state.
+        needed_states = []
+        while prev_node is not None:
+            # Nothing more to do if the state of the block is already
+		    # cached.
+            _, ok = cache.look_up(prev_node.hash)
+            if ok:
+                break
+
+            # The start and expiration times are based on the median block
+		    # time, so calculate it now.
+            median_time = prev_node.calc_past_median_time()
+
+            # The state is simply defined if the start time hasn't been
+		    # been reached yet.
+            if median_time < checker.begin_time()
+                cache.update(prev_node.hash, ThresholdState.ThresholdDefined)
+                break
+
+
+            # Add this node to the list of nodes that need the state
+		    # calculated and cached.
+            needed_states.append(prev_node)
+
+            # Get the ancestor that is the last block of the previous
+		    # confirmation window.
+            prev_node = prev_node.relative_ancestor(confirmation_window)
+
+        # Start with the threshold state for the most recent confirmation
+	    # window that has a cached state.
+        state = ThresholdState.ThresholdDefined
+        if prev_node is not None:
+            state, ok = cache.look_up(prev_node.hash)
+            if not ok:
+                msg= "thresholdState: cache lookup failed for %s" % prev_node.hash
+                raise AssertError(msg=msg, extra=ThresholdState.ThresholdFailed)
+
+        # Since each threshold state depends on the state of the previous
+	    # window, iterate starting from the oldest unknown window.
+        for prev_node in reversed(needed_states):
+            if state is  ThresholdState.ThresholdDefined:
+                # The deployment of the rule change fails if it expires
+			    # before it is accepted and locked in.
+                median_time = prev_node.calc_past_median_time()
+                if median_time >= checker.end_time():
+                    state = ThresholdState.ThresholdFailed
+                    break
+
+                # The state for the rule moves to the started state
+                # once its start time has been reached (and it hasn't
+                # already expired per the above).
+                if median_time >= checker.begin_time():
+                    state = ThresholdState.ThresholdStarted
+
+            elif state is  ThresholdState.ThresholdStarted:
+
+                # The deployment of the rule change fails if it expires
+			    # before it is accepted and locked in.
+                median_time = prev_node.calc_past_median_time()
+                if median_time >= checker.end_time():
+                    state = ThresholdState.ThresholdFailed
+                    break
+                
+                # At this point, the rule change is still being voted
+                # on by the miners, so iterate backwards through the
+                # confirmation window to count all of the votes in it.
+                count = 0
+                count_node = prev_node
+                for i in range(confirmation_window):
+                    condition = checker.condition(count_node)
+
+                    if condition:
+                        count += 1
+
+                    count_node = count_node.parent
+
+                # The state is locked in if the number of blocks in the
+			    # period that voted for the rule change meets the
+			    # activation threshold.
+                if count >= checker.rule_change_activation_threshold():
+                    state = ThresholdState.ThresholdLockedIn
+            elif state is ThresholdState.ThresholdLockedIn:
+                # The new rule becomes active when its previous state
+			    # was locked in.
+                state = ThresholdState.ThresholdActive
+            elif state in (ThresholdState.ThresholdActive, ThresholdState.ThresholdFailed):
+                pass
+
+            cache.update(prev_node.hash, state)
+        return state
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    # deploymentState returns the current rule change threshold for a given
+    # deploymentID. The threshold is evaluated from the point of view of the block
+    # node passed in as the first argument to this method.
+    #
+    # It is important to note that, as the variable name indicates, this function
+    # expects the block node prior to the block for which the deployment state is
+    # desired.  In other words, the returned deployment state is for the block
+    # AFTER the passed node.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _deployment_state(self, prev_node: BlockNode, deployment_id: int):
+        if deployment_id > len(self.chain_params.deployments):
+            raise DeploymentError(extra=ThresholdState.ThresholdFailed)
+
+        deployment = self.chain_params.deployments[deployment_id]
+        checker = DeploymentChecker(deployment=deployment, chain=self)
+        cache  = self.deployment_caches[deployment_id]
+        return self._threshold_state(prev_node, checker, cache)
 
 
 

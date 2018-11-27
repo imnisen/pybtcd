@@ -338,11 +338,6 @@ def parse_script(script):
     return parse_script_template(script, opcode_array)
 
 
-
-
-
-
-
 # IsUnspendable returns whether the passed public key script is unspendable, or
 # guaranteed to fail at execution.  This allows inputs to be pruned instantly
 # when entering the UTXO set.

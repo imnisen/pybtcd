@@ -14,7 +14,7 @@ class Block:
                  block_hash=None, block_height=None, transactions=None, txns_generated=None):
         """
 
-        :param *wire.MsgBlock msg_block: Underlying MsgBlock
+        :param wire.MsgBlock msg_block: Underlying MsgBlock
         :param []byte serialized_block: Serialized bytes for the block
         :param []byte serialized_block_no_witness: Serialized bytes for block w/o witness data
         :param chainhash.Hash or None block_hash: Cached block hash
@@ -48,7 +48,7 @@ class Block:
 
     # TODO same name as filed, fix latter
     # MsgBlock returns the underlying wire.MsgBlock for the Block.
-    def msg_block(self):
+    def get_msg_block(self):
         return self.msg_block
 
     # Bytes returns the serialized bytes for the Block.  This is equivalent to

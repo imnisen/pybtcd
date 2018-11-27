@@ -52,8 +52,8 @@ class ThresholdStateCache:
 
     # Lookup returns the threshold state associated with the given hash along with
     # a boolean that indicates whether or not it is valid.
-    def look_up(self, hash: chainhash.Hash):
-        return self.entries.get(hash)
+    def look_up(self, hash: chainhash.Hash) -> (ThresholdState, bool):
+        return self.entries.get(hash), hash in self.entries
 
     # Update updates the cache to contain the provided hash to threshold state
     # mapping.

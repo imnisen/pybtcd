@@ -34,6 +34,11 @@ class TxLoc:
 
 class MsgBlock(Message):
     def __init__(self, header=None, transactions=None):
+        """
+
+        :param BlockHeader header:
+        :param [] transactions:
+        """
         self.header = header or BlockHeader()
         self.transactions = transactions or []
 

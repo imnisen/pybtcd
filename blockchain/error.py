@@ -1,5 +1,53 @@
 from enum import Enum
 
+# DeploymentError identifies an error that indicates a deployment ID was
+# specified that does not exist.
+class DeploymentError(Exception):
+    def __init__(self, msg=None, err=None, extra=None):
+        """
+
+        :param str msg:
+        :param Exception err:
+        :param extra:
+        """
+
+        self.msg = msg or ""
+        self.err = err
+        self.extra = extra
+
+    def __repr__(self):
+        return "DeploymentError(msg={})".format(self.msg or "\"\"")
+
+    def __str__(self):
+        return "DeploymentError(msg={})".format(self.msg or "\"\"")
+
+    def __hash__(self):
+        return hash(str(self.msg))
+
+# AssertError identifies an error that indicates an internal code consistency
+# issue and should be treated as a critical and unrecoverable error.
+class AssertError(Exception):
+    def __init__(self, msg=None, err=None, extra=None):
+        """
+
+        :param str msg:
+        :param Exception err:
+        :param extra:
+        """
+
+        self.msg = msg or ""
+        self.err = err
+        self.extra = extra
+
+    def __repr__(self):
+        return "AssertError(msg={})".format(self.msg or "\"\"")
+
+    def __str__(self):
+        return "AssertError(msg={})".format(self.msg or "\"\"")
+
+    def __hash__(self):
+        return hash(str(self.msg))
+
 
 # ErrorCode identifies a kind of error.
 class ErrorCode(Enum):

@@ -17,9 +17,9 @@ class Tx:
                  tx_has_witness=None, tx_index=None):
         """
 
-        :param *wire.MsgTx msg_tx: Underlying MsgTx
-        :param *chainhash.Hash tx_hash: Cached transaction hash
-        :param *chainhash.Hash tx_hash_witness: Cached transaction witness hash
+        :param wire.MsgTx msg_tx: Underlying MsgTx
+        :param chainhash.Hash tx_hash: Cached transaction hash
+        :param chainhash.Hash tx_hash_witness: Cached transaction witness hash
         :param bool tx_has_witness: If the transaction has witness data
         :param int tx_index: Position within a block or TxIndexUnknown
         """
