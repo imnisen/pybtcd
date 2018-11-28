@@ -177,3 +177,68 @@ class TestScriptCompression(unittest.TestCase):
                                          "7903c3ebec3a957724895dca52c6b4")
         got_script = decompress_script(compressed_script)
         self.assertEqual(got_script, bytes())
+
+
+# TestAmountCompression ensures the domain-specific transaction output amount
+# compression and decompression works as expected.
+class TestAmountCompression(unittest.TestCase):
+    # TOADD parallel
+
+    def setUp(self):
+        self.tests = [
+            {
+                "name": "0 BTC (sometimes used in nulldata)",
+                "uncompressed": 0,
+                "compressed": 0,
+            },
+            {
+                "name": "546 Satoshi (current network dust value)",
+                "uncompressed": 546,
+                "compressed": 4911,
+            },
+            {
+                "name": "0.00001 BTC (typical transaction fee)",
+                "uncompressed": 1000,
+                "compressed": 4,
+            },
+            {
+                "name": "0.0001 BTC (typical transaction fee)",
+                "uncompressed": 10000,
+                "compressed": 5,
+            },
+            {
+                "name": "0.12345678 BTC",
+                "uncompressed": 12345678,
+                "compressed": 111111101,
+            },
+            {
+                "name": "0.5 BTC",
+                "uncompressed": 50000000,
+                "compressed": 48,
+            },
+            {
+                "name": "1 BTC",
+                "uncompressed": 100000000,
+                "compressed": 9,
+            },
+            {
+                "name": "5 BTC",
+                "uncompressed": 500000000,
+                "compressed": 49,
+            },
+            {
+                "name": "21000000 BTC (max minted coins)",
+                "uncompressed": 2100000000000000,
+                "compressed": 21000000,
+            },
+        ]
+
+    def test_compress_tx_out_amount(self):
+        for test in self.tests:
+            got_compressed = compress_tx_out_amount(test['uncompressed'])
+            self.assertEqual(got_compressed, test['compressed'])
+
+    def test_decompress_tx_out_amount(self):
+        for test in self.tests:
+            got_decompressed = decompress_tx_out_amount(test['compressed'])
+            self.assertEqual(got_decompressed, test['uncompressed'])
