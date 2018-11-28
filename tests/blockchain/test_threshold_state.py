@@ -60,17 +60,17 @@ class TestThresholdState(unittest.TestCase):
                 hash = chainhash.Hash(bytes([i + 1]) + bytes([0]) * (chainhash.HashSize - 1))
 
                 # Ensure the hash isn't available in the cache already.
-                self.assertIsNone(cache.look_up(hash))
+                self.assertIsNone(cache.look_up(hash)[0])
 
                 # Ensure hash that was added to the cache reports it's
                 # available and the state is the expected value.
                 cache.update(hash, test['state'])
-                self.assertEqual(cache.look_up(hash), test['state'])
+                self.assertEqual(cache.look_up(hash)[0], test['state'])
 
                 # Ensure adding an existing hash with the same state
                 # doesn't break the existing entry.
                 cache.update(hash, test['state'])
-                self.assertEqual(cache.look_up(hash), test['state'])
+                self.assertEqual(cache.look_up(hash)[0], test['state'])
 
                 # Ensure adding an existing hash with a different state
                 # updates the existing entry.
@@ -79,4 +79,4 @@ class TestThresholdState(unittest.TestCase):
                     newState = ThresholdState.ThresholdStarted
 
                 cache.update(hash, newState)
-                self.assertEqual(cache.look_up(hash), newState)
+                self.assertEqual(cache.look_up(hash)[0], newState)
