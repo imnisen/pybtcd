@@ -33,7 +33,7 @@ class PublicKey(VerifyingKey):
     def serialize_uncompressed(self):
         # TOCHECK TODO
         return bytes([PubkeyUncompressed]) + \
-               int_to_bytes(super(PublicKey, self).pubkey.point.x()).rjust(32, b'\x00') + \
+               int_to_bytes(self.pubkey.point.x()).rjust(32, b'\x00') + \
                int_to_bytes(self.pubkey.point.y()).rjust(32, b'\x00')
 
     # ecdsa method
@@ -47,7 +47,7 @@ class PublicKey(VerifyingKey):
             prefix = PubkeyCompressed | 0x1
         else:
             prefix = PubkeyCompressed
-        return bytes([prefix]) + int_to_bytes(super(PublicKey, self).pubkey.point.x()).rjust(32, b'\x00')
+        return bytes([prefix]) + int_to_bytes(self.pubkey.point.x()).rjust(32, b'\x00')
 
     # ecdsa method
     def serialize_compressed2(self):
@@ -69,7 +69,7 @@ class PublicKey(VerifyingKey):
         else:
             prefix = PubkeyCompressed
         return bytes([prefix]) + \
-               int_to_bytes(super(PublicKey, self).pubkey.point.x()).rjust(32, b'\x00') + \
+               int_to_bytes(self.pubkey.point.x()).rjust(32, b'\x00') + \
                int_to_bytes(self.pubkey.point.y()).rjust(32, b'\x00')
 
     # ecdsa method
