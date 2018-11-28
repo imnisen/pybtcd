@@ -156,7 +156,24 @@ class TestScriptCompression(unittest.TestCase):
             got_decoded_size = decode_compressed_script_size(test['compressed'])
             self.assertEqual(got_decoded_size, len(test['compressed']))
 
+        # Error case
+        # A nil script must result in a decoded size of 0.
+        got_size = decode_compressed_script_size(bytes())
+        self.assertEqual(got_size, 0)
+
     def test_decompress_script(self):
         for test in self.tests:
             got_decompressed = decompress_script(test['compressed'])
             self.assertEqual(got_decompressed, test['uncompressed'])
+
+        # Error case
+        # A nil script must result in a nil decompressed script.
+        got_script = decompress_script(bytes())
+        self.assertEqual(got_script, bytes())
+
+        # A compressed script for a pay-to-pubkey (uncompressed) that results
+        # in an invalid pubkey must result in a nil decompressed script.
+        compressed_script = hex_to_bytes("04012d74d0cb94344c9569c2e77901573d8d" +
+                                         "7903c3ebec3a957724895dca52c6b4")
+        got_script = decompress_script(compressed_script)
+        self.assertEqual(got_script, bytes())

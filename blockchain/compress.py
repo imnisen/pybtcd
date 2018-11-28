@@ -372,7 +372,10 @@ def decompress_script(compressed_pk_script: bytes) -> bytes:
         compressed_key = bytearray(33)
         compressed_key[0] = encoded_script_size - 2
         compressed_key[1:] = compressed_pk_script[1:]
-        key = btcec.parse_pub_key(bytes(compressed_key), btcec.s256())
+        try:
+            key = btcec.parse_pub_key(bytes(compressed_key), btcec.s256())
+        except Exception:
+            return bytes()
 
         pk_script = bytearray(67)
         pk_script[0] = txscript.OP_DATA_65
