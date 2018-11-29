@@ -287,8 +287,16 @@ class TestCompressedTxOut(unittest.TestCase):
 
     def test_decode_compressed_tx_out(self):
         for test in self.tests:
-            print(test['name'])
             got_amount, got_script, got_bytes_written = decode_compressed_tx_out(test['compressed'])
             self.assertEqual(got_amount, test['amount'])
             self.assertEqual(got_script, test['pk_script'])
-            self.assertEqual(got_bytes_written, len(test['pk_script']))
+            self.assertEqual(got_bytes_written, len(test['compressed']))
+
+        # Error conditions
+        compressed_tx_out = hex_to_bytes("00")
+        with self.assertRaises(DeserializeError):
+            decode_compressed_tx_out(compressed_tx_out)
+
+        compressed_tx_out = hex_to_bytes("0010")
+        with self.assertRaises(DeserializeError):
+            decode_compressed_tx_out(compressed_tx_out)
