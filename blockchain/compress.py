@@ -1,5 +1,6 @@
 import txscript
 import btcec
+from .error import *
 
 
 # -----------------------------------------------------------------------------
@@ -517,7 +518,7 @@ def decompress_tx_out_amount(amount: int) -> int:
 # compressedTxOutSize returns the number of bytes the passed transaction output
 # fields would take when encoded with the format described above.
 def compress_tx_out_size(amount: int, pk_script: bytes) -> int:
-    pass
+    return serialize_size_vlq(compress_tx_out_amount(amount)) + compressed_script_size(pk_script)
 
 
 # putCompressedTxOut compresses the passed amount and script according to their
@@ -526,11 +527,36 @@ def compress_tx_out_size(amount: int, pk_script: bytes) -> int:
 # slice must be at least large enough to handle the number of bytes returned by
 # the compressedTxOutSize function or it will panic.
 def put_compressed_tx_out(target: bytearray, amount: int, pk_script: bytes) -> int:
-    pass
+    offset = put_vlq(target, compress_tx_out_amount(amount))
+
+    # do some trick as slice don't pass as pointer
+    amount_offset = offset
+    target_slice = target[amount_offset:]
+
+    offset += put_compressed_script(target_slice, pk_script)  # TODO check [:] pass
+    target[amount_offset:] = target_slice
+    return offset
 
 
 # decodeCompressedTxOut decodes the passed compressed txout, possibly followed
 # by other data, into its uncompressed amount and script and returns them along
 # with the number of bytes they occupied prior to decompression
 def decode_compressed_tx_out(serialized: bytes) -> (int, bytes, int):
-    pass
+    # Deserialize the compressed amount and ensure there are bytes
+    # remaining for the compressed script.
+    compressed_amount, bytes_read = deserialize_vlq(serialized)
+    if bytes_read >= len(serialized):
+        msg = "unexpected end of data after compressed amount"
+        raise DeserializeError(msg=msg)
+
+    # Decode the compressed script size and ensure there are enough bytes
+    # left in the slice for it.
+    script_size = decode_compressed_script_size(serialized[bytes_read:])
+    if len(serialized[bytes_read:]) < script_size:
+        msg = "unexpected end of data after script size"
+        raise DeserializeError(msg=msg)
+
+    # Decompress and return the amount and script.
+    amount = decompress_tx_out_amount(compressed_amount)
+    script = decompress_script(serialized[bytes_read: bytes_read + script_size])
+    return amount, script, bytes_read + script_size

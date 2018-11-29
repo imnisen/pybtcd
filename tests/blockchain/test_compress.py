@@ -242,3 +242,53 @@ class TestAmountCompression(unittest.TestCase):
         for test in self.tests:
             got_decompressed = decompress_tx_out_amount(test['compressed'])
             self.assertEqual(got_decompressed, test['uncompressed'])
+
+
+# TestCompressedTxOut ensures the transaction output serialization and
+# deserialization works as expected.
+class TestCompressedTxOut(unittest.TestCase):
+    # TOADD parallel
+
+    def setUp(self):
+        self.tests = [
+            {
+                "name": "nulldata with 0 BTC",
+                "amount": 0,
+                "pk_script": hex_to_bytes("6a200102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+                "compressed": hex_to_bytes("00286a200102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"),
+            },
+            {
+                "name": "pay-to-pubkey-hash dust",
+                "amount": 546,
+                "pk_script": hex_to_bytes("76a9141018853670f9f3b0582c5b9ee8ce93764ac32b9388ac"),
+                "compressed": hex_to_bytes("a52f001018853670f9f3b0582c5b9ee8ce93764ac32b93"),
+            },
+            {
+                "name": "pay-to-pubkey uncompressed 1 BTC",
+                "amount": 100000000,
+                "pk_script": hex_to_bytes(
+                    "4104192d74d0cb94344c9569c2e77901573d8d7903c3ebec3a957724895dca52c6b40d45264838c0bd96852662ce6a847b197376830160c6d2eb5e6a4c44d33f453eac"),
+                "compressed": hex_to_bytes("0904192d74d0cb94344c9569c2e77901573d8d7903c3ebec3a957724895dca52c6b4"),
+            },
+        ]
+
+    def test_compress_tx_out_size(self):
+        for test in self.tests:
+            got_size = compress_tx_out_size(test['amount'], test['pk_script'])
+            self.assertEqual(got_size, len(test['compressed']))
+
+    def test_put_compressed_tx_out(self):
+        for test in self.tests:
+            got_size = compress_tx_out_size(test['amount'], test['pk_script'])
+            got_compressed = bytearray(got_size)
+            got_bytes_written = put_compressed_tx_out(got_compressed, test['amount'], test['pk_script'])
+            self.assertEqual(bytes(got_compressed), test['compressed'])
+            self.assertEqual(got_bytes_written, len(test['compressed']))
+
+    def test_decode_compressed_tx_out(self):
+        for test in self.tests:
+            print(test['name'])
+            got_amount, got_script, got_bytes_written = decode_compressed_tx_out(test['compressed'])
+            self.assertEqual(got_amount, test['amount'])
+            self.assertEqual(got_script, test['pk_script'])
+            self.assertEqual(got_bytes_written, len(test['pk_script']))
