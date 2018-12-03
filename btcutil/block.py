@@ -125,7 +125,7 @@ class Block:
     # transactions in the Block.  This is nearly equivalent to accessing the raw
     # transactions (wire.MsgTx) in the underlying wire.MsgBlock, however it
     # instead provides easy access to wrapped versions (btcutil.Tx) of them.
-    def transactions(self):
+    def get_transactions(self):
         # Return transactions if they have ALL already been generated.  This
         # flag is necessary because the wrapped transactions are lazily
         # generated in a sparse fashion.

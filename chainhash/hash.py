@@ -82,7 +82,7 @@ class Hash:
         return self._data.hex()
 
     def __eq__(self, other: 'Hash') -> bool:
-        return self._data == other._data
+        return type(other) is Hash and self._data == other._data
 
     def __ne__(self, other):
         return not(self == other)

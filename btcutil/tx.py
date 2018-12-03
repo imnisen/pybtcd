@@ -24,9 +24,9 @@ class Tx:
         :param int tx_index: Position within a block or TxIndexUnknown
         """
         self.msg_tx = msg_tx
-        self.tx_hash = tx_hash or chainhash.Hash()
-        self.tx_hash_witness = tx_hash_witness or chainhash.Hash()
-        self.tx_has_witness = tx_has_witness or False
+        self.tx_hash = tx_hash or None
+        self.tx_hash_witness = tx_hash_witness or None
+        self.tx_has_witness = tx_has_witness or None
         self.tx_index = tx_index or TxIndexUnknown
 
     @classmethod
@@ -41,14 +41,14 @@ class Tx:
         return cls.from_reader(r)
 
     # MsgTx returns the underlying wire.MsgTx for the transaction.
-    def msg_tx(self):
+    def get_msg_tx(self):
         return self.msg_tx
 
     # Hash returns the hash of the transaction.  This is equivalent to
     # calling TxHash on the underlying wire.MsgTx, however it caches the
     # result so subsequent calls are more efficient.
     def hash(self):
-        if self.tx_hash:
+        if self.tx_hash is not None:
             return self.tx_hash
 
         hash = self.msg_tx.tx_hash()
@@ -59,7 +59,7 @@ class Tx:
     # equivalent to calling WitnessHash on the underlying wire.MsgTx, however it
     # caches the result so subsequent calls are more efficient.
     def witness_hash(self):
-        if self.tx_hash_witness:
+        if self.tx_hash_witness is not None:
             return self.tx_hash_witness
 
         hash = self.msg_tx.witness_hash()
@@ -71,7 +71,7 @@ class Tx:
     # HasWitness on the underlying wire.MsgTx, however it caches the result so
     # subsequent calls are more efficient.
     def has_witness(self):
-        if self.tx_has_witness:
+        if self.tx_has_witness is not None:
             return self.tx_has_witness
 
         has_witness = self.msg_tx.has_witness()

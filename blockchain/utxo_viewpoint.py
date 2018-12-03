@@ -159,7 +159,7 @@ class UtxoViewpoint:
     # for existing entries since it's possible it has changed during a reorg.
     def add_tx_out(self, tx: btcutil.Tx, tx_out_idx: int, block_height: int):
         # Can't add an output for an out of bounds index.
-        if tx_out_idx >= len(tx.msg_tx().tx_outs):
+        if tx_out_idx >= len(tx.get_msg_tx().tx_outs):
             return
 
         # Update existing entries.  All fields are updated because it's
@@ -167,7 +167,7 @@ class UtxoViewpoint:
         # being replaced by a different transaction with the same hash.  This
         # is allowed so long as the previous transaction is fully spent.
         prev_out = wire.OutPoint(hash=tx.hash(), index=tx_out_idx)
-        tx_out = tx.msg_tx().tx_outs[tx_out_idx]
+        tx_out = tx.get_msg_tx().tx_outs[tx_out_idx]
         self._add_tx_out(prev_out, tx_out, is_coin_base(tx), block_height)
 
         return
@@ -179,7 +179,7 @@ class UtxoViewpoint:
     def add_tx_outs(self, tx: btcutil.Tx, block_height: int):
         coin_base_p = is_coin_base(tx)
         prev_out = wire.OutPoint(hash=tx.hash(), index=0)
-        for idx, tx_out in enumerate(tx.msg_tx().tx_outs):
+        for idx, tx_out in enumerate(tx.get_msg_tx().tx_outs):
             # Update existing entries.  All fields are updated because it's
             # possible (although extremely unlikely) that the existing
             # entry is being replaced by a different transaction with the

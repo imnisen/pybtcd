@@ -65,10 +65,7 @@ writeLocKeyName = b"ffldb-writeloc"
 
 
 
-def bytes_has_prefix(b: bytes, prefix: bytes) -> bool:
-    if len(b) >= len(prefix) and b[0:len(prefix)] == prefix:
-        return True
-    return False
+
 
 
 def copy_slice(b):
@@ -1174,7 +1171,7 @@ class Cursor(database.Cursor):
 
         # Do not allow buckets to be deleted via the cursor.
         key = self.current_iter.key()
-        if bytes_has_prefix(key, bucketIndexPrefix):
+        if pyutil.bytes_has_prefix(key, bucketIndexPrefix):
             msg = "buckets may not be deleted from a cursor"
             raise DBError(ErrorCode.ErrIncompatibleValue, msg)
 
@@ -1377,7 +1374,7 @@ class Cursor(database.Cursor):
         # if key is None:  # TODO
         #     return None
 
-        if bytes_has_prefix(key, bucketIndexPrefix):
+        if pyutil.bytes_has_prefix(key, bucketIndexPrefix):
             key = key[len(bucketIndexPrefix) + 4:]
             return copy_slice(key)
 
@@ -1414,7 +1411,7 @@ class Cursor(database.Cursor):
 
         # Return nil for the value when the cursor is pointing to a nested
         # bucket.
-        if bytes_has_prefix(self.current_iter.key(), bucketIndexPrefix):
+        if pyutil.bytes_has_prefix(self.current_iter.key(), bucketIndexPrefix):
             return None
 
         return copy_slice(self.current_iter.value())

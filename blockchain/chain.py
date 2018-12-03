@@ -571,7 +571,7 @@ class BlockChain:
         # sequence locks don't apply to coinbase transactions Therefore, we
         # return sequence lock values of -1 indicating that this transaction
         # can be included within a block at any given height or time.
-        m_tx = tx.msg_tx()
+        m_tx = tx.get_msg_tx()
         sequence_lock_active = m_tx.version >=2 and csv_soft_fork_active
         if not sequence_lock_active or is_coin_base(tx):
             return sequence_lock
@@ -981,7 +981,7 @@ class BlockChain:
     # This function MUST be called with the chain state lock held (for writes).
     def _threshold_state(self, prev_node: BlockNode or None, checker: ThresholdConditionChecker, cache: ThresholdStateCache):
         # The threshold state for the window that contains the genesis block is
-	    # defined by definition.
+        # defined by definition.
         confirmation_window = checker.miner_confirmation_window()
         if prev_node is None or prev_node.height + 1 < confirmation_window:
             return ThresholdState.ThresholdDefined
@@ -993,36 +993,36 @@ class BlockChain:
         prev_node = prev_node.ancestor(prev_node.height - (prev_node.height + 1) % confirmation_window)
 
         # Iterate backwards through each of the previous confirmation windows
-	    # to find the most recently cached threshold state.
+        # to find the most recently cached threshold state.
         needed_states = []
         while prev_node is not None:
             # Nothing more to do if the state of the block is already
-		    # cached.
+            # cached.
             _, ok = cache.look_up(prev_node.hash)
             if ok:
                 break
 
             # The start and expiration times are based on the median block
-		    # time, so calculate it now.
+            # time, so calculate it now.
             median_time = prev_node.calc_past_median_time()
 
             # The state is simply defined if the start time hasn't been
-		    # been reached yet.
-            if median_time < checker.begin_time()
+            # been reached yet.
+            if median_time < checker.begin_time():
                 cache.update(prev_node.hash, ThresholdState.ThresholdDefined)
                 break
 
 
             # Add this node to the list of nodes that need the state
-		    # calculated and cached.
+            # calculated and cached.
             needed_states.append(prev_node)
 
             # Get the ancestor that is the last block of the previous
-		    # confirmation window.
+            # confirmation window.
             prev_node = prev_node.relative_ancestor(confirmation_window)
 
         # Start with the threshold state for the most recent confirmation
-	    # window that has a cached state.
+        # window that has a cached state.
         state = ThresholdState.ThresholdDefined
         if prev_node is not None:
             state, ok = cache.look_up(prev_node.hash)
@@ -1031,11 +1031,11 @@ class BlockChain:
                 raise AssertError(msg=msg, extra=ThresholdState.ThresholdFailed)
 
         # Since each threshold state depends on the state of the previous
-	    # window, iterate starting from the oldest unknown window.
+        # window, iterate starting from the oldest unknown window.
         for prev_node in reversed(needed_states):
             if state is  ThresholdState.ThresholdDefined:
                 # The deployment of the rule change fails if it expires
-			    # before it is accepted and locked in.
+                # before it is accepted and locked in.
                 median_time = prev_node.calc_past_median_time()
                 if median_time >= checker.end_time():
                     state = ThresholdState.ThresholdFailed
@@ -1050,7 +1050,7 @@ class BlockChain:
             elif state is  ThresholdState.ThresholdStarted:
 
                 # The deployment of the rule change fails if it expires
-			    # before it is accepted and locked in.
+                # before it is accepted and locked in.
                 median_time = prev_node.calc_past_median_time()
                 if median_time >= checker.end_time():
                     state = ThresholdState.ThresholdFailed
@@ -1070,13 +1070,13 @@ class BlockChain:
                     count_node = count_node.parent
 
                 # The state is locked in if the number of blocks in the
-			    # period that voted for the rule change meets the
-			    # activation threshold.
+                # period that voted for the rule change meets the
+                # activation threshold.
                 if count >= checker.rule_change_activation_threshold():
                     state = ThresholdState.ThresholdLockedIn
             elif state is ThresholdState.ThresholdLockedIn:
                 # The new rule becomes active when its previous state
-			    # was locked in.
+                # was locked in.
                 state = ThresholdState.ThresholdActive
             elif state in (ThresholdState.ThresholdActive, ThresholdState.ThresholdFailed):
                 pass
