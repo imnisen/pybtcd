@@ -78,7 +78,7 @@ class Block:
 
         # Serialize the MsgBlock.
         w = io.BytesIO()
-        self.msg_block.serilize_no_witness(w)
+        self.msg_block.serialize_no_witness(w)
         serialized_block_no_witness = w.getvalue()
 
         # Cache the serialized bytes and return them.

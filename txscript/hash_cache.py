@@ -70,7 +70,7 @@ def calc_hash_outputs(tx: wire.MsgTx):
 # transaction when validating all inputs. As a result, validation complexity
 # for SigHashAll can be reduced by a polynomial factor.
 class TxSigHashes:
-    def __init__(self, hash_prev_outs, hash_sequence, hash_outputs):
+    def __init__(self, hash_prev_outs=None, hash_sequence=None, hash_outputs=None):
         """
 
         :param chainhash.Hash hash_prev_outs:
@@ -78,9 +78,9 @@ class TxSigHashes:
         :param chainhash.Hash hash_outputs:
         """
 
-        self.hash_prev_outs = hash_prev_outs
-        self.hash_sequence = hash_sequence
-        self.hash_outputs = hash_outputs
+        self.hash_prev_outs = hash_prev_outs or chainhash.Hash()
+        self.hash_sequence = hash_sequence or chainhash.Hash()
+        self.hash_outputs = hash_outputs or chainhash.Hash()
 
     def __eq__(self, other):
         return self.hash_prev_outs == other.hash_prev_outs and \
