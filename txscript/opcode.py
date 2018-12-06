@@ -772,7 +772,7 @@ def shadow_copy_tx(tx):
 # calcSignatureHash will, given a script and hash type for the current script
 # engine instance, calculate the signature hash to be used for signing and
 # verification.
-def calc_signatire_hash(script, hash_type, tx, idx):  # TODO refactor the func name
+def calc_signature_hash(script, hash_type, tx, idx):  # TODO refactor the func name
     """
 
     :param []parsedOpcode script:
@@ -1783,8 +1783,8 @@ class SigHashType(Enum):
 #
 # Stack transformation: [... signature pubkey] -> [... bool]
 def opcodeCheckSig(pop, vm):
-    pk_bytes = vm.dstak.pop_byte_array()
-    full_sig_bytes = vm.dstak.pop_byte_array()
+    pk_bytes = vm.dstack.pop_byte_array()
+    full_sig_bytes = vm.dstack.pop_byte_array()
 
     # The signature actually needs needs to be longer than this, but at
     # least 1 byte is needed for the hash type below.  The full length is
@@ -1828,12 +1828,12 @@ def opcodeCheckSig(pop, vm):
         # Remove the signature since there is no way for a signature
         # to sign itself.
         sub_script = remove_opcode_by_data(sub_script, full_sig_bytes)
-        hash = calc_signatire_hash(sub_script, hash_type, vm.tx, vm.tx_idx)
+        hash = calc_signature_hash(sub_script, hash_type, vm.tx, vm.tx_idx)
 
     try:
         pub_key = btcec.parse_pub_key(pk_bytes, btcec.s256())
     except Exception:
-        vm.dstak.push_bool(False)
+        vm.dstack.push_bool(False)
         return
 
     try:
@@ -1842,7 +1842,7 @@ def opcodeCheckSig(pop, vm):
         else:
             signature = btcec.parse_signature(sig_bytes, btcec.s256())
     except Exception:
-        vm.dstak.push_bool(False)
+        vm.dstack.push_bool(False)
         return
 
     if vm.sig_cache:
@@ -1858,7 +1858,7 @@ def opcodeCheckSig(pop, vm):
         desc = "signature not empty on failed checksig"
         raise ScriptError(ErrorCode.ErrNullFail, desc=desc)
 
-    vm.dstak.push_bool(valid)
+    vm.dstack.push_bool(valid)
 
     return
 
@@ -2042,7 +2042,7 @@ def opcodeCheckMultiSig(pop, vm):
         else:
             # Remove the signature since there is no way for a signature
             # to sign itself.
-            hash = calc_signatire_hash(script, hash_type, vm.tx, vm.tx_idx)
+            hash = calc_signature_hash(script, hash_type, vm.tx, vm.tx_idx)
 
         if vm.sig_cache:
             sig_hash = chainhash.Hash(hash)
