@@ -104,6 +104,10 @@ class OutPoint:
     def __eq__(self, other):
         return self.hash == other.hash and self.index == other.index
 
+    def __hash__(self):
+        return hash(self.hash.to_bytes() + self.index.to_bytes(4, "little"))
+
+
 
 class TxIn:
     def __init__(self, previous_out_point, signature_script=None, witness=None, sequence=MaxTxInSequenceNum):
