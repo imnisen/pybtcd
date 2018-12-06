@@ -4,6 +4,7 @@ import database
 import chainhash
 from btcec.utils import int_to_bytes, bytes_to_int
 from .utxo_viewpoint import *
+from .compress import *
 
 # Constant
 # blockIndexBucketName is the name of the db bucket used to house to the
@@ -14,31 +15,25 @@ blockIndexBucketName = b"blockheaderidx"
 # block hash -> block height index.
 hashIndexBucketName = b"hashidx"
 
-
 # heightIndexBucketName is the name of the db bucket used to house to
 # the block height -> block hash index.
-heightIndexBucketName =  b"heightidx"
+heightIndexBucketName = b"heightidx"
 
 # byteOrder is the preferred byte order used for serializing numeric
 # fields for storage in the database.
 byteOrder = "little"
 
-
 # chainStateKeyName is the name of the db key used to store the best
 # chain state.
 chainStateKeyName = b"chainstate"
-
 
 # utxoSetBucketName is the name of the db bucket used to house the
 # unspent transaction output set.
 utxoSetBucketName = b"utxosetv2"
 
-
 # spendJournalBucketName is the name of the db bucket used to house
 # transactions outputs that are spent in each block.
 spendJournalBucketName = b"spendjournal"
-
-
 
 
 # blockIndexKey generates the binary key for an entry in the block index
@@ -84,7 +79,6 @@ def db_fetch_height_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
 
 class NotInMainChainErr(Exception):
     pass
-
 
 
 # -----------------------------------------------------------------------------
@@ -191,7 +185,7 @@ def db_put_best_state(db_tx: database.Tx, snapshot, work_sum: int):
 # dbPutBlockIndex uses an existing database transaction to update or add the
 # block index entries for the hash to height and height to hash mappings for
 # the provided values.
-def db_put_block_index(db_tx: database.Tx, hash:chainhash.Hash, height:int):
+def db_put_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
     # Serialize the height for use in the index entries.
     serialized_height = height.to_bytes(4, byteOrder)
 
@@ -205,15 +199,89 @@ def db_put_block_index(db_tx: database.Tx, hash:chainhash.Hash, height:int):
     height_index.put(serialized_height, hash.to_bytes())
     return
 
+
 # TODO
 def outpoint_key(outpoint):
     pass
 
+
 def recyle_outpoint_key(key):
     pass
 
-def serialize_utxo_entry(entry):
-    pass
+
+# utxoEntryHeaderCode returns the calculated header code to be used when
+# serializing the provided utxo entry.
+def utxo_entry_header_code(entry: UtxoEntry):
+    if entry.is_spent():
+        raise AssertError("attempt to serialize spent utxo header")
+
+    # As described in the serialization format comments, the header code
+    # encodes the height shifted over one bit and the coinbase flag in the
+    # lowest bit.
+    header_code = entry.block_height() << 1
+    if entry.is_coin_base():
+        header_code |= 0x01
+    return header_code
+
+
+# serializeUtxoEntry returns the entry serialized to a format that is suitable
+# for long-term storage.  The format is described in detail above.
+def serialize_utxo_entry(entry: UtxoEntry) -> bytes or None:
+    # Spent outputs have no serialization
+    if entry.is_spent():
+        return None
+
+    # Encode the header code
+    header_code = utxo_entry_header_code(entry)
+
+    # Calculate the size needed to serialize the entry.
+    size = serialize_size_vlq(header_code) + compressed_tx_out_size(entry.amount(), entry.pk_script())
+
+    # Serialize the header code followed by the compressed unspent
+    # transaction output.
+    serialized = bytearray(size)
+    offset = put_vlq(serialized, header_code)
+
+    # do some trick as slice pass not work as reference  # TOCHANGE
+    header_offset = offset
+    serialized_slice = serialized[header_offset:]
+    offset += put_compressed_tx_out(serialized_slice, entry.amount(), entry.pk_script())
+    serialized[header_offset:] = serialized_slice
+    return bytes(serialized)
+
+
+# deserializeUtxoEntry decodes a utxo entry from the passed serialized byte
+# slice into a new UtxoEntry using a format that is suitable for long-term
+# storage.  The format is described in detail above.
+def deserialize_utxo_entry(serialized: bytes) -> UtxoEntry:
+    # Deserialize the header code.
+    code, offset = deserialize_vlq(serialized)
+    if offset >= len(serialized):
+        raise DeserializeError("unexpected end of data after header")
+
+    # Decode the header code.
+    #
+    # Bit 0 indicates whether the containing transaction is a coinbase.
+    # Bits 1-x encode height of containing transaction.
+    is_coin_base_p = (code & 0x01 != 0)
+    block_height = code >> 1
+
+    # Decode the compressed unspent transaction output.
+    try:
+        amount, pk_script, _ = decode_compressed_tx_out(serialized[offset:])
+    except Exception as e:
+        raise DeserializeError(msg="unable to decode utxo: %s" % str(e))
+
+    entry = UtxoEntry(
+        amount=amount,
+        pk_script=pk_script,
+        block_height=block_height,
+        packed_flags=TxoFlags(0)
+    )
+    if is_coin_base_p:
+        entry.packed_flags |= tfCoinBase
+
+    return entry
 
 
 # dbPutUtxoView uses an existing database transaction to update the utxo set
@@ -240,11 +308,11 @@ def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
 
         key = outpoint_key(outpoint)
         utxo_bucket.put(key, serialized)
-        
+
         # NOTE: The key is intentionally not recycled here since the
-		# database interface contract prohibits modifications.  It will
-		# be garbage collected normally when the database is done with
-		# it.
+        # database interface contract prohibits modifications.  It will
+        # be garbage collected normally when the database is done with
+        # it.
 
     return
 
@@ -357,12 +425,13 @@ class SpentTxOut:
 # serializing the provided stxo entry.
 def spent_tx_out_header_code(stxo: SpentTxOut):
     # As described in the serialization format comments, the header code
-	# encodes the height shifted over one bit and the coinbase flag in the
-	# lowest bit.
+    # encodes the height shifted over one bit and the coinbase flag in the
+    # lowest bit.
     header_code = stxo.height << 1
     if stxo.is_coin_base:
         header_code |= 0x01
     return header_code
+
 
 # TODO
 # putSpentTxOut serializes the passed stxo according to the format described
@@ -389,11 +458,13 @@ def serialize_spend_journal_entry(stxos: [SpentTxOut]):
 # spend journal entry for the given block hash using the provided slice of
 # spent txouts.   The spent txouts slice must contain an entry for every txout
 # the transactions in the block spend in the order they are spent.
-def db_put_spend_journal_entry(db_tx:database.Tx, block_hash: chainhash.Hash, stxos: []):
+def db_put_spend_journal_entry(db_tx: database.Tx, block_hash: chainhash.Hash, stxos: []):
     spend_bucket = db_tx.metadata().bucket(spendJournalBucketName)
     serialized = serialize_spend_journal_entry(stxos)
     spend_bucket.put(block_hash.to_bytes(), serialized)
     return
+
+
 # dbRemoveSpendJournalEntry uses an existing database transaction to remove the
 # spend journal entry for the passed block hash.
 def db_remove_spend_journal_entry(db_tx: database.Tx, block_hash: chainhash.Hash):
