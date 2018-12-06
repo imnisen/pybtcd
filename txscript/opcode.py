@@ -5,6 +5,7 @@ from .utils import *
 from .script_flag import *
 from .stack import *
 from .hash_cache import *
+from enum import Enum, IntEnum
 
 # These constants are the values of the official opcodes used on the btc wiki,
 # in bitcoin core and in most if not all other references and software related
@@ -761,11 +762,11 @@ def shadow_copy_tx(tx):
         lock_time=tx.lock_time
     )
 
-    for i, old_tx_in in enumerate(tx.tx_ins):
-        tx_copy.tx_ins[i] = old_tx_in
+    for old_tx_in in tx.tx_ins:
+        tx_copy.tx_ins.append(old_tx_in)
 
-    for i, old_tx_out in enumerate(tx.tx_outs):
-        tx_copy.tx_outs[i] = old_tx_out
+    for old_tx_out in tx.tx_outs:
+        tx_copy.tx_outs.append(old_tx_out)
     return tx_copy
 
 
@@ -1760,13 +1761,18 @@ def opcodeCodeSeparator(pop, vm):
 
 
 # SigHashType represents hash type bits at the end of a signature.
-class SigHashType(Enum):
+class SigHashType(IntEnum):
     SigHashOld = 0x0
     SigHashAll = 0x1
     SigHashNone = 0x2
     SigHashSingle = 0x3
     SigHashAnyOneCanPay = 0x80
 
+    # def __and__(self, other):
+    #     return self.value & other
+    #
+    # def __or__(self, other):
+    #     return self.value & other
 
 # opcodeCheckSig treats the top 2 items on the stack as a public key and a
 # signature and replaces them with a bool which indicates if the signature was
@@ -1841,7 +1847,8 @@ def opcodeCheckSig(pop, vm):
             signature = btcec.parse_der_signature(sig_bytes, btcec.s256())
         else:
             signature = btcec.parse_signature(sig_bytes, btcec.s256())
-    except Exception:
+    except Exception as e:
+        print(e)
         vm.dstack.push_bool(False)
         return
 

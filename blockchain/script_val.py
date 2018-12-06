@@ -32,7 +32,7 @@ class TxValidator:
         # self.result_chan = None
 
     # TOCHANGE make it parallel on multi core/processor
-    def validate_handler(self, item: TxValidateItem):
+    def validate_handler(self, item: TxValidateItem, i):
 
         # Ensure the referenced input utxo is available.
         tx_in = item.tx_in
@@ -68,6 +68,7 @@ class TxValidator:
 
         # Execute the script pair.
         try:
+            print('--->i', i)
             vm.execute()
         except Exception as e:
             msg = "failed to validate input %s:%d which references output %s - %s (input witness %s, input script bytes %s, prev output script bytes %s)" \
@@ -82,8 +83,9 @@ class TxValidator:
         if len(items) == 0:
             return
 
-        for item in items:
-            self.validate_handler(item)
+        items = [items[2], items[3]]
+        for i, item in enumerate(items):
+            self.validate_handler(item, i)
 
         return
 

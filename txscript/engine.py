@@ -113,6 +113,10 @@ class Engine:
         if self.dstack.verify_minimal_data and self.is_branch_executing() and 0 <= pop.opcode.value <= OP_PUSHDATA4:
             pop.check_minimal_data_push()
 
+        # print('pop1', pop.opcode.name)
+        # print('pop2', pop.opcode.opfunc)
+        # print('pop3', pop.opcode.value)
+        # print('---')
         return pop.opcode.opfunc(pop, self)
 
     # disasm is a helper function to produce the output for DisasmPC and
@@ -138,7 +142,7 @@ class Engine:
             raise ScriptError(ErrorCode.ErrInvalidIndex, desc=desc)
 
         dis_str = ""
-        for i in self.scripts[idx]:
+        for i, _ in enumerate(self.scripts[idx]):
             dis_str = dis_str + self.disasm(idx, i) + "\n"
 
         return dis_str
@@ -280,7 +284,7 @@ class Engine:
             # Do some log
             dis0 = self.disasm_script(0)
             dis1 = self.disasm_script(1)
-            _logger.error("scripts failed: script0: %s\n script1: %s" % (dis0, dis1))
+            _logger.error("scripts failed:\nscript0:\n%s\nscript1:\n%s" % (dis0, dis1))
 
             desc = "false stack entry at end of script execution"
             raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)

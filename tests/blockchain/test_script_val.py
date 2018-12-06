@@ -1,6 +1,6 @@
 import unittest
 from blockchain.script_val import *
-from .common import *
+from tests.blockchain.common import *
 import txscript
 
 
