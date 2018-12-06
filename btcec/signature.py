@@ -2,6 +2,11 @@ from ecdsa.ecdsa import Signature as BaseSignature
 from .error import *
 from .utils import *
 
+import binascii
+
+
+def binary_to_number(string):
+    return int(binascii.hexlify(string), 16)
 
 class Signature(BaseSignature):
     def __init__(self, r, s):
@@ -10,9 +15,12 @@ class Signature(BaseSignature):
     def __eq__(self, other):
         return self.r == other.r and self.s == other.s
 
+    def verify(self, hash, pub_key):
+        number = binary_to_number(hash)
+        return pub_key.pubkey.verifies(number, self)
+
 
 def _parse_sig(sig_str, curve, der):
-
     """
     Refer to:
         https://en.bitcoin.it/w/images/en/7/70/Bitcoin_OpCheckSig_InDetail.png
@@ -59,7 +67,7 @@ def _parse_sig(sig_str, curve, der):
     index += 1
 
     # next byte is r length
-    r_len = int(sig_str[index])  # TOCHECK TODO is it the proper way bytes->int
+    r_len = int(sig_str[index])
     # must be positive, must be able to fit in another 0x2, <len> <s>
     # hence the -3. We assume that the length must be at least one byte.
     index += 1
@@ -85,10 +93,10 @@ def _parse_sig(sig_str, curve, der):
     index += 1
 
     # Next is length of S
-    s_len = int(sig_str[index])  # TOCHECK TODO is it the proper way bytes->int
+    s_len = int(sig_str[index])
     index += 1
 
-    if s_len <= 0 or sig_len > len(sig_str) - index:
+    if s_len <= 0 or s_len > len(sig_str) - index:
         raise SigMalformedBogusSLenErr
 
     # Next is S itself
@@ -117,10 +125,10 @@ def _parse_sig(sig_str, curve, der):
     if s <= 0:
         raise SigSNotPositiveErr
 
-    if r >= curve.curve.N:
+    if r >= curve.order:
         raise SigRTooBigErr
 
-    if s >= curve.curve.N:
+    if s >= curve.order:
         raise SigSTooBigErr
     signature = Signature(r=r, s=s)
     return signature
