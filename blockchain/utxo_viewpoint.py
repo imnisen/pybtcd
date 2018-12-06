@@ -99,14 +99,14 @@ class UtxoEntry:
 # The unspent outputs are needed by other transactions for things such as
 # script validation and double spend prevention.
 class UtxoViewpoint:
-    def __init__(self, entries: dict, best_hash: chainhash.Hash):
+    def __init__(self, entries: dict=None, best_hash: chainhash.Hash=None):
         """
 
         :param dict(wire.OutPoint -> UtxoEntry) entries:
         :param chainhash.Hash best_hash:
         """
-        self.entries = entries
-        self.the_best_hash = best_hash
+        self.entries = entries or {}
+        self.the_best_hash = best_hash or chainhash.Hash()
 
     # BestHash returns the hash of the best block in the chain the view currently
     # respresents.
