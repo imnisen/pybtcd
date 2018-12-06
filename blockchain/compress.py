@@ -517,7 +517,7 @@ def decompress_tx_out_amount(amount: int) -> int:
 
 # compressedTxOutSize returns the number of bytes the passed transaction output
 # fields would take when encoded with the format described above.
-def compress_tx_out_size(amount: int, pk_script: bytes) -> int:
+def compressed_tx_out_size(amount: int, pk_script: bytes) -> int:
     return serialize_size_vlq(compress_tx_out_amount(amount)) + compressed_script_size(pk_script)
 
 
@@ -529,7 +529,7 @@ def compress_tx_out_size(amount: int, pk_script: bytes) -> int:
 def put_compressed_tx_out(target: bytearray, amount: int, pk_script: bytes) -> int:
     offset = put_vlq(target, compress_tx_out_amount(amount))
 
-    # do some trick as slice don't pass as pointer
+    # do some trick as slice don't pass as pointer  # # TOCHANGE
     amount_offset = offset
     target_slice = target[amount_offset:]
 

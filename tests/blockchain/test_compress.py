@@ -272,14 +272,14 @@ class TestCompressedTxOut(unittest.TestCase):
             },
         ]
 
-    def test_compress_tx_out_size(self):
+    def test_compressed_tx_out_size(self):
         for test in self.tests:
-            got_size = compress_tx_out_size(test['amount'], test['pk_script'])
+            got_size = compressed_tx_out_size(test['amount'], test['pk_script'])
             self.assertEqual(got_size, len(test['compressed']))
 
     def test_put_compressed_tx_out(self):
         for test in self.tests:
-            got_size = compress_tx_out_size(test['amount'], test['pk_script'])
+            got_size = compressed_tx_out_size(test['amount'], test['pk_script'])
             got_compressed = bytearray(got_size)
             got_bytes_written = put_compressed_tx_out(got_compressed, test['amount'], test['pk_script'])
             self.assertEqual(bytes(got_compressed), test['compressed'])
