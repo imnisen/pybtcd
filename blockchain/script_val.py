@@ -5,7 +5,7 @@ import pyutil
 import time
 from .utxo_viewpoint import *
 from .error import *
-from multiprocessing import Pool, Queue, Manager
+from multiprocessing import Pool, Queue, Manager, Process, cpu_count
 
 import logging
 
@@ -78,12 +78,15 @@ class TxValidator:
 
         return
 
-    # TOCHANGE make it parallel on multi core/processor
     def validate(self, items: [TxValidateItem]):
         if len(items) == 0:
             return
 
-        # # Use multiprocess to validate
+        # No multiprocess case
+        # for item in items:
+        #     self.validate_handler(item)
+
+        # First try, use multiprocess pool, but failed   # TOCONSIDER, why multiprocess pool cannot work?
         #
         # # def fn(q, x):
         # #     print('execute once')
@@ -114,11 +117,41 @@ class TxValidator:
         #
         # # print(len(items))
 
+        # Try 2, use raw multi process, not pool, save half time of all tests
+        # Actually, Queue is not proper solution here, what I need is golang channel
+        # That I can put as fast as worker can process, not whole initially,
+        # because, while one fail validate, don't need validate rest cases.
+        NUMBER_OF_PROCESSES = cpu_count()
+        task_queue = Queue()
+        done_queue = Queue()
+
+        # submit task
         for item in items:
-            self.validate_handler(item)
+            task_queue.put((self, item))
+
+        # Start worker processes
+        for _ in range(NUMBER_OF_PROCESSES):
+            Process(target=worker, args=(task_queue, done_queue)).start()
+
+        # Get and print results
+        for _ in range(len(items)):
+            result = done_queue.get()
+
+            if type(result) is Exception:
+
+                # Tell child processes to stop, little ugly
+                for i in range(NUMBER_OF_PROCESSES):
+                    task_queue.put('STOP')
+                raise result
+
+        # Tell child processes to stop
+        for _ in range(NUMBER_OF_PROCESSES):
+            task_queue.put('STOP')
 
         return
 
+
+# # First try, use multiprocess pool, but failed
 # # because of multiprocess `can't pickle local object multiprocessing` if put this method in `validate`
 # def helper_fn(q, x, self):
 #     print('execute once')
@@ -136,6 +169,15 @@ class TxValidator:
 #
 # def callback(x):
 #     print('callback:', x)
+
+def worker(input_q, output_q):
+    for self, item in iter(input_q.get, 'STOP'):
+        try:
+            # output_q.put(Exception("hi,exception"))
+            self.validate_handler(item)
+            output_q.put(True)
+        except Exception as e:
+            output_q.put(e)
 
 
 def validate_transaction_scripts(tx: btcutil.Tx, utxo_view: UtxoViewpoint, flags: txscript.ScriptFlags,
