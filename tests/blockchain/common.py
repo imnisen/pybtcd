@@ -24,7 +24,7 @@ def load_blocks(filename: str) -> [btcutil.Block]:
             # read network
             b = f.read(4)
             if len(b) < 4:
-                print("1")
+                # print("1")
                 break
 
             net = wire.BitcoinNet.from_int(int.from_bytes(b, byteorder="little"))
@@ -34,20 +34,20 @@ def load_blocks(filename: str) -> [btcutil.Block]:
             # read block len
             b = f.read(4)
             if len(b) < 4:
-                print("2")
+                # print("2")
                 break
             block_len = int.from_bytes(b, byteorder="little")
 
             # read block
             b = f.read(block_len)
             if len(b) < block_len:
-                print("3")
+                # print("3")
                 break
 
             try:
                 block = btcutil.Block.from_bytes(b)
             except Exception as e:
-                print('4')
+                # print('4')
                 print(e)
                 break
 
@@ -78,27 +78,27 @@ def load_utxo_view(filename: str) -> UtxoViewpoint:
             # read hash of the utxo entry.
             b = f.read(chainhash.HashSize)
             if len(b) < chainhash.HashSize:
-                print("1")
+                # print("1")
                 break
             hash = chainhash.Hash(b)
 
             # read output index of the utxo entry.
             b = f.read(4)
             if len(b) < 4:
-                print("2")
+                # print("2")
                 break
             index = int.from_bytes(b, byteorder="little")
 
             # Num of serialized utxo entry bytes.
             b = f.read(4)
             if len(b) < 4:
-                print("3")
+                # print("3")
                 break
             num_bytes = int.from_bytes(b, byteorder="little")
 
             b = f.read(num_bytes)
             if len(b) < num_bytes:
-                print("4")
+                # print("4")
                 break
 
             # Deserialize it and add it to the view.

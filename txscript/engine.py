@@ -113,10 +113,6 @@ class Engine:
         if self.dstack.verify_minimal_data and self.is_branch_executing() and 0 <= pop.opcode.value <= OP_PUSHDATA4:
             pop.check_minimal_data_push()
 
-        # print('pop1', pop.opcode.name)
-        # print('pop2', pop.opcode.opfunc)
-        # print('pop3', pop.opcode.value)
-        # print('---')
         return pop.opcode.opfunc(pop, self)
 
     # disasm is a helper function to produce the output for DisasmPC and
@@ -401,7 +397,6 @@ class Engine:
                 astr = "Atack:\n" + str(self.astack)
 
             _logger.info("%s" % (dstr + astr))
-
         return self.check_error_condition(final_script=True)
 
     # subScript returns the script since the last OP_CODESEPARATOR.

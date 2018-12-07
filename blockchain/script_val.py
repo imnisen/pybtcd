@@ -5,6 +5,7 @@ import pyutil
 import time
 from .utxo_viewpoint import *
 from .error import *
+from multiprocessing import Pool, Queue, Manager
 
 import logging
 
@@ -32,7 +33,7 @@ class TxValidator:
         # self.result_chan = None
 
     # TOCHANGE make it parallel on multi core/processor
-    def validate_handler(self, item: TxValidateItem, i):
+    def validate_handler(self, item: TxValidateItem):
 
         # Ensure the referenced input utxo is available.
         tx_in = item.tx_in
@@ -42,7 +43,6 @@ class TxValidator:
                                                                                           item.tx.hash(),
                                                                                           item.tx_in_index)
             raise RuleError(ErrorCode.ErrMissingTxOut, msg)
-
         # Create a new script engine for the script pair.
         sig_script = tx_in.signature_script
         witness = tx_in.witness
@@ -65,10 +65,8 @@ class TxValidator:
                       e, witness, sig_script, pk_script
                   )
             raise RuleError(ErrorCode.ErrScriptMalformed, msg)
-
         # Execute the script pair.
         try:
-            print('--->i', i)
             vm.execute()
         except Exception as e:
             msg = "failed to validate input %s:%d which references output %s - %s (input witness %s, input script bytes %s, prev output script bytes %s)" \
@@ -78,16 +76,66 @@ class TxValidator:
                   )
             raise RuleError(ErrorCode.ErrScriptValidation, msg)
 
+        return
+
     # TOCHANGE make it parallel on multi core/processor
     def validate(self, items: [TxValidateItem]):
         if len(items) == 0:
             return
 
-        items = [items[2], items[3]]
-        for i, item in enumerate(items):
-            self.validate_handler(item, i)
+        # # Use multiprocess to validate
+        #
+        # # def fn(q, x):
+        # #     print('execute once')
+        # #     try:
+        # #         self.validate_handler(x)
+        # #         q.put(True)
+        # #     except Exception as e:
+        # #         q.put(False)
+        #
+        # # use manager because `Queue objects should only be shared between processes through inheritance`
+        # manager = Manager()
+        # result_q = manager.Queue()
+        # with Pool() as pool:
+        #     for item in items:
+        #         # print('submit task')
+        #         pool.apply_async(helper_fn, (result_q, item, self), {}, callback, err_callback)
+        #
+        # results = []
+        # count = 0
+        # limit = len(items)
+        # while count < limit:
+        #     result = result_q.get()
+        #     results.append(result)
+        #     count += 1
+        #
+        # # pool.close()
+        # # pool.join()
+        #
+        # # print(len(items))
+
+        for item in items:
+            self.validate_handler(item)
 
         return
+
+# # because of multiprocess `can't pickle local object multiprocessing` if put this method in `validate`
+# def helper_fn(q, x, self):
+#     print('execute once')
+#     try:
+#         self.validate_handler(x)
+#         print('hhhhh')
+#         q.put_nowait(True)
+#     except Exception as e:
+#         print(';;;;;')
+#         q.put_nowait(False)
+#
+#
+# def err_callback(x):
+#     print('err_callback:', x)
+#
+# def callback(x):
+#     print('callback:', x)
 
 
 def validate_transaction_scripts(tx: btcutil.Tx, utxo_view: UtxoViewpoint, flags: txscript.ScriptFlags,

@@ -763,10 +763,10 @@ def shadow_copy_tx(tx):
     )
 
     for old_tx_in in tx.tx_ins:
-        tx_copy.tx_ins.append(old_tx_in)
+        tx_copy.tx_ins.append(old_tx_in.copy())
 
     for old_tx_out in tx.tx_outs:
-        tx_copy.tx_outs.append(old_tx_out)
+        tx_copy.tx_outs.append(old_tx_out.copy())
     return tx_copy
 
 
@@ -1848,7 +1848,7 @@ def opcodeCheckSig(pop, vm):
         else:
             signature = btcec.parse_signature(sig_bytes, btcec.s256())
     except Exception as e:
-        print(e)
+        # print(e)
         vm.dstack.push_bool(False)
         return
 
