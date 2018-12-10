@@ -209,8 +209,8 @@ class MsgTx(Message):
         """
 
         :param uint32 version:
-        :param TxIn[] tx_ins:
-        :param Txout[] tx_outs:
+        :param [TxIn] tx_ins:
+        :param [TxOut] tx_outs:
         :param uint32 lock_time:w
         """
         self.version = version or 0
