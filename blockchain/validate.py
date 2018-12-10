@@ -143,7 +143,11 @@ def is_finalized_transaction(tx: btcutil.Tx, block_height: int, block_time: int)
 # isBIP0030Node returns whether or not the passed node represents one of the
 # two blocks that violate the BIP0030 rule which prevents transactions from
 # overwriting old ones.
-def is_bip003_node(node: BlockNode) -> bool:
+def is_bip003_node(node) -> bool:
+    """
+    :param BlockNode node:
+    :return:
+    """
     if node.height == 91842 and node.hash == block91842Hash:
         return True
     if node.height == 91880 and node.hash == block91880Hash:
