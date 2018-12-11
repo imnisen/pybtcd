@@ -64,11 +64,12 @@ def calc_bytes_len(n: int) -> int:
     return max(1, (n.bit_length() + 7) // 8)
 
 
-def little_endian_first_bytes_as_int(n):
+def int_to_little_endian_first_8bytes_to_int(n):
     length = calc_bytes_len(n)
-    return n.to_bytes(length, 'little')[0]
+    return int.from_bytes((n.to_bytes(length, 'little')[:8]), 'little')
 
 
+# TOCONSIDER
 # BigToCompact converts a whole number N to a compact representation using
 # an unsigned 32-bit number.  The compact representation only provides 23 bits
 # of precision, so values larger than (2^23 - 1) only encode the most
@@ -77,31 +78,27 @@ def big_to_compact(n: int) -> int:
     if n == 0:
         return 0
 
-    # bytes_len = calc_bytes_len(n)
-    # exponent = bytes_len
-    #
-    # if exponent <= 3:
-    #     print('mantissa1:', little_endian_first_bytes_as_int(n))
-    #
-    #     mantissa = little_endian_first_bytes_as_int(n) << (8 * (3 - exponent))
-    #     print('mantissa2:', mantissa)
-    # else:
-    #     mantissa = little_endian_first_bytes_as_int(n >> (8 * (exponent - 3)))
-    #     print('-mantissa:', mantissa)
-    #
-    # # When the mantissa already has the sign bit set, the number is too
-    # # large to fit into the available 23-bits, so divide the number by 256
-    # # and increment the exponent accordingly.
-    # if mantissa & 0x00800000 != 0:
-    #     mantissa >>= 8
-    #     exponent += 1
-    #
-    # print('exponent:', exponent)
-    # print('mantissa:', mantissa)
-    #
-    # # Pack the exponent, sign bit, and mantissa into an unsigned 32-bit
-    # # int and return it.
-    # compact = exponent << 24 | mantissa
-    # if n < 0:
-    #     compact |= 0x00800000
-    # return compact
+    is_negative = n < 0
+    n = 0 - n if is_negative else n
+
+    bytes_len = calc_bytes_len(n)
+    exponent = bytes_len
+
+    if exponent <= 3:
+        mantissa = int_to_little_endian_first_8bytes_to_int(n) << (8 * (3 - exponent))
+    else:
+        mantissa = int_to_little_endian_first_8bytes_to_int(n >> (8 * (exponent - 3)))
+
+    # When the mantissa already has the sign bit set, the number is too
+    # large to fit into the available 23-bits, so divide the number by 256
+    # and increment the exponent accordingly.
+    if mantissa & 0x00800000 != 0:
+        mantissa >>= 8
+        exponent += 1
+
+    # Pack the exponent, sign bit, and mantissa into an unsigned 32-bit
+    # int and return it.
+    compact = exponent << 24 | mantissa
+    if is_negative:
+        compact |= 0x00800000
+    return compact

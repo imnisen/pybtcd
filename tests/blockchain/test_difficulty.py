@@ -29,8 +29,7 @@ class TestDifficulty(unittest.TestCase):
         ]
         for test in tests:
             self.assertEqual(big_to_compact(test['big']), test['compact'])
-            self.assertEqual(big_to_compact(test['compact']), test['to_big'])
-
+            self.assertEqual(compact_to_big(test['compact']), test['to_big'])
 
     def test_calc_work(self):
         # tests = [
