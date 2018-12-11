@@ -11,10 +11,6 @@ def hash_to_big(hash: chainhash.Hash) -> int:
     pass
 
 
-def calc_work(bits: int):
-    pass
-
-
 # CompactToBig converts a compact representation of a whole number N to an
 # unsigned 32-bit number.  The representation is similar to IEEE754 floating
 # point numbers.
@@ -102,3 +98,25 @@ def big_to_compact(n: int) -> int:
     if is_negative:
         compact |= 0x00800000
     return compact
+
+
+# CalcWork calculates a work value from difficulty bits.  Bitcoin increases
+# the difficulty for generating a block by decreasing the value which the
+# generated hash must be less than.  This difficulty target is stored in each
+# block header using a compact representation as described in the documentation
+# for CompactToBig.  The main chain is selected by choosing the chain that has
+# the most proof of work (highest difficulty).  Since a lower target difficulty
+# value equates to higher actual difficulty, the work value which will be
+# accumulated must be the inverse of the difficulty.  Also, in order to avoid
+# potential division by zero and really small floating point numbers, the
+# result adds 1 to the denominator and multiplies the numerator by 2^256.
+def calc_work(bits: int) -> int:
+    # Return a work value of zero if the passed difficulty bits represent
+    # a negative number. Note this should not happen in practice with valid
+    # blocks, but an invalid block could trigger it.
+    difficulty_num = compact_to_big(bits)
+    if difficulty_num <= 0:
+        return 0
+
+    # (1 << 256) / (difficultyNum + 1)
+    return (1 << 256) // (difficulty_num + 1)

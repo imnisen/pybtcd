@@ -32,9 +32,11 @@ class TestDifficulty(unittest.TestCase):
             self.assertEqual(compact_to_big(test['compact']), test['to_big'])
 
     def test_calc_work(self):
-        # tests = [
-        #     {"in": 10000000, 'out': 0}
-        # ]
-        # for test in tests:
-        #     self.assertEqual(calc_work(test['in']), test['out'])
-        pass
+        tests = [
+            {"in": 10000000, 'out': 0},
+            {"in": 25231360, 'out': 0},
+            {"in": 56885448, 'out': 17667928769475331250303600156411204406918974907178378476773643875960397},
+            {"in": 67147926, 'out': 11579355981552585260189902912635781259748997278829497538564498169918070}
+        ]
+        for test in tests:
+            self.assertEqual(calc_work(test['in']), test['out'])
