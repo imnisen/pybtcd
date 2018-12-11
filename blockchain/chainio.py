@@ -235,7 +235,7 @@ def serialize_utxo_entry(entry: UtxoEntry) -> bytes or None:
     header_code = utxo_entry_header_code(entry)
 
     # Calculate the size needed to serialize the entry.
-    size = serialize_size_vlq(header_code) + compressed_tx_out_size(entry.amount(), entry.pk_script())
+    size = serialize_size_vlq(header_code) + compressed_tx_out_size(entry.get_amount(), entry.get_pk_script())
 
     # Serialize the header code followed by the compressed unspent
     # transaction output.
@@ -245,7 +245,7 @@ def serialize_utxo_entry(entry: UtxoEntry) -> bytes or None:
     # do some trick as slice pass not work as reference  # TOCHANGE
     header_offset = offset
     serialized_slice = serialized[header_offset:]
-    offset += put_compressed_tx_out(serialized_slice, entry.amount(), entry.pk_script())
+    offset += put_compressed_tx_out(serialized_slice, entry.get_amount(), entry.get_pk_script())
     serialized[header_offset:] = serialized_slice
     return bytes(serialized)
 

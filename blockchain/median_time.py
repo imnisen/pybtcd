@@ -12,7 +12,7 @@ _logger = logging.Logger(__name__)
 class MedianTimeSource:
     # AdjustedTime returns the current time adjusted by the median time
     # offset as calculated from the time samples added by AddTimeSample.
-    def adjusted_time(self):
+    def adjusted_time(self) -> int:
         pass
 
     # AddTimeSample adds a time sample that is used when determining the
@@ -22,7 +22,7 @@ class MedianTimeSource:
 
     # Offset returns the number of seconds to adjust the local clock based
     # upon the median of the time samples added by AddTimeData.
-    def offset(self):
+    def offset(self) -> int:
         pass
 
 
@@ -153,7 +153,7 @@ class MedianTime(MedianTimeSource):
 
                     if not remote_hash_close_time:
                         _logger.debug("Please check your date and time are correct!  btcd will not work " +
-                                        "properly with an invalid time")
+                                      "properly with an invalid time")
 
             _logger.debug("New time offset: %s" % self.offset_secs)
             return

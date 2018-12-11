@@ -48,7 +48,7 @@ class Block:
 
     # TODO same name as filed, fix latter
     # MsgBlock returns the underlying wire.MsgBlock for the Block.
-    def get_msg_block(self):
+    def get_msg_block(self) -> wire.MsgBlock:
         return self.msg_block
 
     # Bytes returns the serialized bytes for the Block.  This is equivalent to

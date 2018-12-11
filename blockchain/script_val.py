@@ -46,8 +46,8 @@ class TxValidator:
         # Create a new script engine for the script pair.
         sig_script = tx_in.signature_script
         witness = tx_in.witness
-        pk_script = utxo.pk_script()
-        input_amount = utxo.amount()
+        pk_script = utxo.get_pk_script()
+        input_amount = utxo.get_amount()
         try:
             vm = txscript.new_engine(
                 pk_script,

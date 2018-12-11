@@ -8,7 +8,7 @@ import chainhash
 def hash_to_big(hash: chainhash.Hash) -> int:
     # A Hash is in little-endian, but the big package wants the bytes in
     # big-endian, so reverse them.
-    pass
+    return int.from_bytes(hash.to_bytes(), 'little')
 
 
 # CompactToBig converts a compact representation of a whole number N to an

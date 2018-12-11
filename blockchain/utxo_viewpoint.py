@@ -32,10 +32,10 @@ class UtxoEntry:
         :param int32 block_height:
         :param TxoFlags packed_flags:
         """
-        self.the_amount = amount or 0
+        self.amount = amount or 0
 
         # The public key script for the output.
-        self.the_pk_script = pk_script or bytes()
+        self.pk_script = pk_script or bytes()
 
         # Height of block containing tx.
         self.block_height = block_height or 0
@@ -74,18 +74,18 @@ class UtxoEntry:
         self.packed_flags = self.packed_flags | (tfSpent | tfModified)
 
     # Amount returns the amount of the output.
-    def amount(self):
-        return self.the_amount
+    def get_amount(self):
+        return self.amount
 
     # PkScript returns the public key script for the output.
-    def pk_script(self):
-        return self.the_pk_script
+    def get_pk_script(self):
+        return self.pk_script
 
     # Clone returns a shallow copy of the utxo entry.
     def clone(self):
         return UtxoEntry(
-            amount=self.the_amount,
-            pk_script=self.the_pk_script,
+            amount=self.amount,
+            pk_script=self.pk_script,
             block_height=self.block_height,
             packed_flags=self.packed_flags,
         )
@@ -122,7 +122,7 @@ class UtxoViewpoint:
     # the current state of the view.  It will return nil if the passed output does
     # not exist in the view or is otherwise not available such as when it has been
     # disconnected during a reorg.
-    def lookup_entry(self, outpoint: wire.OutPoint):
+    def lookup_entry(self, outpoint: wire.OutPoint) -> UtxoEntry or None:
         return self.entries.get(outpoint)
 
     # addTxOut adds the specified output to the view if it is not provably
@@ -143,8 +143,8 @@ class UtxoViewpoint:
             entry = UtxoEntry()
             self.entries[outpoint] = entry
 
-        entry.the_amount = tx_out.value
-        entry.the_pk_script = tx_out.pk_script
+        entry.amount = tx_out.value
+        entry.pk_script = tx_out.pk_script
         entry.block_height = block_height
         entry.packed_flags = tfModified
 
