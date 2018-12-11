@@ -229,11 +229,11 @@ def check_transaction_sanity(tx: btcutil.Tx):
 
     # Check for duplicate transaction inputs.
     existing_tx_out = {}
-    for tx_in in msg_tx.tx_outs:
-        if tx_in in existing_tx_out:
+    for tx_in in msg_tx.tx_ins:
+        if tx_in.previous_out_point in existing_tx_out:
             msg = "transaction contains duplicate inputs"
             raise RuleError(ErrorCode.ErrDuplicateTxInputs, msg)
-        existing_tx_out[tx_in] = True
+        existing_tx_out[tx_in.previous_out_point] = True
 
     # Coinbase script length must be between min and max length.
     if is_coin_base(tx):
@@ -311,7 +311,7 @@ def count_sig_ops(tx: btcutil.Tx) -> int:
     # Accumulate the number of signature operations in all transaction
     # outputs.
     for tx_out in msg_tx.tx_outs:
-        num_sig_ops = txscript.get_sig_op_count(tx_out.signature_script)
+        num_sig_ops = txscript.get_sig_op_count(tx_out.pk_script)
         total_sig_ops += num_sig_ops
 
     return total_sig_ops
@@ -427,7 +427,7 @@ def _check_block_sanity(block: btcutil.block, pow_limit: int,
         raise RuleError(ErrorCode.ErrFirstTxNotCoinbase, "first transaction in block is not a coinbase")
 
     # A block must not have more than one coinbase.
-    for i, tx in transactions[1:]:
+    for i, tx in enumerate(transactions[1:]):
         if is_coin_base(tx):
             msg = "block contains second coinbase at index %d" % (i + 1)
             raise RuleError(ErrorCode.ErrMultipleCoinbases, msg)
@@ -444,7 +444,7 @@ def _check_block_sanity(block: btcutil.block, pow_limit: int,
     # after the following checks, but there is no reason not to check the
     # merkle root matches here.
     merkles = build_merkle_tree_store(block.get_transactions(), witness=False)
-    calculated_merkle_root = merkles[:-1]
+    calculated_merkle_root = merkles[-1]
     if header.merkle_root != calculated_merkle_root:
         msg = ("block merkle root is invalid - block " +
                "header indicates %s, but calculated value is %s") % (header.merkle_root, calculated_merkle_root)
@@ -526,7 +526,7 @@ def check_serialized_height(coin_base_tx: btcutil.Tx, want_height: int):
 
     if serialized_height != want_height:
         msg = "the coinbase signature script serialized block height is %d when %d was expected" % (
-        serialized_height, want_height)
+            serialized_height, want_height)
         raise RuleError(ErrorCode.ErrBadCoinbaseHeight, msg)
 
     return
