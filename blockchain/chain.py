@@ -15,6 +15,7 @@ from .weight import *
 from .sequence_lock import *
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -67,9 +68,6 @@ class BestState:
         self.num_txns = num_txns  # The number of txns in the block.
         self.total_txns = total_txns  # The total number of txns in the chain.
         self.median_time = median_time  # Median time as per CalcPastMedianTime.
-
-
-
 
 
 # This is a interface
@@ -473,7 +471,7 @@ class BlockChain:
     # It also imposes a maximum limit on the number of outstanding orphan
     # blocks and will remove the oldest received orphan block if the limit is
     # exceeded.
-    def add_orphan_block(self, block:btcutil.Block):
+    def add_orphan_block(self, block: btcutil.Block):
         # Remove expired orphan blocks.
         for _, o_block in self.orphans.items():
             if int(time.time()) > o_block.expiration:
@@ -526,12 +524,11 @@ class BlockChain:
         finally:
             self.chain_lock.unlock()
 
-
     # calcSequenceLock computes the relative lock-times for the passed
     # transaction. See the exported version, CalcSequenceLock for further details.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def _calc_sequence_lock(self, node: BlockNode, tx:btcutil.Tx, utxo_view: UtxoViewpoint, mempool: bool):
+    def _calc_sequence_lock(self, node: BlockNode, tx: btcutil.Tx, utxo_view: UtxoViewpoint, mempool: bool):
         # A value of -1 for each relative lock type represents a relative time
         # lock value that will allow a transaction to be included in a block
         # at any given height or time. This value is returned as the relative
@@ -552,14 +549,13 @@ class BlockChain:
             csv_state = self._deployment_state(node.parent, chaincfg.DeploymentCSV)
             csv_soft_fork_active = csv_state == ThresholdState.ThresholdActive
 
-
         # If the transaction's version is less than 2, and BIP 68 has not yet
         # been activated then sequence locks are disabled. Additionally,
         # sequence locks don't apply to coinbase transactions Therefore, we
         # return sequence lock values of -1 indicating that this transaction
         # can be included within a block at any given height or time.
         m_tx = tx.get_msg_tx()
-        sequence_lock_active = m_tx.version >=2 and csv_soft_fork_active
+        sequence_lock_active = m_tx.version >= 2 and csv_soft_fork_active
         if not sequence_lock_active or is_coin_base(tx):
             return sequence_lock
 
@@ -570,7 +566,8 @@ class BlockChain:
         for tx_in_index, tx_in in enumerate(m_tx.tx_ins):
             utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
             if utxo is None:
-                msg = "output %s referenced from transaction %s:%d either does not exist or has already been spent" % (tx_in.previous_out_point, tx.hash(),tx_in_index)
+                msg = "output %s referenced from transaction %s:%d either does not exist or has already been spent" % (
+                tx_in.previous_out_point, tx.hash(), tx_in_index)
                 raise RuleError(ErrorCode.ErrMissingTxOut, msg)
 
             # If the input height is set to the mempool height, then we
@@ -620,7 +617,7 @@ class BlockChain:
                 # the input's height as its converted absolute
                 # lock-time. We subtract one from the relative lock in
                 # order to maintain the original lockTime semantics.
-                block_height = input_height + relative_lock -1
+                block_height = input_height + relative_lock - 1
                 if block_height > sequence_lock.block_height:
                     sequence_lock.block_height = block_height
 
@@ -763,7 +760,6 @@ class BlockChain:
             if self.index_manager is not None:
                 self.index_manager.connect_block(db_tx, block, stxos)
 
-
         self.db.update(f)
 
         # Prune fully spent entries and mark all entries in the view unmodified
@@ -786,22 +782,9 @@ class BlockChain:
         # The caller would typically want to react with actions such as
         # updating wallets.
         self.chain_lock.unlock()
-        self._send_notification()  #TODO
+        self._send_notification()  # TODO
         self.chain_lock.lock()
         return
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     # disconnectBlock handles disconnecting the passed node/block from the end of
     # the main (best) chain.
@@ -945,7 +928,6 @@ class BlockChain:
 
         # TODO
 
-
     # ------------------------------------
     # Methods add from threshold_state.py
     # ------------------------------------
@@ -953,7 +935,7 @@ class BlockChain:
     # deployment ID for the block AFTER the end of the current best chain.
     #
     # This function is safe for concurrent access.
-    def threshold_state(self, deployment_id:int):
+    def threshold_state(self, deployment_id: int):
         self.chain_lock.lock()
         try:
             state = self._deployment_state(self.best_chain.tip(), deployment_id)
@@ -966,7 +948,8 @@ class BlockChain:
     # threshold states for previous windows are only calculated once.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def _threshold_state(self, prev_node: BlockNode or None, checker: ThresholdConditionChecker, cache: ThresholdStateCache):
+    def _threshold_state(self, prev_node: BlockNode or None, checker: ThresholdConditionChecker,
+                         cache: ThresholdStateCache):
         # The threshold state for the window that contains the genesis block is
         # defined by definition.
         confirmation_window = checker.miner_confirmation_window()
@@ -999,7 +982,6 @@ class BlockChain:
                 cache.update(prev_node.hash, ThresholdState.ThresholdDefined)
                 break
 
-
             # Add this node to the list of nodes that need the state
             # calculated and cached.
             needed_states.append(prev_node)
@@ -1014,13 +996,13 @@ class BlockChain:
         if prev_node is not None:
             state, ok = cache.look_up(prev_node.hash)
             if not ok:
-                msg= "thresholdState: cache lookup failed for %s" % prev_node.hash
+                msg = "thresholdState: cache lookup failed for %s" % prev_node.hash
                 raise AssertError(msg=msg, extra=ThresholdState.ThresholdFailed)
 
         # Since each threshold state depends on the state of the previous
         # window, iterate starting from the oldest unknown window.
         for prev_node in reversed(needed_states):
-            if state is  ThresholdState.ThresholdDefined:
+            if state is ThresholdState.ThresholdDefined:
                 # The deployment of the rule change fails if it expires
                 # before it is accepted and locked in.
                 median_time = prev_node.calc_past_median_time()
@@ -1034,7 +1016,7 @@ class BlockChain:
                 if median_time >= checker.begin_time():
                     state = ThresholdState.ThresholdStarted
 
-            elif state is  ThresholdState.ThresholdStarted:
+            elif state is ThresholdState.ThresholdStarted:
 
                 # The deployment of the rule change fails if it expires
                 # before it is accepted and locked in.
@@ -1042,7 +1024,7 @@ class BlockChain:
                 if median_time >= checker.end_time():
                     state = ThresholdState.ThresholdFailed
                     break
-                
+
                 # At this point, the rule change is still being voted
                 # on by the miners, so iterate backwards through the
                 # confirmation window to count all of the votes in it.
@@ -1071,24 +1053,6 @@ class BlockChain:
             cache.update(prev_node.hash, state)
         return state
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     # deploymentState returns the current rule change threshold for a given
     # deploymentID. The threshold is evaluated from the point of view of the block
     # node passed in as the first argument to this method.
@@ -1105,10 +1069,8 @@ class BlockChain:
 
         deployment = self.chain_params.deployments[deployment_id]
         checker = DeploymentChecker(deployment=deployment, chain=self)
-        cache  = self.deployment_caches[deployment_id]
+        cache = self.deployment_caches[deployment_id]
         return self._threshold_state(prev_node, checker, cache)
-
-
 
     # ------------------------------------
     # END
@@ -1140,7 +1102,8 @@ class BlockChain:
             elif state == ThresholdState.ThresholdLockedIn:
                 window = checker.miner_confirmation_window()
                 activation_height = window - (node.height % window)
-                logger.warning("Unknown new rules are about to activate in %d blocks (bit %d)" % (activation_height, bit))
+                logger.warning(
+                    "Unknown new rules are about to activate in %d blocks (bit %d)" % (activation_height, bit))
 
         return
 
@@ -1164,13 +1127,12 @@ class BlockChain:
             node = node.parent
             i += 1
         if num_upgraded > unknownVerWarnNum:
-            logger.warning("Unknown block versions are being mined, so new rules might be in effect.  Are you running the latest version of the software?")
+            logger.warning(
+                "Unknown block versions are being mined, so new rules might be in effect.  Are you running the latest version of the software?")
             self.unknown_version_warned = True
 
         return
 
-
-    # TODO
     # calcNextBlockVersion calculates the expected version of the block after the
     # passed previous block node based on the state of started and locked in
     # rule change deployments.
@@ -1181,8 +1143,23 @@ class BlockChain:
     #
     # This function MUST be called with the chain state lock held (for writes).
     def _calc_next_block_version(self, prev_node: BlockNode):
-        pass
+        # Set the appropriate bits for each actively defined rule deployment
+        # that is either in the process of being voted on, or locked in for the
+        # activation at the next threshold window change.
+        expected_version = vbTopBits
 
+        for i in range(self.chain_params.deployments):
+
+            deployment = self.chain_params.deployments[i]
+            cache = self.deployment_caches[i]
+            checker = DeploymentChecker(deployment=deployment, chain=self)
+            state = self._threshold_state(prev_node, checker, cache)
+
+            # TOCHECK why only count state of `started` and `lockedin` ?
+            if state == ThresholdState.ThresholdStarted or state == ThresholdState.ThresholdLockedIn:
+                expected_version |= (1 << deployment.bit_number)
+
+        return expected_version
 
     # CalcNextBlockVersion calculates the expected version of the block after the
     # end of the current best chain based on the state of started and locked in
@@ -1190,27 +1167,17 @@ class BlockChain:
     #
     # This function is safe for concurrent access.
     def calc_next_block_version(self):
-        pass
-        
+        self.chain_lock.lock()
+        try:
+            version = self._calc_next_block_version(self.best_chain.tip())
+        finally:
+            self.chain_lock.unlock()
 
-
-
-
-
-
-
-
-
-
-
-
-
+        return version
 
     # --------------------------------
     # END
     # --------------------------------
-
-
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
