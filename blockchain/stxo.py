@@ -126,9 +126,7 @@ def spent_tx_out_header_code(stxo: SpentTxOut):
 # putSpentTxOut serializes the passed stxo according to the format described
 # above directly into the passed target byte slice.
 def put_spent_tx_out(stxos: SpentTxOut):
-    header_code = spent_tx_out_header_code(stxos)
-    # TODO
-
+    pass
 
 # serializeSpendJournalEntry serializes all of the passed spent txouts into a
 # single byte slice according to the format described in detail above.

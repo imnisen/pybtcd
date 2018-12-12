@@ -1180,5 +1180,38 @@ class BlockChain:
     # --------------------------------
 
 
+
+    # --------------------------------
+    # Methods add from version_bits.py
+    # --------------------------------
+
+    # TODO
+    # FetchUtxoView loads unspent transaction outputs for the inputs referenced by
+    # the passed transaction from the point of view of the end of the main chain.
+    # It also attempts to fetch the utxos for the outputs of the transaction itself
+    # so the returned view can be examined for duplicate transactions.
+    #
+    # This function is safe for concurrent access however the returned view is NOT.
+    def fetch_utxo_view(self):
+        pass
+
+
+    # FetchUtxoEntry loads and returns the requested unspent transaction output
+    # from the point of view of the end of the main chain.
+    #
+    # NOTE: Requesting an output for which there is no data will NOT return an
+    # error.  Instead both the entry and the error will be nil.  This is done to
+    # allow pruning of spent transaction outputs.  In practice this means the
+    # caller must check if the returned entry is nil before invoking methods on it.
+    #
+    # This function is safe for concurrent access however the returned entry (if
+    # any) is NOT.
+    def fetch_utxo_entry(self):
+        pass
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
     pass

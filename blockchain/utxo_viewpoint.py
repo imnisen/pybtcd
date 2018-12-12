@@ -3,7 +3,7 @@ import wire
 import txscript
 import btcutil
 from .validate import *
-
+from .stxo import *
 
 # txoFlags is a bitmask defining additional information and state for a
 # transaction output in a utxo view.
@@ -102,21 +102,21 @@ class UtxoViewpoint:
     def __init__(self, entries: dict=None, best_hash: chainhash.Hash=None):
         """
 
-        :param dict(wire.OutPoint -> UtxoEntry) entries:
+        :param dict of wire.OutPoint: UtxoEntry entries:
         :param chainhash.Hash best_hash:
         """
         self.entries = entries or {}
-        self.the_best_hash = best_hash or chainhash.Hash()
+        self.best_hash = best_hash or chainhash.Hash()
 
     # BestHash returns the hash of the best block in the chain the view currently
     # respresents.
-    def best_hash(self) -> chainhash.hash:
-        return self.the_best_hash
+    def get_best_hash(self) -> chainhash.hash:
+        return self.best_hash
 
     # SetBestHash sets the hash of the best block in the chain the view currently
     # respresents.
     def set_best_hash(self, hash: chainhash.Hash):
-        self.the_best_hash = hash
+        self.best_hash = hash
 
     # LookupEntry returns information about a given transaction output according to
     # the current state of the view.  It will return nil if the passed output does
@@ -124,6 +124,30 @@ class UtxoViewpoint:
     # disconnected during a reorg.
     def lookup_entry(self, outpoint: wire.OutPoint) -> UtxoEntry or None:
         return self.entries.get(outpoint)
+
+    # RemoveEntry removes the given transaction output from the current state of
+    # the view.  It will have no effect if the passed output does not exist in the
+    # view.
+    def remove_entry(self, outpoint: wire.OutPoint):
+        del self.entries[outpoint]
+        return
+
+    # Entries returns the underlying map that stores of all the utxo entries.
+    def get_entries(self):
+        return self.entries
+
+    # commit prunes all entries marked modified that are now fully spent and marks
+    # all entries as unmodified.
+    def commit(self):
+        for outpoint, entry in self.entries.items():
+            if entry is None or (entry.is_modified and entry.is_spent()):
+                del self.entries[outpoint]
+                continue
+
+            entry.packed_flags ^= tfModified  # Tocheck the xor operator
+
+        return
+
 
     # addTxOut adds the specified output to the view if it is not provably
     # unspendable.  When the view already has an entry for the output, it will be
@@ -188,3 +212,61 @@ class UtxoViewpoint:
             prev_out.index = idx
             self._add_tx_out(prev_out, tx_out, coin_base_p, block_height)
         return
+
+    # TODO
+    # connectTransaction updates the view by adding all new utxos created by the
+    # passed transaction and marking all utxos that the transactions spend as
+    # spent.  In addition, when the 'stxos' argument is not nil, it will be updated
+    # to append an entry for each spent txout.  An error will be returned if the
+    # view does not contain the required utxos.
+    def connect_transaction(self, tx:btcutil.Tx, block_height:int, stxos: [SpentTxOut]):
+        pass
+
+    # connectTransactions updates the view by adding all new utxos created by all
+    # of the transactions in the passed block, marking all utxos the transactions
+    # spend as spent, and setting the best hash for the view to the passed block.
+    # In addition, when the 'stxos' argument is not nil, it will be updated to
+    # append an entry for each spent txout.
+    def connect_transactions(self):
+        pass
+
+    # fetchEntryByHash attempts to find any available utxo for the given hash by
+    # searching the entire set of possible outputs for the given hash.  It checks
+    # the view first and then falls back to the database if needed.
+    def fetch_entry_by_hash(self):
+        pass
+
+    # disconnectTransactions updates the view by removing all of the transactions
+    # created by the passed block, restoring all utxos the transactions spent by
+    # using the provided spent txo information, and setting the best hash for the
+    # view to the block before the passed block.
+    def disconnect_transactions(self):
+        pass
+
+    # fetchUtxosMain fetches unspent transaction output data about the provided
+    # set of outpoints from the point of view of the end of the main chain at the
+    # time of the call.
+    #
+    # Upon completion of this function, the view will contain an entry for each
+    # requested outpoint.  Spent outputs, or those which otherwise don't exist,
+    # will result in a nil entry in the view.
+    def fetch_utxos_main(self):
+        pass
+
+    # fetchUtxos loads the unspent transaction outputs for the provided set of
+    # outputs into the view from the database as needed unless they already exist
+    # in the view in which case they are ignored.
+    def fetch_utxos(self):
+        pass
+
+    # fetchInputUtxos loads the unspent transaction outputs for the inputs
+    # referenced by the transactions in the given block into the view from the
+    # database as needed.  In particular, referenced entries that are earlier in
+    # the block are added to the view and entries that are already in the view are
+    # not modified.
+    def fetch_input_utxos(self):
+        pass
+
+
+
+    

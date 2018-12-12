@@ -82,5 +82,4 @@
 ** process
 ** thresholdstate
 ** upgrade
-** utxoviewpoint
-** versionbits
+** TODO utxoviewpoint
