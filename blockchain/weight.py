@@ -30,7 +30,7 @@ MinTxOutputWeight = WitnessScaleFactor * wire.MinTxOutPayload
 
 # MaxOutputsPerBlock is the maximum number of transaction outputs there
 # can be in a block of max weight size.
-MaxOutputsPerBlock = MaxBlockWeight / MinTxOutputWeight
+MaxOutputsPerBlock = MaxBlockWeight // MinTxOutputWeight
 
 
 # GetBlockWeight computes the value of the weight metric for a given block.

@@ -573,7 +573,7 @@ class BlockChain:
             # If the input height is set to the mempool height, then we
             # assume the transaction makes it into the next block when
             # evaluating its sequence blocks.
-            input_height = utxo.block_height()
+            input_height = utxo.get_block_height()
             if input_height == 0x7fffffff:
                 input_height = next_height
 

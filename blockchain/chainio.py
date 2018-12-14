@@ -217,7 +217,7 @@ def utxo_entry_header_code(entry: UtxoEntry):
     # As described in the serialization format comments, the header code
     # encodes the height shifted over one bit and the coinbase flag in the
     # lowest bit.
-    header_code = entry.block_height() << 1
+    header_code = entry.get_block_height() << 1
     if entry.is_coin_base():
         header_code |= 0x01
     return header_code
@@ -315,3 +315,28 @@ def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
 
     return
 
+# TODO
+# dbFetchUtxoEntryByHash attempts to find and fetch a utxo for the given hash.
+# It uses a cursor and seek to try and do this as efficiently as possible.
+#
+# When there are no entries for the provided hash, nil will be returned for the
+# both the entry and the error.
+def db_fetch_utxo_entry_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
+    pass
+
+# TODO
+# dbFetchUtxoEntry uses an existing database transaction to fetch the specified
+# transaction output from the utxo set.
+#
+# When there is no entry for the provided output, nil will be returned for both
+# the entry and the error.
+def db_fetch_utxo_entry(db_tx: database.Tx, outpoint: wire.OutPoint) -> UtxoEntry:
+    pass
+
+# countSpentOutputs returns the number of utxos the passed block spends.
+def count_spent_outputs(block: btcutil.Block)-> int:
+    # Exclude the coinbase transaction since it can't spend anything.
+    num_spent = 0
+    for tx in block.get_transactions():
+        num_spent += len(tx.get_msg_tx().tx_ins)
+    return num_spent
