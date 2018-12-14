@@ -1073,15 +1073,65 @@ class BlockChain:
         cache = self.deployment_caches[deployment_id]
         return self._threshold_state(prev_node, checker, cache)
 
-    # ------------------------------------
+    # IsDeploymentActive returns true if the target deploymentID is active, and
+    # false otherwise.
+    #
+    # This function is safe for concurrent access.
+    def is_deployment_active(self, deployment_id: int) -> bool:
+        self.chain_lock.lock()
+
+        try:
+
+            state = self._deployment_state(self.best_chain.tip(), deployment_id)
+
+        finally:
+            self.chain_lock.unlock()
+
+        return state == ThresholdState.ThresholdActive
+
+    # initThresholdCaches initializes the threshold state caches for each warning
+    # bit and defined deployment and provides warnings if the chain is current per
+    # the warnUnknownVersions and warnUnknownRuleActivations functions.
+    def init_threshold_caches(self):
+        # Initialize the warning and deployment caches by calculating the
+        # threshold state for each of them.  This will ensure the caches are
+        # populated and any states that needed to be recalculated due to
+        # definition changes is done now.
+        prev_node = self.best_chain.tip().parent
+        for bit in range(vbNumBits):
+            checker = BitConditionChecker(bit=bit, chain=self)
+            cache = self.warning_caches[bit]
+            self._threshold_state(prev_node, checker, cache)
+
+        for idx in range(len(self.chain_params.deployments)):
+            deployment = self.chain_params.deployments[idx]
+            cache = self.deployment_caches[idx]
+            checker = DeploymentChecker(deployment=deployment, chain=self)
+            self._threshold_state(prev_node, checker, cache)
+
+        # No warnings about unknown rules or versions until the chain is
+        # current.
+        if self._is_current():
+            # Warn if a high enough percentage of the last blocks have
+            # unexpected versions.
+            best_node = self.best_chain.tip()
+            self._warn_unknown_versions(best_node)
+
+            # Warn if any unknown new rules are either about to activate or
+            # have already been activated.
+            self._warn_unknown_rule_activations(best_node)
+        return
+
+        # ------------------------------------
+
     # END
     # ------------------------------------
-
 
     # --------------------------------
     # Methods add from version_bits.py
     # --------------------------------
 
+    # TOCONSIDER
     # warnUnknownRuleActivations displays a warning when any unknown new rules are
     # either about to activate or have been activated.  This will only happen once
     # when new rules have been activated and every block for those about to be
@@ -1108,6 +1158,7 @@ class BlockChain:
 
         return
 
+    # TOCONSIDER
     # warnUnknownVersions logs a warning if a high enough percentage of the last
     # blocks have unexpected versions.
     #
@@ -1129,7 +1180,8 @@ class BlockChain:
             i += 1
         if num_upgraded > unknownVerWarnNum:
             logger.warning(
-                "Unknown block versions are being mined, so new rules might be in effect.  Are you running the latest version of the software?")
+                "Unknown block versions are being mined, so new rules might be in effect. " +
+                "Are you running the latest version of the software?")
             self.unknown_version_warned = True
 
         return
@@ -1242,9 +1294,9 @@ class BlockChain:
             self.chain_lock.r_unlock()
 
         return entry
-    # ------------------------------------
-    # END
-    # ------------------------------------
+        # ------------------------------------
+        # END
+        # ------------------------------------
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):

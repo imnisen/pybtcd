@@ -80,6 +80,4 @@
 ** difficulty
 ** notification
 ** process
-** thresholdstate
 ** upgrade
-** TODO utxoviewpoint

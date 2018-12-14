@@ -72,7 +72,7 @@ class ChainView:
     # it is up to the caller to ensure the lock is held.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _tip(self):
+    def _tip(self) -> BlockNode:
         if len(self.nodes) == 0:
             return None
 
@@ -82,7 +82,7 @@ class ChainView:
     # nil if there is no tip.
     #
     # This function is safe for concurrent access.
-    def tip(self):
+    def tip(self) -> BlockNode:
         self.lock.acquire()
         tip = self._tip()
         self.lock.release()
