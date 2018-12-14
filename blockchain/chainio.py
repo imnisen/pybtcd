@@ -7,7 +7,6 @@ from .utxo_viewpoint import *
 from .compress import *
 from .stxo import *
 
-
 # Constant
 # blockIndexBucketName is the name of the db bucket used to house to the
 # block headers and contextual information.
@@ -32,7 +31,6 @@ chainStateKeyName = b"chainstate"
 # utxoSetBucketName is the name of the db bucket used to house the
 # unspent transaction output set.
 utxoSetBucketName = b"utxosetv2"
-
 
 
 # blockIndexKey generates the binary key for an entry in the block index
@@ -199,13 +197,16 @@ def db_put_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
     return
 
 
-# TODO
-def outpoint_key(outpoint):
-    pass
+# TOCONSIDER
+# Don't like the origin, I don't use sync.Pool here, for simplicity.
+def outpoint_key(outpoint: wire.OutPoint) -> bytes:
+    outpoint_index_bytearray = bytearray(serialize_size_vlq(outpoint.index))
+    put_vlq(outpoint_index_bytearray, outpoint.index)
+    return outpoint.hash + bytes(outpoint_index_bytearray)
 
 
-def recyle_outpoint_key(key):
-    pass
+# def recycle_outpoint_key(key):
+#     pass
 
 
 # utxoEntryHeaderCode returns the calculated header code to be used when
@@ -298,8 +299,7 @@ def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
         if entry.is_spent():
             key = outpoint_key(outpoint)
             utxo_bucket.delete(key)
-            recyle_outpoint_key(key)
-
+            # recycle_outpoint_key(key)
             continue
 
         # Serialize and store the utxo entry.
@@ -315,26 +315,66 @@ def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
 
     return
 
-# TODO
+
 # dbFetchUtxoEntryByHash attempts to find and fetch a utxo for the given hash.
 # It uses a cursor and seek to try and do this as efficiently as possible.
 #
 # When there are no entries for the provided hash, nil will be returned for the
 # both the entry and the error.
-def db_fetch_utxo_entry_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
-    pass
+def db_fetch_utxo_entry_by_hash(db_tx: database.Tx, hash: chainhash.Hash) -> UtxoEntry or None:
+    # Attempt to find an entry by seeking for the hash along with a zero
+    # index.  Due to the fact the keys are serialized as <hash><index>,
+    # where the index uses an MSB encoding, if there are any entries for
+    # the hash at all, one will be found.
+    cursor = db_tx.metadata().bucket(utxoSetBucketName).cursor()
+    key = outpoint_key(wire.OutPoint(hash=hash, index=0))
+    ok = cursor.seek(key)
+    if not ok:
+        return None
 
-# TODO
+    # An entry was found, but it could just be an entry with the next
+    # highest hash after the requested one, so make sure the hashes
+    # actually match.
+    cursor_key = cursor.key()
+    if len(cursor_key) < chainhash.HashSize:
+        return None
+
+    if hash.to_bytes() != cursor_key[:chainhash.HashSize]:
+        return None
+
+    return deserialize_utxo_entry(cursor.value())
+
+
 # dbFetchUtxoEntry uses an existing database transaction to fetch the specified
 # transaction output from the utxo set.
 #
 # When there is no entry for the provided output, nil will be returned for both
 # the entry and the error.
-def db_fetch_utxo_entry(db_tx: database.Tx, outpoint: wire.OutPoint) -> UtxoEntry:
-    pass
+def db_fetch_utxo_entry(db_tx: database.Tx, outpoint: wire.OutPoint) -> UtxoEntry or None:
+    # Fetch the unspent transaction output information for the passed
+    # transaction output.  Return nil when there is no entry.
+    key = outpoint_key(outpoint)
+    serialized_utxo = db_tx.metadata().bucket(utxoSetBucketName).get(key)
+    if serialized_utxo is None:
+        return None
+
+    # A non-nil zero-length entry means there is an entry in the database
+    # for a spent transaction output which should never be the case.
+    if len(serialized_utxo) == 0:
+        raise AssertError("database contains entry for spent tx output %s" % outpoint)
+
+    # Deserialize the utxo entry and return it.
+    try:
+        entry = deserialize_utxo_entry(serialized_utxo)
+    except DeserializeError as e:
+        raise database.DBError(c=database.ErrorCode.ErrCorruption,
+                               desc="corrupt utxo entry for %s: %s" % (outpoint, e))
+
+    return entry
+
 
 # countSpentOutputs returns the number of utxos the passed block spends.
-def count_spent_outputs(block: btcutil.Block)-> int:
+def count_spent_outputs(block: btcutil.Block) -> int:
     # Exclude the coinbase transaction since it can't spend anything.
     num_spent = 0
     for tx in block.get_transactions():
