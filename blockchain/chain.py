@@ -13,6 +13,7 @@ from .error import *
 from .version_bits import *
 from .weight import *
 from .sequence_lock import *
+from .validate import *
 
 import logging
 
@@ -567,7 +568,7 @@ class BlockChain:
             utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
             if utxo is None:
                 msg = "output %s referenced from transaction %s:%d either does not exist or has already been spent" % (
-                tx_in.previous_out_point, tx.hash(), tx_in_index)
+                    tx_in.previous_out_point, tx.hash(), tx_in_index)
                 raise RuleError(ErrorCode.ErrMissingTxOut, msg)
 
             # If the input height is set to the mempool height, then we
@@ -1182,19 +1183,38 @@ class BlockChain:
 
 
     # --------------------------------
-    # Methods add from version_bits.py
+    # Methods add from utxo_viewpoint.py
     # --------------------------------
 
-    # TODO
     # FetchUtxoView loads unspent transaction outputs for the inputs referenced by
     # the passed transaction from the point of view of the end of the main chain.
     # It also attempts to fetch the utxos for the outputs of the transaction itself
     # so the returned view can be examined for duplicate transactions.
     #
     # This function is safe for concurrent access however the returned view is NOT.
-    def fetch_utxo_view(self):
-        pass
+    def fetch_utxo_view(self, tx: btcutil.Tx) -> UtxoViewpoint:
+        # Create a set of needed outputs based on those referenced by the
+        # inputs of the passed transaction and the outputs of the transaction
+        # itself.
+        needed_set = {}
 
+        for tx_out_idx, tx_out in range(tx.get_msg_tx().tx_outs):
+            prev_out = wire.OutPoint(hash=tx.hash(), index=tx_out_idx)
+            needed_set[prev_out] = {}  # the {} here is not for store data. need change to set()
+
+        if not is_coin_base(tx):
+            for tx_in in tx.get_msg_tx().tx_ins:
+                needed_set[tx_in.previous_out_point] = {}
+
+                # Request the utxos from the point of view of the end of the main
+                # chain.
+        view = UtxoViewpoint()
+        self.chain_lock.r_lock()
+        try:
+            view.fetch_utxos_main(self.db, needed_set)
+        finally:
+            self.chain_lock.r_unlock()
+        return view
 
     # FetchUtxoEntry loads and returns the requested unspent transaction output
     # from the point of view of the end of the main chain.
@@ -1206,12 +1226,26 @@ class BlockChain:
     #
     # This function is safe for concurrent access however the returned entry (if
     # any) is NOT.
-    def fetch_utxo_entry(self):
-        pass
+    def fetch_utxo_entry(self, outpoint: wire.OutPoint) -> UtxoEntry:
+        self.chain_lock.r_lock()
+        try:
+            entry = None
 
+            def fn(db_tx: database.Tx):
+                nonlocal entry
+                entry = db_fetch_utxo_entry(db_tx, outpoint)
+                return
+
+            self.db.view(fn)
+
+        finally:
+            self.chain_lock.r_unlock()
+
+        return entry
     # ------------------------------------
     # END
     # ------------------------------------
+
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
     pass

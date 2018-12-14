@@ -203,14 +203,14 @@ class UtxoViewpoint:
     # existing entries since it's possible it has changed during a reorg.
     def add_tx_outs(self, tx: btcutil.Tx, block_height: int):
         coin_base_p = is_coin_base(tx)
-        prev_out = wire.OutPoint(hash=tx.hash(), index=0)
+
         for idx, tx_out in enumerate(tx.get_msg_tx().tx_outs):
             # Update existing entries.  All fields are updated because it's
             # possible (although extremely unlikely) that the existing
             # entry is being replaced by a different transaction with the
             # same hash.  This is allowed so long as the previous
             # transaction is fully spent.
-            prev_out.index = idx
+            prev_out = wire.OutPoint(hash=tx.hash(), index=idx)
             self._add_tx_out(prev_out, tx_out, coin_base_p, block_height)
         return
 
@@ -283,9 +283,8 @@ class UtxoViewpoint:
     # the view first and then falls back to the database if needed.
     def fetch_entry_by_hash(self, db: database.DB, hash: chainhash.Hash) -> UtxoEntry:
         # First attempt to find a utxo with the provided hash in the view.
-        prev_out = wire.OutPoint(hash=hash, index=0)
         for idx in range(MaxOutputsPerBlock):
-            prev_out.index = idx
+            prev_out = wire.OutPoint(hash=hash, index=idx)
             entry = self.lookup_entry(prev_out)
             if entry:
                 return entry
@@ -339,12 +338,11 @@ class UtxoViewpoint:
             # the code relies on its existence in the view in order to
             # signal modifications have happened.
             tx_hash = tx.hash()
-            prev_out = wire.OutPoint(hash=tx_hash, index=0)
+
             for tx_out_idx, tx_out in enumerate(tx.get_msg_tx().tx_outs):
                 if txscript.is_unspendabe(tx_out.pk_script):
                     continue
-
-                prev_out.index = tx_out_idx
+                prev_out = wire.OutPoint(hash=tx_hash, index=tx_out_idx)
                 entry = self.entries.get(prev_out)
                 if not entry:
                     entry = UtxoEntry(
