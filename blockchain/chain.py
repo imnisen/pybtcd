@@ -1194,8 +1194,6 @@ class BlockChain:
     # END
     # --------------------------------
 
-
-
     # --------------------------------
     # Methods add from utxo_viewpoint
     # --------------------------------
@@ -1256,6 +1254,7 @@ class BlockChain:
             self.chain_lock.r_unlock()
 
         return entry
+
     # ------------------------------------
     # END
     # ------------------------------------
@@ -1302,7 +1301,6 @@ class BlockChain:
 
         return exists
 
-    
     # processOrphans determines if there are any orphans which depend on the passed
     # block hash (they are no longer orphans if true) and potentially accepts them.
     # It repeats the process for the newly accepted blocks (to detect further
@@ -1332,7 +1330,6 @@ class BlockChain:
             # index for the modified slice.
             not_orphans = self.prev_orphans[process_hash]
             for o in not_orphans:
-
                 # Remove the orphan from the orphan pool.
                 self._remove_orphan_block(o)
 
@@ -1345,7 +1342,6 @@ class BlockChain:
                 process_hashes.append(o.block.hash())
 
         return
-
 
     # ProcessBlock is the main workhorse for handling insertion of new blocks into
     # the block chain.  It includes functionality such as rejecting duplicate
@@ -1409,7 +1405,7 @@ class BlockChain:
                     ))  # TODO
                     current_target = compact_to_big(block_header.bits)
                     if current_target > required_target:
-                        msg= "block target difficulty of %064x is too low when compared to the previous checkpoint" % current_target
+                        msg = "block target difficulty of %064x is too low when compared to the previous checkpoint" % current_target
                         raise RuleError(ErrorCode.ErrDifficultyTooLow, msg)
 
             # Handle orphan blocks.
@@ -1435,6 +1431,7 @@ class BlockChain:
 
         finally:
             self.chain_lock.unlock()
+
     # ------------------------------------
     # END
     # ------------------------------------
@@ -1470,7 +1467,149 @@ class BlockChain:
     # END
     # ------------------------------------
 
+    # --------------------------------
+    # Methods add from difficulty
+    # --------------------------------
 
+    # TOCONSIDER
+    # calcEasiestDifficulty calculates the easiest possible difficulty that a block
+    # can have given starting difficulty bits and a duration.  It is mainly used to
+    # verify that claimed proof of work by a block is sane as compared to a
+    # known good checkpoint.
+    def _calc_easiest_difficulty(self, bits: int, duration: int) -> int:
+        adjuest_factor = self.chain_params.retarget_adjustment_factor
+
+        # The test network rules allow minimum difficulty blocks after more
+        # than twice the desired amount of time needed to generate a block has
+        # elapsed.
+        if self.chain_params.reduce_min_difficulty:
+            reduction_time = self.chain_params.min_diff_reduction_time
+            if duration > reduction_time:
+                return self.chain_params.pow_limit_bits
+
+        # Since easier difficulty equates to higher numbers, the easiest
+        # difficulty for a given duration is the largest value possible given
+        # the number of retargets for the duration and starting difficulty
+        # multiplied by the max adjustment factor.
+        new_target = compact_to_big(bits)
+
+        while duration > 0 and new_target < self.chain_params.pow_limit:
+            new_target *= adjuest_factor
+            duration -= self.max_retarget_timespan
+
+        # Limit new value to the proof of work limit.
+        if new_target > self.chain_params.pow_limit:
+            new_target = self.chain_params.pow_limit
+
+        return big_to_compact(new_target)
+
+    # findPrevTestNetDifficulty returns the difficulty of the previous block which
+    # did not have the special testnet minimum difficulty rule applied.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _find_prev_test_net_difficulty(self, start_node: BlockNode) -> int:
+        iter_node = start_node
+
+        # TOCONSIDER why the loop conditions?
+        while iter_node is not None and \
+                                iter_node.height % self.blocks_per_retarget != 0 and \
+                        iter_node.bits == self.chain_params.pow_limit_bits:
+            iter_node = iter_node.parent
+
+        # Return the found difficulty or the minimum difficulty if no
+        # appropriate block was found.
+        last_bits = self.chain_params.pow_limit_bits
+        if iter_node is not None:
+            last_bits = iter_node.bits
+        return last_bits
+
+    # calcNextRequiredDifficulty calculates the required difficulty for the block
+    # after the passed previous block node based on the difficulty retarget rules.
+    # This function differs from the exported CalcNextRequiredDifficulty in that
+    # the exported version uses the current best chain as the previous block node
+    # while this function accepts any block node.
+    def _calc_next_required_difficulty(self, last_node: BlockNode, new_block_time: int) -> int:
+
+        # Genesis block.
+        if last_node is None:
+            return self.chain_params.pow_limit_bits
+
+        # Return the previous block's difficulty requirements if this block
+        # is not at a difficulty retarget interval.
+        if (last_node.height + 1) % self.blocks_per_retarget != 0:
+            # For networks that support it, allow special reduction of the
+            # required difficulty once too much time has elapsed without
+            # mining a block.
+            if self.chain_params.reduce_min_difficulty:
+                # Return minimum difficulty when more than the desired
+                # amount of time has elapsed without mining a block.
+                reduction_time = self.chain_params.min_diff_reduction_time
+                allow_min_time = last_node.timestamp + reduction_time
+                if new_block_time > allow_min_time:
+                    return self.chain_params.pow_limit_bits
+
+            # For the main network (or any unrecognized networks), simply
+            # return the previous block's difficulty requirements.
+            return last_node.bits
+
+        # Get the block node at the previous retarget (targetTimespan days
+        # worth of blocks).
+        first_node = last_node.relative_ancestor(self.blocks_per_retarget - 1)
+        if first_node is None:
+            raise AssertError("unable to obtain previous retarget block")
+
+        # Limit the amount of adjustment that can occur to the previous
+        # difficulty.
+        actual_timespan = last_node.timestamp - first_node.timestamp
+        adjusted_timespan = actual_timespan
+
+        if actual_timespan < self.min_retarget_timespan:
+            adjusted_timespan = self.min_retarget_timespan
+        elif actual_timespan > self.max_retarget_timespan:
+            adjusted_timespan = self.max_retarget_timespan
+
+        # Calculate new target difficulty as:
+        #  currentDifficulty * (adjustedTimespan / targetTimespan)
+        # The result uses integer division which means it will be slightly
+        # rounded down.  Bitcoind also uses integer division to calculate this
+        # result.
+        old_target = compact_to_big(last_node.bits)
+        target_timespan = self.chain_params.target_timespan
+        new_target = old_target * adjusted_timespan // target_timespan  # the core part
+
+        # Limit new value to the proof of work limit.
+        if new_target > self.chain_params.pow_limit:
+            new_target = self.chain_params.pow_limit
+
+        # Log new target difficulty and return it.  The new target logging is
+        # intentionally converting the bits back to a number instead of using
+        # newTarget since conversion to the compact representation loses
+        # precision.
+        new_target_bits = big_to_compact(new_target)
+        logger.debug("Difficulty retarget at block height %d" % (last_node.height + 1))
+        logger.debug("Old target %08x (%064x)" % (last_node.bits, old_target))
+        logger.debug("New target %08x (%064x)" % (new_target_bits, compact_to_big(new_target_bits)))
+        logger.debug("Actual timespan %s, adjusted timespan %s, target timespan %s" % (
+            actual_timespan, adjusted_timespan, self.chain_params.target_timespan
+        ))
+        return new_target_bits
+
+    # CalcNextRequiredDifficulty calculates the required difficulty for the block
+    # after the end of the current best chain based on the difficulty retarget
+    # rules.
+    #
+    # This function is safe for concurrent access.
+    def calc_next_required_difficulty(self, timestamp: int) -> int:
+        self.chain_lock.lock()
+        try:
+            difficulty = self._calc_next_required_difficulty(self.best_chain.tip(), timestamp)
+        finally:
+            self.chain_lock.unlock()
+
+        return difficulty
+    # ------------------------------------
+    # END
+    # ------------------------------------
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):

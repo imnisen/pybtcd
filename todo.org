@@ -77,5 +77,4 @@
 ** chain
 ** chainio
 ** checkpoints
-** difficulty
 ** HOLD upgrade
