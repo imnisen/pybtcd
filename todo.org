@@ -78,5 +78,4 @@
 ** chainio
 ** checkpoints
 ** difficulty
-** notification
 ** HOLD upgrade

@@ -20,7 +20,6 @@ class NotificationType(IntEnum):
         return self.name
 
 
-
 # TODO  NotificationCallback
 class NotificationCallback:
     pass
@@ -41,6 +40,3 @@ class Notification:
         """
         self.type = type
         self.data = data
-
-
-# TOADD TODO Add some methods to blockchain

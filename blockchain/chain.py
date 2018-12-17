@@ -14,6 +14,7 @@ from .version_bits import *
 from .weight import *
 from .sequence_lock import *
 from .validate import *
+from .notifications import *
 
 import logging
 
@@ -1434,12 +1435,41 @@ class BlockChain:
 
         finally:
             self.chain_lock.unlock()
+    # ------------------------------------
+    # END
+    # ------------------------------------
 
+    # --------------------------------
+    # Methods add from notifications
+    # --------------------------------
+    # Subscribe to block chain notifications. Registers a callback to be executed
+    # when various events take place. See the documentation on Notification and
+    # NotificationType for details on the types and contents of notifications.
+    def subscribe(self, callback: NotificationCallback):
+        self.notifications_lock.lock()
+        self.notifications.append(callback)
+        self.notifications_lock.unlock()
+        return
 
+    # sendNotification sends a notification with the passed type and data if the
+    # caller requested notifications by providing a callback function in the call
+    # to New.
+    def _send_notification(self, typ: NotificationType, data):
+        # Generate and send the notification.
+        n = Notification(type=typ, data=data)
+
+        self.notifications_lock.r_lock()
+
+        for callback in self.notifications:
+            callback(n)
+
+        self.notifications_lock.r_unlock()
+        return
 
     # ------------------------------------
     # END
     # ------------------------------------
+
 
 
 
