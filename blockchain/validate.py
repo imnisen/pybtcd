@@ -394,7 +394,7 @@ def check_block_header_sanity(header: wire.BlockHeader, pow_limit: int,
 #
 # The flags do not modify the behavior of this function directly, however they
 # are needed to pass along to checkBlockHeaderSanity.
-def _check_block_sanity(block: btcutil.block, pow_limit: int,
+def check_block_sanity_noexport(block: btcutil.block, pow_limit: int,
                         time_source: MedianTimeSource, flags: BehaviorFlags):
     # Check block header
     msg_block = block.get_msg_block()
@@ -477,7 +477,7 @@ def _check_block_sanity(block: btcutil.block, pow_limit: int,
 # CheckBlockSanity performs some preliminary checks on a block to ensure it is
 # sane before continuing with block processing.  These checks are context free.
 def check_block_sanity(block: btcutil.block, pow_limit: int, time_source: MedianTimeSource):
-    return _check_block_sanity(block, pow_limit, time_source, BFNone)
+    return check_block_sanity_noexport(block, pow_limit, time_source, BFNone)
 
 
 # ExtractCoinbaseHeight attempts to extract the height of the block from the

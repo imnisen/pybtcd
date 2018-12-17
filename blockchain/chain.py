@@ -357,44 +357,6 @@ class BlockChain:
         self.notifications_lock = notifications_lock or pyutil.RWLock()
         self.notifications = notifications
 
-    # blockExists determines whether a block with the given hash exists either in
-    # the main chain or any side chains.
-    #
-    # This function is safe for concurrent access.
-    def _block_exists(self, hash: chainhash.Hash) -> bool:
-        # Check block index first (could be main chain or side chain blocks).
-        if self.index.have_block(hash):
-            return True
-
-        # Check in the database
-        exists = False
-
-        def f(db_tx: database.Tx):
-            nonlocal exists
-            exists = db_tx.has_block(hash)
-
-            if not exists:
-                return
-
-            # Ignore side chain blocks in the database.  This is necessary
-            # because there is not currently any record of the associated
-            # block index data such as its block height, so it's not yet
-            # possible to efficiently load the block and do anything useful
-            # with it.
-            #
-            # Ultimately the entire block index should be serialized
-            # instead of only the current main chain so it can be consulted
-            # directly.
-            try:
-                db_fetch_height_by_hash(db_tx, hash)
-            except NotInMainChainErr as e:
-                exists = False
-                return
-
-        self.db.view(f)
-
-        return exists
-
     # HaveBlock returns whether or not the chain instance has the block represented
     # by the passed hash.  This includes checking the various places a block can
     # be like part of the main chain, on a side chain, or in the orphan pool.
@@ -440,12 +402,12 @@ class BlockChain:
 
     # removeOrphanBlock removes the passed orphan block from the orphan pool and
     # previous orphan index.
-    def remove_orphan_block(self, orphan: OrphanBlock):
+    def _remove_orphan_block(self, orphan: OrphanBlock):
         self.orphan_lock.lock()
         try:
             # Remove the orphan block from the orphan pool.
             orphan_hash = orphan.block.hash()
-            del self.orphans[orphan_hash]
+            del self.orphans[orphan_hash]  # Notice, here destructive modify the orphans array
 
             # Remove the reference from the previous orphan index too.  An indexing
             # for loop is intentionally used over a range here as range does not
@@ -455,7 +417,7 @@ class BlockChain:
             orphans = self.prev_orphans[prev_hash]
 
             orphans = [x for x in orphans if x.block.hash() != orphan_hash]
-            self.prev_orphans[prev_hash] = orphans
+            self.prev_orphans[prev_hash] = orphans  # # Notice, here create new orphans array and replace every time
 
             # Remove the map entry altogether if there are no longer any orphans
             # which depend on the parent hash.
@@ -472,11 +434,11 @@ class BlockChain:
     # It also imposes a maximum limit on the number of outstanding orphan
     # blocks and will remove the oldest received orphan block if the limit is
     # exceeded.
-    def add_orphan_block(self, block: btcutil.Block):
+    def _add_orphan_block(self, block: btcutil.Block):
         # Remove expired orphan blocks.
         for _, o_block in self.orphans.items():
             if int(time.time()) > o_block.expiration:
-                self.remove_orphan_block(o_block)
+                self._remove_orphan_block(o_block)
                 continue
 
             # Update the oldest orphan block pointer so it can be discarded
@@ -487,7 +449,7 @@ class BlockChain:
         # Limit orphan blocks to prevent memory exhaustion.
         if len(self.orphans) + 1 > maxOrphanBlocks:
             # Remove the oldest orphan to make room for the new one.
-            self.remove_orphan_block(self.oldest_orphan)
+            self._remove_orphan_block(self.oldest_orphan)
             self.oldest_orphan = None
 
         # Protect concurrent access.  This is intentionally done here instead
@@ -930,7 +892,7 @@ class BlockChain:
         # TODO
 
     # ------------------------------------
-    # Methods add from threshold_state.py
+    # Methods add from threshold_state
     # ------------------------------------
     # ThresholdState returns the current rule change threshold state of the given
     # deployment ID for the block AFTER the end of the current best chain.
@@ -1122,13 +1084,12 @@ class BlockChain:
             self._warn_unknown_rule_activations(best_node)
         return
 
-        # ------------------------------------
-
+    # ------------------------------------
     # END
     # ------------------------------------
 
     # --------------------------------
-    # Methods add from version_bits.py
+    # Methods add from version_bits
     # --------------------------------
 
     # TOCONSIDER
@@ -1235,7 +1196,7 @@ class BlockChain:
 
 
     # --------------------------------
-    # Methods add from utxo_viewpoint.py
+    # Methods add from utxo_viewpoint
     # --------------------------------
 
     # FetchUtxoView loads unspent transaction outputs for the inputs referenced by
@@ -1294,9 +1255,192 @@ class BlockChain:
             self.chain_lock.r_unlock()
 
         return entry
-        # ------------------------------------
-        # END
-        # ------------------------------------
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
+    # --------------------------------
+    # Methods add from process
+    # --------------------------------
+
+    # blockExists determines whether a block with the given hash exists either in
+    # the main chain or any side chains.
+    #
+    # This function is safe for concurrent access.
+    def _block_exists(self, hash: chainhash.Hash) -> bool:
+        # Check block index first (could be main chain or side chain blocks).
+        if self.index.have_block(hash):
+            return True
+
+        # Check in the database
+        exists = False
+
+        def f(db_tx: database.Tx):
+            nonlocal exists
+            exists = db_tx.has_block(hash)
+
+            if not exists:
+                return
+
+            # Ignore side chain blocks in the database.  This is necessary
+            # because there is not currently any record of the associated
+            # block index data such as its block height, so it's not yet
+            # possible to efficiently load the block and do anything useful
+            # with it.
+            #
+            # Ultimately the entire block index should be serialized
+            # instead of only the current main chain so it can be consulted
+            # directly.
+            try:
+                db_fetch_height_by_hash(db_tx, hash)
+            except NotInMainChainErr as e:
+                exists = False
+                return
+
+        self.db.view(f)
+
+        return exists
+
+    
+    # processOrphans determines if there are any orphans which depend on the passed
+    # block hash (they are no longer orphans if true) and potentially accepts them.
+    # It repeats the process for the newly accepted blocks (to detect further
+    # orphans which may no longer be orphans) until there are no more.
+    #
+    # The flags do not modify the behavior of this function directly, however they
+    # are needed to pass along to maybeAcceptBlock.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _process_orphans(self, hash: chainhash.Hash, flags: BehaviorFlags):
+        # Start with processing at least the passed hash.  Leave a little room
+        # for additional orphan blocks that need to be processed without
+        # needing to grow the array in the common case.
+        process_hashes = [hash]
+
+        while len(process_hashes) > 0:
+            # Pop the first hash to process from the slice.
+            process_hash = process_hashes.pop(0)
+
+            # Look up all orphans that are parented by the block we just
+            # accepted.  This will typically only be one, but it could
+            # be multiple if multiple blocks are mined and broadcast
+            # around the same time.  The one with the most proof of work
+            # will eventually win out.  An indexing for loop is
+            # intentionally used over a range here as range does not
+            # reevaluate the slice on each iteration nor does it adjust the
+            # index for the modified slice.
+            not_orphans = self.prev_orphans[process_hash]
+            for o in not_orphans:
+
+                # Remove the orphan from the orphan pool.
+                self._remove_orphan_block(o)
+
+                # Potentially accept the block into the block chain.
+                self._maybe_accept_block(o.block, flags)  # TODO
+
+                # Add this block to the list of blocks to process so
+                # any orphan blocks that depend on this block are
+                # handled too.
+                process_hashes.append(o.block.hash())
+
+        return
+
+
+    # ProcessBlock is the main workhorse for handling insertion of new blocks into
+    # the block chain.  It includes functionality such as rejecting duplicate
+    # blocks, ensuring blocks follow all rules, orphan handling, and insertion into
+    # the block chain along with best chain selection and reorganization.
+    #
+    # When no errors occurred during processing, the first return value indicates
+    # whether or not the block is on the main chain and the second indicates
+    # whether or not the block is an orphan.
+    #
+    # This function is safe for concurrent access.
+    def process_block(self, block: btcutil.Block, flags: BehaviorFlags) -> (bool, bool):
+        self.chain_lock.lock()
+        try:
+            fast_add = (flags & BFFastAdd) == BFFastAdd
+
+            block_hash = block.hash()
+            logger.info("Processing block %s", block_hash)
+
+            # The block must not already exist in the main chain or side chains.
+            exists = self._block_exists(block_hash)
+            if exists:
+                msg = "already have block %s" % block_hash
+                raise RuleError(ErrorCode.ErrDuplicateBlock, msg)
+
+            # The block must not already exist as an orphan.
+            if block_hash in self.orphans:
+                msg = "already have block (orphan) %s" % block_hash
+                raise RuleError(ErrorCode.ErrDuplicateBlock, msg)
+
+            # Perform preliminary sanity checks on the block and its transactions.
+            check_block_sanity_noexport(block, self.chain_params.pow_limit, self.time_source, flags)
+
+            # Find the previous checkpoint and perform some additional checks based
+            # on the checkpoint.  This provides a few nice properties such as
+            # preventing old side chain blocks before the last checkpoint,
+            # rejecting easy to mine, but otherwise bogus, blocks that could be
+            # used to eat memory, and ensuring expected (versus claimed) proof of
+            # work requirements since the previous checkpoint are met.
+            block_header = block.get_msg_block().header
+            checkpoint_node = self._find_previous_checkpoint()  # TODO
+            if checkpoint_node:
+                # Ensure the block timestamp is after the checkpoint timestamp.
+                if block_header.timestamp < checkpoint_node.timestamp:
+                    msg = "block %s has timestamp %s before last checkpoint timestamp %s" % (
+                        block_header, block_header.timestamp, checkpoint_node.timestamp
+                    )
+                    raise RuleError(ErrorCode.ErrCheckpointTimeTooOld, msg)
+
+                # TOCONSIDER TODO
+                if not fast_add:
+                    # Even though the checks prior to now have already ensured the
+                    # proof of work exceeds the claimed amount, the claimed amount
+                    # is a field in the block header which could be forged.  This
+                    # check ensures the proof of work is at least the minimum
+                    # expected based on elapsed time since the last checkpoint and
+                    # maximum adjustment allowed by the retarget rules.
+                    duration = block_header.timestamp - checkpoint_node.timestamp
+                    required_target = compact_to_big(self._calc_easiest_difficulty(
+                        checkpoint_node.bits, duration
+                    ))  # TODO
+                    current_target = compact_to_big(block_header.bits)
+                    if current_target > required_target:
+                        msg= "block target difficulty of %064x is too low when compared to the previous checkpoint" % current_target
+                        raise RuleError(ErrorCode.ErrDifficultyTooLow, msg)
+
+            # Handle orphan blocks.
+            prev_hash = block_header.prev_block
+            prev_hash_exists = self._block_exists(prev_hash)
+            if not prev_hash_exists:
+                logger.info("Adding orphan block %s with parent %s" % (block_hash, prev_hash))
+                self._add_orphan_block(block)
+                return False, True
+
+            # The block has passed all context independent checks and appears sane
+            # enough to potentially accept it into the block chain.
+            is_main_chain = self._maybe_accept_block(block, flags)
+
+            # Accept any orphan blocks that depend on this block (they are
+            # no longer orphans) and repeat for those accepted blocks until
+            # there are no more.
+            self._process_orphans(block_hash, flags)
+
+            logger.info("Accepted block %s" % block_hash)
+
+            return is_main_chain, False
+
+        finally:
+            self.chain_lock.unlock()
+
+
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):

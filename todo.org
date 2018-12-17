@@ -79,5 +79,4 @@
 ** checkpoints
 ** difficulty
 ** notification
-** process
-** upgrade
+** HOLD upgrade
