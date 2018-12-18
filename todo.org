@@ -73,7 +73,7 @@
 * Refactor the_ field things
 * make blockchain/script_val.py validate multiprocess
 * Blockchain TODOs
-** accept
 ** chain
 ** chainio
+** DOING accept
 ** HOLD upgrade

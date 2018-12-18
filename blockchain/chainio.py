@@ -2,6 +2,7 @@ import io
 import copy
 import database
 import chainhash
+import btcutil
 from btcec.utils import int_to_bytes, bytes_to_int
 from .utxo_viewpoint import *
 from .compress import *
@@ -59,6 +60,14 @@ def db_store_block_node(db_tx: database.Tx, node):
     block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
     key = block_index_key(node.hash, node.height)
     return block_index_bucket.put(key, value)
+
+# dbStoreBlock stores the provided block in the database if it is not already
+# there. The full block data is written to ffldb.
+def db_store_block(db_tx: database.Tx, block:btcutil.Block):
+    has_block = db_tx.has_block(block.hash())
+    if has_block:
+        return
+    return db_tx.store_block(block)
 
 
 # dbFetchHeightByHash uses an existing database transaction to retrieve the

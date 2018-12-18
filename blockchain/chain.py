@@ -791,7 +791,7 @@ class BlockChain:
     #    This is useful when using checkpoints.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def connect_best_chain(self, node, block, flags):
+    def _connect_best_chain(self, node, block, flags):
         pass
 
     # isCurrent returns whether or not the chain believes it is current.  Several
@@ -1819,9 +1819,246 @@ class BlockChain:
         finally:
             self.chain_lock.r_unlock()
 
-        # ------------------------------------
-        # END
-        # ------------------------------------
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
+    # --------------------------------
+    # Methods add from validate
+    # --------------------------------
+    # checkBlockHeaderContext performs several validation checks on the block header
+    # which depend on its position within the block chain.
+    #
+    # The flags modify the behavior of this function as follows:
+    #  - BFFastAdd: All checks except those involving comparing the header against
+    #    the checkpoints are not performed.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _check_block_header_context(self, header:wire.BlockHeader, prev_node: BlockNode, flags: BehaviorFlags):
+        fast_add = (flags & BFFastAdd) == BFFastAdd
+        if not fast_add:
+            # Ensure the difficulty specified in the block header matches
+            # the calculated difficulty based on the previous block and
+            # difficulty retarget rules.
+            expected_difficulty = self._calc_next_required_difficulty(prev_node, header.timestamp)
+            block_difficulty = header.bits
+            if block_difficulty != expected_difficulty:
+                msg = "block difficulty of %d is not the expected value of %d" % (block_difficulty, expected_difficulty)
+                raise RuleError(ErrorCode.ErrUnexpectedDifficulty, msg)
+
+            # Ensure the timestamp for the block header is after the
+            #  median time of the last several blocks (medianTimeBlocks).
+            median_time = prev_node.calc_past_median_time()
+            if not header.timestamp > median_time:
+                msg = "block timestamp of %s is not after expected %s" % (header.timestamp, median_time)
+                raise RuleError(ErrorCode.ErrTimeTooOld, msg)
+
+        # The height of this block is one more than the referenced previous
+        # block.
+        block_height = prev_node.height + 1
+
+        # Ensure chain matches up to predetermined checkpoints.
+        block_hash = header .block_hash()
+        if not self._verify_checkpoint(block_height, block_hash):
+            msg = "block at height %d does not match checkpoint hash" % block_height
+            raise RuleError(ErrorCode.ErrBadCheckpoint, msg)
+
+        # Find the previous checkpoint and prevent blocks which fork the main
+        # chain before it.  This prevents storage of new, otherwise valid,
+        # blocks which build off of old blocks that are likely at a much easier
+        # difficulty and therefore could be used to waste cache and disk space.
+        checkpoint_node = self._find_previous_checkpoint()
+        if checkpoint_node is not None and block_height < checkpoint_node.height:
+            msg = "block at height %d forks the main chain before the previous checkpoint at height %d"  % (
+                block_height, checkpoint_node.height
+            )
+            raise RuleError(ErrorCode.ErrForkTooOld, msg)
+
+        # Reject outdated block versions once a majority of the network
+        # has upgraded.  These were originally voted on by BIP0034,
+        # BIP0065, and BIP0066.
+        params = self.chain_params
+        if header.version < 2 and block_height >= params.bip0034_height or \
+                (header.version < 3 and block_height >= params.bip0066_height) or \
+                (header.version < 4 and block_height >= params.bip0065_height):
+            msg = "new blocks with version %d are no longer valid" % header.version
+            raise RuleError(ErrorCode.ErrBlockVersionTooOld, msg)
+
+        return
+
+
+
+    # checkBlockContext peforms several validation checks on the block which depend
+    # on its position within the block chain.
+    #
+    # The flags modify the behavior of this function as follows:
+    #  - BFFastAdd: The transaction are not checked to see if they are finalized
+    #    and the somewhat expensive BIP0034 validation is not performed.
+    #
+    # The flags are also passed to checkBlockHeaderContext.  See its documentation
+    # for how the flags modify its behavior.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _check_block_context(self, block: btcutil.Block, prev_node: BlockNode, flags: BehaviorFlags):
+        # Perform all block header related validation checks.
+        header = block.get_msg_block().header
+        self._check_block_header_context(header, prev_node, flags)
+
+        fast_add = (flags & BFFastAdd) == BFFastAdd
+        if not fast_add:
+            # TODO
+            pass
+
+
+
+
+
+
+
+
+
+
+
+        return
+
+
+
+
+
+
+
+
+
+
+
+    # checkBIP0030 ensures blocks do not contain duplicate transactions which
+    # 'overwrite' older transactions that are not fully spent.  This prevents an
+    # attack where a coinbase and all of its dependent transactions could be
+    # duplicated to effectively revert the overwritten transactions to a single
+    # confirmation thereby making them vulnerable to a double spend.
+    #
+    # For more details, see
+    # https:#github.com/bitcoin/bips/blob/master/bip-0030.mediawiki and
+    # http:#r6.ca/blog/20120206T005236Z.html.
+    #
+    # This function MUST be called with the chain state lock held (for reads).
+    def _check_bip0030(self, node:BlockNode, block: btcutil.Block, view: UtxoViewpoint):
+        pass
+
+    # checkConnectBlock performs several checks to confirm connecting the passed
+    # block to the chain represented by the passed view does not violate any rules.
+    # In addition, the passed view is updated to spend all of the referenced
+    # outputs and add all of the new utxos created by block.  Thus, the view will
+    # represent the state of the chain as if the block were actually connected and
+    # consequently the best hash for the view is also updated to passed block.
+    #
+    # An example of some of the checks performed are ensuring connecting the block
+    # would not cause any duplicate transaction hashes for old transactions that
+    # aren't already fully spent, double spends, exceeding the maximum allowed
+    # signature operations per block, invalid values in relation to the expected
+    # block subsidy, or fail transaction script validation.
+    #
+    # The CheckConnectBlockTemplate function makes use of this function to perform
+    # the bulk of its work.  The only difference is this function accepts a node
+    # which may or may not require reorganization to connect it to the main chain
+    # whereas CheckConnectBlockTemplate creates a new node which specifically
+    # connects to the end of the current main chain and then calls this function
+    # with that node.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _check_connect_block(self, node: BlockNode, block:btcutil.Block, view: UtxoViewpoint, stxos: [SpentTxOut]):
+        pass
+
+    # CheckConnectBlockTemplate fully validates that connecting the passed block to
+    # the main chain does not violate any consensus rules, aside from the proof of
+    # work requirement. The block must connect to the current tip of the main chain.
+    #
+    # This function is safe for concurrent access.
+    def check_connect_block_template(self, block:btcutil.Block):
+        pass
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
+
+
+    # --------------------------------
+    # Methods add from accept
+    # --------------------------------
+    # maybeAcceptBlock potentially accepts a block into the block chain and, if
+    # accepted, returns whether or not it is on the main chain.  It performs
+    # several validation checks which depend on its position within the block chain
+    # before adding it.  The block is expected to have already gone through
+    # ProcessBlock before calling this function with it.
+    #
+    # The flags are also passed to checkBlockContext and connectBestChain.  See
+    # their documentation for how the flags modify their behavior.
+    #
+    # This function MUST be called with the chain state lock held (for writes).
+    def _maybe_accept_block(self, block: btcutil.Block, flags: BehaviorFlags) -> bool:
+        # The height of this block is one more than the referenced previous
+        # block.
+        prev_hash = block.get_msg_block().header.prev_block
+        prev_node = self.index.lookup_node(prev_hash)
+        if prev_node is None:
+            msg = "previous block %s is unknown" % prev_hash
+            raise RuleError(ErrorCode.ErrPreviousBlockUnknown, msg)
+        elif self.index.node_status(prev_node).known_invalid():
+            msg = "previous block %s is known to be invalid" % prev_hash
+            raise RuleError(ErrorCode.ErrInvalidAncestorBlock, msg)
+
+        block_height = prev_node.height + 1
+        block.set_height(block_height)
+
+        # The block must pass all of the validation rules which depend on the
+        # position of the block within the block chain.
+        self._check_block_context(block, prev_node, flags)
+
+        # Insert the block into the database if it's not already there.  Even
+        # though it is possible the block will ultimately fail to connect, it
+        # has already passed all proof-of-work and validity tests which means
+        # it would be prohibitively expensive for an attacker to fill up the
+        # disk with a bunch of blocks that fail to connect.  This is necessary
+        # since it allows block download to be decoupled from the much more
+        # expensive connection logic.  It also has some other nice properties
+        # such as making blocks that never become part of the main chain or
+        # blocks that fail to connect available for further analysis.
+        def fn(db_tx: database.Tx):
+            return db_store_block(db_tx, block)
+        self.db.update(fn)
+
+        # Create a new block node for the block and add it to the node index. Even
+        # if the block ultimately gets connected to the main chain, it starts out
+        # on a side chain.
+        block_header = block.get_msg_block().header
+        new_node = BlockNode.init_from(block_header, prev_node)
+        new_node.status = BlockStatus.statusDataStored
+
+        self.index.add_node(new_node)
+        self.index.flush_to_db()
+
+        # Connect the passed block to the chain while respecting proper chain
+        # selection according to the chain with the most proof of work.  This
+        # also handles validation of the transaction scripts.
+        is_main_chain = self._connect_best_chain(new_node, block, flags)
+
+        # Notify the caller that the new block was accepted into the block
+        # chain.  The caller would typically want to react by relaying the
+        # inventory to other peers.
+        self.chain_lock.unlock()
+        self._send_notification(NotificationType.NTBlockAccepted, block)
+        self.chain_lock.lock()
+
+        return is_main_chain
+
+
+
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):

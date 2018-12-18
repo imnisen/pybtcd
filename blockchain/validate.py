@@ -395,7 +395,7 @@ def check_block_header_sanity(header: wire.BlockHeader, pow_limit: int,
 # The flags do not modify the behavior of this function directly, however they
 # are needed to pass along to checkBlockHeaderSanity.
 def check_block_sanity_noexport(block: btcutil.block, pow_limit: int,
-                        time_source: MedianTimeSource, flags: BehaviorFlags):
+                                time_source: MedianTimeSource, flags: BehaviorFlags):
     # Check block header
     msg_block = block.get_msg_block()
     header = msg_block.header
@@ -531,4 +531,98 @@ def check_serialized_height(coin_base_tx: btcutil.Tx, want_height: int):
 
     return
 
-# TOADD to blockchain methos
+
+# CheckTransactionInputs performs a series of checks on the inputs to a
+# transaction to ensure they are valid.  An example of some of the checks
+# include verifying all inputs exist, ensuring the coinbase seasoning
+# requirements are met, detecting double spends, validating all values and fees
+# are in the legal range and the total output amount doesn't exceed the input
+# amount, and verifying the signatures to prove the spender was the owner of
+# the bitcoins and therefore allowed to spend them.  As it checks the inputs,
+# it also calculates the total fees for the transaction and returns that value.
+#
+# NOTE: The transaction MUST have already been sanity checked with the
+# CheckTransactionSanity function prior to calling this function.
+def check_transaction_inputs(tx: btcutil.Tx, tx_height: int, utxo_view: UtxoViewpoint,
+                             chain_params: chaincfg.Params) -> int:
+    # Coinbase transactions have no inputs.
+    if is_coin_base(tx):
+        return 0
+
+    total_satoshi_in = 0
+    for tx_in_idx, tx_in in enumerate(tx.get_msg_tx().tx_ins):
+        # Ensure the referenced input transaction is available.
+        utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
+        if utxo is None or utxo.is_spent():
+            msg = ("output %v referenced from " +
+                   "transaction %s:%d either does not exist or " +
+                   "has already been spent") % (
+                      tx_in.previous_out_point, tx.hash(), tx_in_idx
+                  )
+            raise RuleError(ErrorCode.ErrMissingTxOut, msg)
+
+        # Ensure the transaction is not spending coins which have not
+        # yet reached the required coinbase maturity.
+        if utxo.is_coin_base():
+            origin_height = utxo.get_block_height()
+            blocks_since_prev = tx_height - origin_height
+            coinbase_maturity = chain_params.coinbase_maturity
+            if blocks_since_prev < coinbase_maturity:
+                msg = ("tried to spend coinbase " +
+                       "transaction output %s from height %s " +
+                       "at height %s before required maturity " +
+                       "of %s blocks") % (
+                          tx_in.previous_out_point, origin_height, tx_height, coinbase_maturity
+                      )
+                raise RuleError(ErrorCode.ErrImmatureSpend, msg)
+
+        # Ensure the transaction amounts are in range.  Each of the
+        # output values of the input transactions must not be negative
+        # or more than the max allowed per transaction.  All amounts in
+        # a transaction are in a unit value known as a satoshi.  One
+        # bitcoin is a quantity of satoshi as defined by the
+        # SatoshiPerBitcoin constant.
+        origin_tx_satoshi = utxo.get_amount()
+        if origin_tx_satoshi < 0:
+            msg = "transaction output has negative value of %s" % btcutil.Amount(origin_tx_satoshi)
+            raise RuleError(ErrorCode.ErrBadTxOutValue, msg)
+
+        if origin_tx_satoshi > btcutil.MaxSatoshi:
+            msg = "transaction output value of %s is higher than max allowed value of %s" % (
+                btcutil.Amount(origin_tx_satoshi), btcutil.MaxSatoshi
+            )
+            raise RuleError(ErrorCode.ErrBadTxOutValue, msg)
+
+        # The total of all outputs must not be more than the max
+        # allowed per transaction.  Also, we could potentially overflow
+        # the accumulator so check for overflow.
+        total_satoshi_in += origin_tx_satoshi
+        if total_satoshi_in > pyutil.MaxInt64 or total_satoshi_in > btcutil.MaxSatoshi:
+            msg = ("total value of all transaction " +
+                   "inputs is %v which is higher than max " +
+                   "allowed value of %v") % (
+                      total_satoshi_in, btcutil.MaxSatoshi
+                  )
+            raise RuleError(ErrorCode.ErrBadTxOutValue, msg)
+
+    # Calculate the total output amount for this transaction.  It is safe
+    # to ignore overflow and out of range errors here because those error
+    # conditions would have already been caught by checkTransactionSanity.
+    total_satoshi_out = 0
+    for tx_out in tx.get_msg_tx().tx_outs:
+        total_satoshi_out += tx_out
+
+    # Ensure the transaction does not spend more than its inputs.
+    if total_satoshi_in < total_satoshi_out:
+        msg = ("total value of all transaction inputs for " +
+               "transaction %v is %v which is less than the amount " +
+               "spent of %v") % (
+                  tx.hash(), total_satoshi_in, total_satoshi_out
+              )
+        raise RuleError(ErrorCode.ErrSpendTooHigh, msg)
+
+    # NOTE: bitcoind checks if the transaction fees are < 0 here, but that
+    # is an impossible condition because of the check above that ensures
+    # the inputs are >= the outputs.
+    tx_fee_in_satoshi = total_satoshi_in - total_satoshi_out
+    return tx_fee_in_satoshi

@@ -103,7 +103,7 @@ class BlockNode:
         self.status = status or BlockStatus(0)
 
     @classmethod
-    def init_from(cls, block_header, parent):
+    def init_from(cls, block_header, parent) -> 'BlockNode':
         """
 
         :param wire.BlockHeader block_header:
