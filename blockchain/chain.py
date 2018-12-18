@@ -15,6 +15,7 @@ from .weight import *
 from .sequence_lock import *
 from .validate import *
 from .notifications import *
+from .checkpoints import *
 
 import logging
 
@@ -1607,9 +1608,220 @@ class BlockChain:
             self.chain_lock.unlock()
 
         return difficulty
+
     # ------------------------------------
     # END
     # ------------------------------------
+
+    # --------------------------------
+    # Methods add from checkpoints
+    # --------------------------------
+
+    # Checkpoints returns a slice of checkpoints (regardless of whether they are
+    # already known).  When there are no checkpoints for the chain, it will return
+    # nil.
+    #
+    # This function is safe for concurrent access.
+    def checkpoints(self) -> [chaincfg.Checkpoint]:
+        return self.checkpoints
+
+    # HasCheckpoints returns whether this BlockChain has checkpoints defined.
+    #
+    # This function is safe for concurrent access.
+    def has_checkpoints(self) -> bool:
+        return len(self.checkpoints) > 0
+
+    # LatestCheckpoint returns the most recent checkpoint (regardless of whether it
+    # is already known). When there are no defined checkpoints for the active chain
+    # instance, it will return nil.
+    #
+    # This function is safe for concurrent access.
+    def lastest_checkpoints(self) -> chaincfg.Checkpoint or None:
+        if self.has_checkpoints():
+            return self.checkpoints[-1]
+        else:
+            return None
+
+    # verifyCheckpoint returns whether the passed block height and hash combination
+    # match the checkpoint data.  It also returns true if there is no checkpoint
+    # data for the passed block height.
+    def _verify_checkpoint(self, height: int, hash: chainhash.Hash) -> bool:
+        if not self.has_checkpoints():
+            return True
+
+        # Nothing to check if there is no checkpoint data for the block height.
+        if height not in self.checkpoints_by_height:
+            return True
+
+        checkpoint = self.checkpoints_by_height.get(height)
+        if checkpoint.hash != hash:
+            return False
+
+        logger.info("Verified checkpoint at height %d/block %s" % (
+            checkpoint.height, checkpoint.hash
+        ))
+        return True
+
+    # findPreviousCheckpoint finds the most recent checkpoint that is already
+    # available in the downloaded portion of the block chain and returns the
+    # associated block node.  It returns nil if a checkpoint can't be found (this
+    # should really only happen for blocks before the first checkpoint).
+    #
+    # This function MUST be called with the chain lock held (for reads).
+    def _find_previous_checkpoint(self) -> BlockNode:
+        if not self.has_checkpoints():
+            return None
+
+        # Perform the initial search to find and cache the latest known
+        # checkpoint if the best chain is not known yet or we haven't already
+        # previously searched.
+        num_checkpoints = len(self.checkpoints)
+        if self.checkpoint_node is None and self.next_checkpoint is None:
+
+            # Loop backwards through the available checkpoints to find one
+            # that is already available.
+
+            for idx in range(num_checkpoints - 1, -1, -1):
+                checkpoint = self.checkpoints[idx]
+                checkpoint_hash = checkpoint.hash
+                node = self.index.lookup_node(checkpoint_hash)
+                if node is None or not self.best_chain.contains(node):
+                    continue
+
+                    # Checkpoint found.  Cache it for future lookups and
+                    # set the next expected checkpoint accordingly.
+                self.checkpoint_node = node
+                if idx < num_checkpoints - 1:  # this is not the last checkpoint
+                    self.next_checkpoint = self.checkpoints[idx + 1]
+                return self.checkpoint_node
+
+            # No known latest checkpoint.  This will only happen on blocks
+            # before the first known checkpoint.  So, set the next expected
+            # checkpoint to the first checkpoint and return the fact there
+            # is no latest known checkpoint block.
+            self.next_checkpoint = self.checkpoints[0]
+            return None
+
+        # At this point we've already searched for the latest known checkpoint,
+        # so when there is no next checkpoint, the current checkpoint lockin
+        # will always be the latest known checkpoint.
+        if self.next_checkpoint is None:
+            return self.checkpoint_node
+
+        # When there is a next checkpoint and the height of the current best
+        # chain does not exceed it, the current checkpoint lockin is still
+        # the latest known checkpoint.
+        if self.best_chain.tip().height < self.next_checkpoint.height:
+            return self.checkpoint_node
+
+        # We've reached or exceeded the next checkpoint height.  Note that
+        # once a checkpoint lockin has been reached, forks are prevented from
+        # any blocks before the checkpoint, so we don't have to worry about the
+        # checkpoint going away out from under us due to a chain reorganize.
+
+        # Cache the latest known checkpoint for future lookups.  Note that if
+        # this lookup fails something is very wrong since the chain has already
+        # passed the checkpoint which was verified as accurate before inserting
+        # it.
+
+        # find and set checkpoint_node
+        checkpoint_node = self.index.lookup_node(self.next_checkpoint.hash)
+        if checkpoint_node is None:
+            raise AssertError(
+                "findPreviousCheckpoint failed lookup of known good block node %s" % self.next_checkpoint.hash)
+
+        self.checkpoint_node = checkpoint_node
+
+        # set next_checkpoint
+        checkpoint_idx = -1
+        for idx in range(num_checkpoints - 1, -1, -1):
+            if self.checkpoints[idx].hash == self.next_checkpoint.hash:
+                checkpoint_idx = idx
+                break
+
+        self.next_checkpoint = None
+        if checkpoint_idx != -1 and checkpoint_idx < num_checkpoints - 1:
+            self.next_checkpoint = self.checkpoints[checkpoint_idx + 1]
+
+        return self.checkpoint_node
+
+    # IsCheckpointCandidate returns whether or not the passed block is a good
+    # checkpoint candidate.
+    #
+    # The factors used to determine a good checkpoint are:
+    #  - The block must be in the main chain
+    #  - The block must be at least 'CheckpointConfirmations' blocks prior to the
+    #    current end of the main chain
+    #  - The timestamps for the blocks before and after the checkpoint must have
+    #    timestamps which are also before and after the checkpoint, respectively
+    #    (due to the median time allowance this is not always the case)
+    #  - The block must not contain any strange transaction such as those with
+    #    nonstandard scripts
+    #
+    # The intent is that candidates are reviewed by a developer to make the final
+    # decision and then manually added to the list of checkpoints for a network.
+    #
+    # This function is safe for concurrent access.
+    def is_checkpoint_candidate(self, block: btcutil.Block) -> bool:
+        self.chain_lock.r_lock()
+        try:
+            # A checkpoint must be in the main chain.
+            node = self.index.lookup_node(block.hash())
+            if node is None or not self.best_chain.contains(node):
+                return False
+
+            # Ensure the height of the passed block and the entry for the block in
+            # the main chain match.  This should always be the case unless the
+            # caller provided an invalid block.
+            if node.height != block.height():
+                logger.warning("passed block height of %d does not match the main chain height of %d" % (
+                    block.height(), node.height
+                ))
+                return False  # TOCINSIDER raise or return false?
+
+            # A checkpoint must be at least CheckpointConfirmations blocks
+            # before the end of the main chain.
+            main_chain_height = self.best_chain.tip().height
+            if node.height > (main_chain_height - CheckpointConfirmations):
+                return False
+
+            # A checkpoint must be have at least one block after it.
+            #
+            # This should always succeed since the check above already made sure it
+            # is CheckpointConfirmations back, but be safe in case the constant
+            # changes.
+            next_node = self.best_chain.next(node)
+            if next_node is None:
+                return False
+
+            # A checkpoint must be have at least one block before it.
+            if node.parent is None:
+                return False
+
+            # A checkpoint must have timestamps for the block and the blocks on
+            # either side of it in order (due to the median time allowance this is
+            # not always the case).
+            prev_time = node.parent.timestamp
+            cur_time = block.get_msg_block().header.timestamp
+            next_time = next_node.timestamp
+            if not prev_time < cur_time < next_time:
+                return False
+
+            # A checkpoint must have transactions that only contain standard
+            # scripts.
+            for tx in block.get_transactions():
+                if is_nonstandard_transaction(tx):
+                    return False
+
+            # All of the checks passed, so the block is a candidate.
+            return True
+
+        finally:
+            self.chain_lock.r_unlock()
+
+        # ------------------------------------
+        # END
+        # ------------------------------------
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):

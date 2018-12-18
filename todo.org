@@ -76,5 +76,4 @@
 ** accept
 ** chain
 ** chainio
-** checkpoints
 ** HOLD upgrade
