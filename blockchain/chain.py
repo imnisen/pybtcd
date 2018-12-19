@@ -1834,7 +1834,7 @@ class BlockChain:
     #    the checkpoints are not performed.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def _check_block_header_context(self, header:wire.BlockHeader, prev_node: BlockNode, flags: BehaviorFlags):
+    def _check_block_header_context(self, header: wire.BlockHeader, prev_node: BlockNode, flags: BehaviorFlags):
         fast_add = (flags & BFFastAdd) == BFFastAdd
         if not fast_add:
             # Ensure the difficulty specified in the block header matches
@@ -1858,7 +1858,7 @@ class BlockChain:
         block_height = prev_node.height + 1
 
         # Ensure chain matches up to predetermined checkpoints.
-        block_hash = header .block_hash()
+        block_hash = header.block_hash()
         if not self._verify_checkpoint(block_height, block_hash):
             msg = "block at height %d does not match checkpoint hash" % block_height
             raise RuleError(ErrorCode.ErrBadCheckpoint, msg)
@@ -1869,7 +1869,7 @@ class BlockChain:
         # difficulty and therefore could be used to waste cache and disk space.
         checkpoint_node = self._find_previous_checkpoint()
         if checkpoint_node is not None and block_height < checkpoint_node.height:
-            msg = "block at height %d forks the main chain before the previous checkpoint at height %d"  % (
+            msg = "block at height %d forks the main chain before the previous checkpoint at height %d" % (
                 block_height, checkpoint_node.height
             )
             raise RuleError(ErrorCode.ErrForkTooOld, msg)
@@ -1885,8 +1885,6 @@ class BlockChain:
             raise RuleError(ErrorCode.ErrBlockVersionTooOld, msg)
 
         return
-
-
 
     # checkBlockContext peforms several validation checks on the block which depend
     # on its position within the block chain.
@@ -1906,30 +1904,68 @@ class BlockChain:
 
         fast_add = (flags & BFFastAdd) == BFFastAdd
         if not fast_add:
-            # TODO
-            pass
+            # Obtain the latest state of the deployed CSV soft-fork in
+            # order to properly guard the new validation behavior based on
+            # the current BIP 9 version bits state.
+            csv_state = self._deployment_state(prev_node, chaincfg.DeploymentCSV)
 
+            # Once the CSV soft-fork is fully active, we'll switch to
+            # using the current median time past of the past block's
+            # timestamps for all lock-time based checks.
+            if csv_state == ThresholdState.ThresholdActive:
+                block_time = prev_node.calc_past_median_time()
+            else:
+                block_time = header.timestamp
 
+            # The height of this block is one more than the referenced
+            # previous block.
+            block_height = prev_node.height + 1
 
+            # Ensure all transactions in the block are finalized.
+            for tx in block.get_transactions():
+                if not is_finalized_transaction(tx, block_height, block_time):
+                    msg = "block contains unfinalized transaction %s" % tx.hash()
+                    raise RuleError(ErrorCode.ErrUnfinalizedTx, msg)
 
+            # Ensure coinbase starts with serialized block heights for
+            # blocks whose version is the serializedHeightVersion or newer
+            # once a majority of the network has upgraded.  This is part of
+            # BIP0034.
+            if should_have_serialized_block_height(header) and \
+                            block_height >= self.chain_params.bip0034_height:
+                coinbase_tx = block.get_transactions()[0]
+                check_serialized_height(coinbase_tx, block_height)
 
+            # Query for the Version Bits state for the segwit soft-fork
+            # deployment. If segwit is active, we'll switch over to
+            # enforcing all the new rules.
+            segwit_state = self._deployment_state(prev_node, chaincfg.DeploymentSegwit)
 
+            # If segwit is active, then we'll need to fully validate the
+            # new witness commitment for adherence to the rules.
+            if segwit_state == ThresholdState.ThresholdActive:
+                # Validate the witness commitment (if any) within the
+                # block.  This involves asserting that if the coinbase
+                # contains the special commitment output, then this
+                # merkle root matches a computed merkle root of all
+                # the wtxid's of the transactions within the block. In
+                # addition, various other checks against the
+                # coinbase's witness stack.
+                validate_witness_commitment(block)
 
-
-
-
+                # Once the witness commitment, witness nonce, and sig
+                # op cost have been validated, we can finally assert
+                # that the block's weight doesn't exceed the current
+                # consensus parameter.
+                block_weight = get_block_weight(block)
+                if block_weight > MaxBlockWeight:
+                    msg = ("block's weight metric is " +
+                           "too high - got %s, max %s") % (
+                              block_weight, MaxBlockWeight
+                          )
+                    raise RuleError(ErrorCode.ErrBlockWeightTooHigh, msg)
 
         return
-
-
-
-
-
-
-
-
-
-
 
     # checkBIP0030 ensures blocks do not contain duplicate transactions which
     # 'overwrite' older transactions that are not fully spent.  This prevents an
@@ -1942,8 +1978,28 @@ class BlockChain:
     # http:#r6.ca/blog/20120206T005236Z.html.
     #
     # This function MUST be called with the chain state lock held (for reads).
-    def _check_bip0030(self, node:BlockNode, block: btcutil.Block, view: UtxoViewpoint):
-        pass
+    def _check_bip0030(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint):
+        # Fetch utxos for all of the transaction ouputs in this block.
+        # Typically, there will not be any utxos for any of the outputs.
+        fetch_set = {}  # TOCHANGE to set() struct
+        for tx in block.get_transactions():
+            for idx, _ in enumerate(tx.tx_outs):
+                prev_out = wire.OutPoint(hash=tx.hash(), index=idx)
+                fetch_set[prev_out] = {}
+
+        view.fetch_utxos(self.db, fetch_set)
+
+        # Duplicate transactions are only allowed if the previous transaction
+        # is fully spent.
+        for outpoint in fetch_set.keys():
+            utxo = view.lookup_entry(outpoint)
+            if utxo is not None and not utxo.is_spent():
+                msg = "tried to overwrite transaction %s at block height %d that is not fully spent" % (
+                    outpoint.hash, utxo.get_block_height()
+                )
+                raise RuleError(ErrorCode.ErrOverwriteTx, msg)
+
+        return
 
     # checkConnectBlock performs several checks to confirm connecting the passed
     # block to the chain represented by the passed view does not violate any rules.
@@ -1966,16 +2022,44 @@ class BlockChain:
     # with that node.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def _check_connect_block(self, node: BlockNode, block:btcutil.Block, view: UtxoViewpoint, stxos: [SpentTxOut]):
-        pass
+    def _check_connect_block(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint, stxos: [SpentTxOut] or None):
+        pass # TODO
 
     # CheckConnectBlockTemplate fully validates that connecting the passed block to
     # the main chain does not violate any consensus rules, aside from the proof of
     # work requirement. The block must connect to the current tip of the main chain.
     #
     # This function is safe for concurrent access.
-    def check_connect_block_template(self, block:btcutil.Block):
-        pass
+    def check_connect_block_template(self, block: btcutil.Block):
+        self.chain_lock.lock()
+        try:
+            # Skip the proof of work check as this is just a block template.
+            flags = BFNoPoWCheck
+
+            # This only checks whether the block can be connected to the tip of the
+            # current chain.
+            tip = self.best_chain.tip()
+            header = block.get_msg_block().header
+            if tip.hash != header.prev_block:
+                msg = "previous block must be the current chain tip %s, instead got %s" % (
+                    tip.hash, header.prev_block
+                )
+                raise RuleError(ErrorCode.ErrPrevBlockNotBest, msg)
+
+            # Check block sanity
+            check_block_sanity_noexport(block, self.chain_params.pow_limit, self.time_source, flags)
+
+            # Check block context
+            self._check_block_context(block, tip, flags)
+
+            #  Leave the spent txouts entry nil in the state since the information
+            #  is not needed and thus extra work can be avoided.
+            view = UtxoViewpoint()
+            view.set_best_hash(tip.hash)
+            new_node = BlockNode.init_from(block_header=header, parent=tip)
+            return self._check_connect_block(new_node, block, view, None)
+        finally:
+            self.chain_lock.unlock()
 
     # ------------------------------------
     # END
@@ -2026,6 +2110,7 @@ class BlockChain:
         # blocks that fail to connect available for further analysis.
         def fn(db_tx: database.Tx):
             return db_store_block(db_tx, block)
+
         self.db.update(fn)
 
         # Create a new block node for the block and add it to the node index. Even
@@ -2052,13 +2137,9 @@ class BlockChain:
 
         return is_main_chain
 
-
-
-
     # ------------------------------------
     # END
     # ------------------------------------
-
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
