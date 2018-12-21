@@ -184,7 +184,7 @@ def validate_transaction_scripts(tx: btcutil.Tx, utxo_view: UtxoViewpoint, flags
                                  sig_cache: txscript.SigCache, hash_cache: txscript.HashCache):
     # First determine if segwit is active according to the scriptFlags. If
     # it isn't then we don't need to interact with the HashCache.
-    segwit_active = flags.has_flag(txscript.ScriptFlag.ScriptVerifyWitness)
+    segwit_active = (flags & txscript.ScriptVerifyWitness) == txscript.ScriptVerifyWitness
 
     # If the hashcache doesn't yet has the sighash midstate for this
     # transaction, then we'll compute them now so we can re-use them
@@ -230,7 +230,7 @@ def check_block_scripts(block: btcutil.Block, utxo_view: UtxoViewpoint,
                         sig_cache: txscript.SigCache, hash_cache: txscript.HashCache):
     # First determine if segwit is active according to the scriptFlags. If
     # it isn't then we don't need to interact with the HashCache.
-    segwit_active = script_flags.has_flag(txscript.ScriptFlag.ScriptVerifyWitness)
+    segwit_active = (script_flags & txscript.ScriptVerifyWitness) == txscript.ScriptVerifyWitness
 
     # num_inputs = 0
     # for tx in block.get_transactions():

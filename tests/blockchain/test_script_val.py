@@ -15,5 +15,5 @@ class TestScriptVal(unittest.TestCase):
         store_data_file = "%d.utxostore.bz2" % test_block_num
         view = load_utxo_view(store_data_file)
 
-        script_flags = txscript.ScriptFlags(txscript.ScriptFlag.ScriptBip16)
+        script_flags = txscript.ScriptBip16
         check_block_scripts(blocks[0], view, script_flags, sig_cache=None, hash_cache=None)

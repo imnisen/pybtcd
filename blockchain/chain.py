@@ -16,6 +16,7 @@ from .sequence_lock import *
 from .validate import *
 from .notifications import *
 from .checkpoints import *
+from .script_val import *
 
 import logging
 
@@ -2023,7 +2024,210 @@ class BlockChain:
     #
     # This function MUST be called with the chain state lock held (for writes).
     def _check_connect_block(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint, stxos: [SpentTxOut] or None):
-        pass # TODO
+        # If the side chain blocks end up in the database, a call to
+        # CheckBlockSanity should be done here in case a previous version
+        # allowed a block that is no longer valid.  However, since the
+        # implementation only currently uses memory for the side chain blocks,
+        # it isn't currently necessary.
+
+        # TOCONSIDER why compare node.hash not node.parent.hash here
+        # The coinbase for the Genesis block is not spendable, so just return
+        # an error now.
+        if node.hash == self.chain_params.genesis_hash:
+            msg = "the coinbase for the genesis block is not spendable"
+            raise RuleError(ErrorCode.ErrMissingTxOut, msg)
+
+        # Ensure the view is for the node being checked.
+        parent_hash = block.get_msg_block().header.prev_block
+        if view.get_best_hash() != parent_hash:
+            msg = ("inconsistent view when " +
+                   "checking block connection: best hash is %s instead " +
+                   "of expected %s"
+                   ) % (
+                view.get_best_hash(), parent_hash
+            )
+            raise AssertError(msg=msg)
+
+        # BIP0030 added a rule to prevent blocks which contain duplicate
+        # transactions that 'overwrite' older transactions which are not fully
+        # spent.  See the documentation for checkBIP0030 for more details.
+        #
+        # There are two blocks in the chain which violate this rule, so the
+        # check must be skipped for those blocks.  The isBIP0030Node function
+        # is used to determine if this block is one of the two blocks that must
+        # be skipped.
+        #
+        # In addition, as of BIP0034, duplicate coinbases are no longer
+        # possible due to its requirement for including the block height in the
+        # coinbase and thus it is no longer possible to create transactions
+        # that 'overwrite' older ones.  Therefore, only enforce the rule if
+        # BIP0034 is not yet active.  This is a useful optimization because the
+        # BIP0030 check is expensive since it involves a ton of cache misses in
+        # the utxoset.
+        if not is_bip003_node(node) and (node.height < self.chain_params.bip0034_height):
+            self._check_bip0030(node, block, view)
+
+        # Load all of the utxos referenced by the inputs for all transactions
+        # in the block don't already exist in the utxo view from the database.
+        #
+        # These utxo entries are needed for verification of things such as
+        # transaction inputs, counting pay-to-script-hashes, and scripts.
+        view.fetch_input_utxos(self.db, block)
+
+        # TOCONDER why bip0016 use timestamp to check
+        # while segwit use deployment state to check?
+
+        # BIP0016 describes a pay-to-script-hash type that is considered a
+        # "standard" type.  The rules for this BIP only apply to transactions
+        # after the timestamp defined by txscript.Bip16Activation.  See
+        # https://en.bitcoin.it/wiki/BIP_0016 for more details.
+        enforce_bip0016 = node.timestamp >= txscript.Bip16Activation
+
+        # Query for the Version Bits state for the segwit soft-fork
+        # deployment. If segwit is active, we'll switch over to enforcing all
+        # the new rules.
+        segwit_state = self._deployment_state(node.parent, chaincfg.DeploymentSegwit)
+
+        enforce_segwit = segwit_state == ThresholdState.ThresholdActive
+
+        # The number of signature operations must be less than the maximum
+        # allowed per block.  Note that the preliminary sanity checks on a
+        # block also include a check similar to this one, but this check
+        # expands the count to include a precise count of pay-to-script-hash
+        # signature operations in each of the input transaction public key
+        # scripts.
+        transactions = block.get_transactions()
+        total_sig_op_cost = 0
+        for i, tx in enumerate(transactions):
+            # Since the first (and only the first) transaction has
+            # already been verified to be a coinbase transaction,
+            # use i == 0 as an optimization for the flag to
+            # countP2SHSigOps for whether or not the transaction is
+            # a coinbase transaction rather than having to do a
+            # full coinbase check again.
+            sig_op_cost = get_sig_op_cost(tx, i == 0, view, enforce_bip0016, enforce_segwit)
+
+            # Check for overflow or going over the limits.  We have to do
+            # this on every loop iteration to avoid overflow.
+            last_sig_op_cost = total_sig_op_cost  # TOCHANGE not nessary in python
+            total_sig_op_cost += sig_op_cost
+            if total_sig_op_cost < last_sig_op_cost or total_sig_op_cost > MaxBlockSigOpsCost:
+                msg= "block contains too many signature operations - got %s, max %s" % (total_sig_op_cost, MaxBlockSigOpsCost)
+                raise RuleError(ErrorCode.ErrTooManySigOps, msg)
+
+        # Perform several checks on the inputs for each transaction.  Also
+        # accumulate the total fees.  This could technically be combined with
+        # the loop above instead of running another loop over the transactions,
+        # but by separating it we can avoid running the more expensive (though
+        # still relatively cheap as compared to running the scripts) checks
+        # against all the inputs when the signature operations are out of
+        # bounds.
+        total_fees = 0
+        for tx in transactions:
+            tx_fee = check_transaction_inputs(tx, node.height, view, self.chain_params)
+
+            #  Sum the total fees and ensure we don't overflow the
+            #  accumulator.
+            total_fees += tx_fee
+            if total_fees > pyutil.MaxInt64:
+                raise RuleError(ErrorCode.ErrBadFees, "total fees for block overflows accumulator")
+
+            # Add all of the outputs for this transaction which are not
+            # provably unspendable as available utxos.  Also, the passed
+            # spent txos slice is updated to contain an entry for each
+            # spent txout in the order each transaction spends them.
+            view.connect_transaction(tx, node.height, stxos)
+
+        # The total output values of the coinbase transaction must not exceed
+        # the expected subsidy value plus total transaction fees gained from
+        # mining the block.  It is safe to ignore overflow and out of range
+        # errors here because those error conditions would have already been
+        # caught by checkTransactionSanity.
+        total_satoshi_out = 0
+        for tx_out in transactions[0].get_msg_tx().tx_outs:
+            total_satoshi_out += tx_out.value
+
+        expected_satoshi_out = calc_block_subsidy(node.height, self.chain_params) + total_fees
+        if total_satoshi_out > expected_satoshi_out:
+            msg = "coinbase transaction for block pays %s which is more than expected value of %s" %(
+                total_satoshi_out, expected_satoshi_out
+            )
+            raise RuleError(ErrorCode.ErrBadCoinbaseValue, msg)
+
+        # Don't run scripts if this node is before the latest known good
+        # checkpoint since the validity is verified via the checkpoints (all
+        # transactions are included in the merkle root hash and any changes
+        # will therefore be detected by the next checkpoint).  This is a huge
+        # optimization because running the scripts is the most time consuming
+        # portion of block handling.
+        checkpoint = self.lastest_checkpoints()
+        runscript = True
+        if checkpoint is not None and node.height <= checkpoint.height:
+            runscript = False
+
+        # Blocks created after the BIP0016 activation time need to have the
+        # pay-to-script-hash checks enabled.
+        script_flags = txscript.ScriptFlags(0)
+        if enforce_bip0016:
+            script_flags |= txscript.ScriptBip16
+
+        # Enforce DER signatures for block versions 3+ once the historical
+        # activation threshold has been reached.  This is part of BIP0066.
+        block_header = block.get_msg_block().header
+        if block_header.version >= 3 and node.height >= self.chain_params.bip0066_height:
+            script_flags |= txscript.ScriptVerifyDERSignatures
+
+        # Enforce CHECKLOCKTIMEVERIFY for block versions 4+ once the historical
+        # activation threshold has been reached.  This is part of BIP0065.
+        if block_header.version >= 4 and node.height >= self.chain_params.bip0065_height:
+            script_flags |= txscript.ScriptVerifyCheckLockTimeVerify
+
+        # Enforce CHECKSEQUENCEVERIFY during all block validation checks once
+        # the soft-fork deployment is fully active.
+        csv_state = self._deployment_state(node.parent, chaincfg.DeploymentCSV)
+
+        if csv_state == ThresholdState.ThresholdActive:
+            # If the CSV soft-fork is now active, then modify the
+            # scriptFlags to ensure that the CSV op code is properly
+            # validated during the script checks bleow.
+            script_flags |= txscript.ScriptVerifyCheckSequenceVerify
+
+            # We obtain the MTP of the *previous* block in order to
+            # determine if transactions in the current block are final.
+            median_time = node.parent.calc_past_median_time()
+
+            # Additionally, if the CSV soft-fork package is now active,
+            # then we also enforce the relative sequence number based
+            # lock-times within the inputs of all transactions in this
+            # candidate block.
+            for tx in block.get_transactions():
+                #  A transaction can only be included within a block
+                # once the sequence locks of *all* its inputs are
+                # active.
+                sequence_lock = self._calc_sequence_lock(node,tx,view, mempool=False)
+
+                if not sequence_lock_active(sequence_lock, node.height, median_time):
+                    msg = "block contains transaction whose input sequence locks are not met"
+                    raise RuleError(ErrorCode.ErrUnfinalizedTx, msg)
+
+        # Enforce the segwit soft-fork package once the soft-fork has shifted
+        # into the "active" version bits state.
+        if enforce_segwit:
+            script_flags |= txscript.ScriptVerifyWitness
+            script_flags |= txscript.ScriptStrictMultiSig
+
+        # Now that the inexpensive checks are done and have passed, verify the
+        # transactions are actually allowed to spend the coins by running the
+        # expensive ECDSA signature check scripts.  Doing this last helps
+        # prevent CPU exhaustion attacks.
+        if runscript :
+            check_block_scripts(block, view, script_flags, self.sig_cache, self.hash_cache)
+
+        # Update the best hash for view to include this block since all of its
+        # transactions have been connected.
+        view.set_best_hash(node.hash)
+
+        return
 
     # CheckConnectBlockTemplate fully validates that connecting the passed block to
     # the main chain does not violate any consensus rules, aside from the proof of

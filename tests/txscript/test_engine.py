@@ -130,7 +130,7 @@ class TestInvalidFlagCombinations(unittest.TestCase):
         # TOADD Parallel
 
         tests = [
-            ScriptFlags(ScriptFlag.ScriptVerifyCleanStack)
+            ScriptVerifyCleanStack
         ]
 
         tx = tx = wire.MsgTx(version=1,
@@ -209,7 +209,7 @@ class TestCheckPubKeyEncoding(unittest.TestCase):
                 "isValid": False,
             },
         ]
-        vm = Engine(flags=ScriptFlags(ScriptFlag.ScriptVerifyStrictEncoding))
+        vm = Engine(flags=ScriptVerifyStrictEncoding)
         for test in tests:
             if test['isValid']:
                 vm.check_pub_key_encoding(test['key'])
@@ -370,7 +370,7 @@ class TestCheckSignatureEncoding(unittest.TestCase):
                 "isValid": False,
             },
         ]
-        vm = Engine(flags=ScriptFlags(ScriptFlag.ScriptVerifyStrictEncoding))
+        vm = Engine(flags=ScriptVerifyStrictEncoding)
         for test in tests:
             if test['isValid']:
                 vm.check_signature_encoding(test['sig'])

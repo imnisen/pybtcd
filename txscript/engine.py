@@ -56,7 +56,7 @@ class Engine:
         self.tx_idx = tx_idx or 0
         self.cond_stack = cond_stack or []
         self.num_ops = num_ops or 0
-        self.flags = flags or ScriptFlags()
+        self.flags = flags or ScriptFlags(0)
         self.sig_cache = sig_cache or SigCache()
         self.hash_cache = hash_cache or HashCache()
         self.bip16 = bip16 or False
@@ -66,8 +66,8 @@ class Engine:
         self.inptut_amount = inptut_amount or 0
 
     # has_flag returns whether the script engine instance has the passed flag set.
-    def has_flag(self, flag: ScriptFlag) -> bool:
-        return self.flags.has_flag(flag)
+    def has_flag(self, flags: ScriptFlags) -> bool:
+        return (self.flags & flags) == flags
 
     # is_branch_executing returns whether or not the current conditional branch is
     # actively executing.  For example, when the data stack has an OP_FALSE on it
@@ -229,8 +229,7 @@ class Engine:
                     payToWitnessPubKeyHashDataSize, payToWitnessScriptHashDataSize, len(self.witness_program))
                 raise ScriptError(ErrorCode.ErrWitnessProgramWrongLength, desc=desc)
 
-
-        elif self.has_flag(ScriptFlag.ScriptVerifyDiscourageUpgradeableWitnessProgram):
+        elif self.has_flag(ScriptVerifyDiscourageUpgradeableWitnessProgram):
             desc = "new witness program versions invalid: %s" % self.witness_program
             raise ScriptError(ErrorCode.ErrDiscourageUpgradableWitnessProgram, desc=desc)
         else:
@@ -268,7 +267,7 @@ class Engine:
             desc = "witness program must have clean stack"
             raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
 
-        if final_script and self.has_flag(ScriptFlag.ScriptVerifyCleanStack) and self.dstack.depth() != 1:
+        if final_script and self.has_flag(ScriptVerifyCleanStack) and self.dstack.depth() != 1:
             desc = "stack contains %d unexpected items" % (self.dstack.depth() - 1)
             raise ScriptError(ErrorCode.ErrEvalFalse, desc=desc)
         elif self.dstack.depth() < 1:
@@ -406,7 +405,7 @@ class Engine:
     # checkHashTypeEncoding returns whether or not the passed hashtype adheres to
     # the strict encoding requirements if enabled.
     def check_hash_type_encoding(self, hash_type):
-        if not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+        if not self.has_flag(ScriptVerifyStrictEncoding):
             return
 
         sig_hash_type = hash_type & (~SigHashType.SigHashAnyOneCanPay.value)
@@ -419,12 +418,12 @@ class Engine:
     # the strict encoding requirements if enabled.
     def check_pub_key_encoding(self, pub_key):
 
-        if self.has_flag(ScriptFlag.ScriptVerifyWitnessPubKeyType) and self.is_witness_version_active(0) and \
+        if self.has_flag(ScriptVerifyWitnessPubKeyType) and self.is_witness_version_active(0) and \
                 not btcec.is_compress_pub_key(pub_key):
             desc = "only uncompressed keys are accepted post-segwit"
             raise ScriptError(ErrorCode.ErrWitnessPubKeyType, desc=desc)
 
-        if not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+        if not self.has_flag(ScriptVerifyStrictEncoding):
             return
 
         if len(pub_key) == 33 and pub_key[0] in (0x02, 0x03):
@@ -439,9 +438,9 @@ class Engine:
     # checkSignatureEncoding returns whether or not the passed signature adheres to
     # the strict encoding requirements if enabled.
     def check_signature_encoding(self, sig):
-        if not self.has_flag(ScriptFlag.ScriptVerifyDERSignatures) and \
-                not self.has_flag(ScriptFlag.ScriptVerifyLowS) and \
-                not self.has_flag(ScriptFlag.ScriptVerifyStrictEncoding):
+        if not self.has_flag(ScriptVerifyDERSignatures) and \
+                not self.has_flag(ScriptVerifyLowS) and \
+                not self.has_flag(ScriptVerifyStrictEncoding):
             return
 
         # The format of a DER encoded signature is as follows:
@@ -605,7 +604,7 @@ class Engine:
         # transaction with the complement while still being a valid signature that
         # verifies.  This would result in changing the transaction hash and thus is
         # a source of malleability.
-        if self.has_flag(ScriptFlag.ScriptVerifyLowS):
+        if self.has_flag(ScriptVerifyLowS):
             s_value = btcec.bytes_to_int(sig[sOffset: sOffset + s_len])
             if s_value > halfOrder:
                 desc = "signature is not canonical due to unnecessarily high S value"
@@ -643,7 +642,7 @@ class Engine:
         # When not in witness execution mode, not executing a v0 witness
         # program, or the minimal if flag isn't set pop the top stack item as
         # a normal bool.
-        if not self.is_witness_version_active(0) or not self.has_flag(ScriptFlag.ScriptVerifyMinimalIf):
+        if not self.is_witness_version_active(0) or not self.has_flag(ScriptVerifyMinimalIf):
             return self.dstack.pop_bool()
 
         # At this point, a v0 witness program is being executed and the minimal
@@ -722,14 +721,14 @@ def new_engine(script_pub_key, tx, tx_idx, flags, sig_cache, hash_cache, input_a
     # it possible to have a situation where P2SH would not be a soft fork
     # when it should be. The same goes for segwit which will pull in
     # additional scripts for execution from the witness stack.
-    if vm.has_flag(ScriptFlag.ScriptVerifyCleanStack) and (not vm.has_flag(ScriptFlag.ScriptBip16)) and \
-            (not vm.has_flag(ScriptFlag.ScriptVerifyWitness)):
+    if vm.has_flag(ScriptVerifyCleanStack) and (not vm.has_flag(ScriptBip16)) and \
+            (not vm.has_flag(ScriptVerifyWitness)):
         desc = "invalid flags combination"
         raise ScriptError(ErrorCode.ErrInvalidFlags, desc=desc)
 
     # The signature script must only contain data pushes when the
     # associated flag is set.
-    if vm.has_flag(ScriptFlag.ScriptVerifySigPushOnly) and (not is_push_only_script(script_sig)):
+    if vm.has_flag(ScriptVerifySigPushOnly) and (not is_push_only_script(script_sig)):
         desc = "signature script is not push only"
         raise ScriptError(ErrorCode.ErrNotPushOnly, desc=desc)
 
@@ -751,14 +750,14 @@ def new_engine(script_pub_key, tx, tx_idx, flags, sig_cache, hash_cache, input_a
     if len(scripts[0]) == 0:
         vm.script_idx += 1
 
-    if vm.has_flag(ScriptFlag.ScriptBip16) and is_script_hash(vm.scripts[1]):
+    if vm.has_flag(ScriptBip16) and is_script_hash(vm.scripts[1]):
         # Only accept input scripts that push data for P2SH.
         if not is_push_only(vm.scripts[0]):
             desc = "pay to script hash is not push only"
             raise ScriptError(ErrorCode.ErrNotPushOnly, desc=desc)
         vm.bip16 = True
 
-    if vm.has_flag(ScriptFlag.ScriptVerifyMinimalData):
+    if vm.has_flag(ScriptVerifyMinimalData):
         vm.dstack.verify_minimal_data = True
         vm.astack.verify_minimal_data = True
 
@@ -767,11 +766,11 @@ def new_engine(script_pub_key, tx, tx_idx, flags, sig_cache, hash_cache, input_a
     # here since in the case of nested p2sh, the scriptSig will be a valid
     # witness program. For nested p2sh, all the bytes after the first data
     # push should *exactly* match the witness program template.
-    if vm.has_flag(ScriptFlag.ScriptVerifyWitness):
+    if vm.has_flag(ScriptVerifyWitness):
 
         # If witness evaluation is enabled, then P2SH MUST also be
         # active.
-        if not vm.has_flag(ScriptFlag.ScriptBip16):
+        if not vm.has_flag(ScriptBip16):
             desc = "P2SH must be enabled to do witness verification"
             raise ScriptError(ErrorCode.ErrInvalidFlags, desc=desc)
 

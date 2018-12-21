@@ -1,6 +1,12 @@
 from .opcode import *
 
 
+# Bip16Activation is the timestamp where BIP0016 is valid to use in the
+# blockchain.  To be used to determine if BIP0016 should be called for or not.
+# This timestamp corresponds to Sun Apr 1 00:00:00 UTC 2012.
+Bip16Activation = 1333238400
+
+
 # payToWitnessPubKeyHashDataSize is the size of the witness program's
 # data push for a pay-to-witness-pub-key-hash output.
 payToWitnessPubKeyHashDataSize = 20

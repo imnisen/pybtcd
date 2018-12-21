@@ -72,6 +72,7 @@
 * Add more test case for database packages. now let's just move on
 * Refactor the_ field things
 * make blockchain/script_val.py validate multiprocess
+* refactor txscript_flag to int
 * Blockchain TODOs
 ** chain
 ** chainio

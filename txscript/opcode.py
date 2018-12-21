@@ -938,7 +938,7 @@ def opcodeN(pop, vm):
 # the flag to discourage use of NOPs is set for select opcodes.
 def opcodeNop(pop, vm):
     if pop.opcode.value in (OP_NOP1, OP_NOP4, OP_NOP5, OP_NOP6, OP_NOP7, OP_NOP8, OP_NOP9, OP_NOP10) and \
-            vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+            vm.hash_flag(ScriptDiscourageUpgradableNops):
         desc = "OP_NOP%d reserved for soft-fork upgrades" % (pop.opcode.value - (OP_NOP1 - 1))
         raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
     return
@@ -1092,8 +1092,8 @@ def verify_lock_time(tx_lock_time, threshold, lock_time):
 def opcodeCheckLockTimeVerify(pop, vm):
     # If the ScriptVerifyCheckLockTimeVerify script flag is not set, treat
     # opcode as OP_NOP2 instead.
-    if not vm.hash_flag(ScriptFlag.ScriptVerifyCheckLockTimeVerify):
-        if vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+    if not vm.hash_flag(ScriptVerifyCheckLockTimeVerify):
+        if vm.hash_flag(ScriptDiscourageUpgradableNops):
             desc = "OP_NOP2 reserved for soft-fork upgrades"
             raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
         else:
@@ -1154,8 +1154,8 @@ def opcodeCheckLockTimeVerify(pop, vm):
 def opcodeCheckSequenceVerify(pop, vm):
     # If the ScriptVerifyCheckSequenceVerify script flag is not set, treat
     # opcode as OP_NOP3 instead.
-    if not vm.hash_flag(ScriptFlag.ScriptVerifyCheckSequenceVerify):
-        if vm.hash_flag(ScriptFlag.ScriptDiscourageUpgradableNops):
+    if not vm.hash_flag(ScriptVerifyCheckSequenceVerify):
+        if vm.hash_flag(ScriptDiscourageUpgradableNops):
             desc = "OP_NOP3 reserved for soft-fork upgrades"
             raise ScriptError(ErrorCode.ErrDiscourageUpgradableNOPs, desc=desc)
         else:
@@ -1843,7 +1843,7 @@ def opcodeCheckSig(pop, vm):
         return
 
     try:
-        if vm.has_flag(ScriptFlag.ScriptVerifyStrictEncoding) or vm.has_flag(ScriptFlag.ScriptVerifyDERSignatures):
+        if vm.has_flag(ScriptVerifyStrictEncoding) or vm.has_flag(ScriptVerifyDERSignatures):
             signature = btcec.parse_der_signature(sig_bytes, btcec.s256())
         else:
             signature = btcec.parse_signature(sig_bytes, btcec.s256())
@@ -1861,7 +1861,7 @@ def opcodeCheckSig(pop, vm):
     else:
         valid = signature.verify(hash, pub_key)
 
-    if not valid and vm.has_flag(ScriptFlag.ScriptVerifyNullFail) and len(sig_bytes) > 0:
+    if not valid and vm.has_flag(ScriptVerifyNullFail) and len(sig_bytes) > 0:
         desc = "signature not empty on failed checksig"
         raise ScriptError(ErrorCode.ErrNullFail, desc=desc)
 
@@ -1963,7 +1963,7 @@ def opcodeCheckMultiSig(pop, vm):
     # Since the dummy argument is otherwise not checked, it could be any
     # value which unfortunately provides a source of malleability.  Thus,
     # there is a script flag to force an error when the value is NOT 0.
-    if vm.has_flag(ScriptFlag.ScriptStrictMultiSig) and len(dummy) != 0:
+    if vm.has_flag(ScriptStrictMultiSig) and len(dummy) != 0:
         msg = "multisig dummy argument has length %d instead of 0" % len(dummy)
         raise ScriptError(ErrorCode.ErrSigNullDummy, msg)
 
@@ -2011,8 +2011,7 @@ def opcodeCheckMultiSig(pop, vm):
             vm.check_signatire_encoding(signature)
 
             try:
-                if vm.has_flag(ScriptFlag.ScriptVerifyStrictEncoding) or vm.has_flag(
-                        ScriptFlag.ScriptVerifyDERSignatures):
+                if vm.has_flag(ScriptVerifyStrictEncoding) or vm.has_flag(ScriptVerifyDERSignatures):
                     parsed_sig = btcec.parse_der_signature(signature, btcec.s256())
                 else:
                     parsed_sig = btcec.parse_signature(signature, btcec.s256())
@@ -2065,7 +2064,7 @@ def opcodeCheckMultiSig(pop, vm):
             signature_idx += 1
             num_signatures -= 1
 
-    if not success and vm.hash_flag(ScriptFlag.ScriptVerifyNullFail):
+    if not success and vm.hash_flag(ScriptVerifyNullFail):
         for sig in signatures:
             if len(sig.signatire) > 0:
                 msg = "not all signatures empty on failed checkmultisig"
