@@ -1,6 +1,7 @@
 import io
 import chainhash
 import wire
+import btcutil
 from .error import *
 from .tx import *
 
@@ -125,7 +126,7 @@ class Block:
     # transactions in the Block.  This is nearly equivalent to accessing the raw
     # transactions (wire.MsgTx) in the underlying wire.MsgBlock, however it
     # instead provides easy access to wrapped versions (btcutil.Tx) of them.
-    def get_transactions(self):
+    def get_transactions(self) -> [btcutil.Tx]:
         # Return transactions if they have ALL already been generated.  This
         # flag is necessary because the wrapped transactions are lazily
         # generated in a sparse fashion.

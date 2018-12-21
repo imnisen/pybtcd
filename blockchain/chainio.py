@@ -34,42 +34,6 @@ chainStateKeyName = b"chainstate"
 utxoSetBucketName = b"utxosetv2"
 
 
-# blockIndexKey generates the binary key for an entry in the block index
-# bucket. The key is composed of the block height encoded as a big-endian
-# 32-bit unsigned int followed by the 32 byte block hash.
-def block_index_key(block_hash: chainhash.Hash, block_height: int) -> bytes:
-    return block_height.to_bytes(4, "big") + block_hash.to_bytes()
-
-
-# dbStoreBlockNode stores the block header and validation status to the block
-# index bucket. This overwrites the current entry if there exists one.
-def db_store_block_node(db_tx: database.Tx, node):
-    """
-
-    :param database.Tx db_tx:
-    :param BlockNode node:
-    :return:
-    """
-    # Serialize block data to be stored.
-    header = node.header()
-    w = io.BytesIO()
-    header.serialize(w)
-    value = w.getvalue()
-
-    # Write block header data to block index bucket.
-    block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
-    key = block_index_key(node.hash, node.height)
-    return block_index_bucket.put(key, value)
-
-# dbStoreBlock stores the provided block in the database if it is not already
-# there. The full block data is written to ffldb.
-def db_store_block(db_tx: database.Tx, block:btcutil.Block):
-    has_block = db_tx.has_block(block.hash())
-    if has_block:
-        return
-    return db_tx.store_block(block)
-
-
 # dbFetchHeightByHash uses an existing database transaction to retrieve the
 # height for the provided hash from the index.
 def db_fetch_height_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
@@ -205,6 +169,15 @@ def db_put_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
     height_index.put(serialized_height, hash.to_bytes())
     return
 
+
+
+
+# TODO
+# dbRemoveBlockIndex uses an existing database transaction remove block index
+# entries from the hash to height and height to hash mappings for the provided
+# values.
+def db_remove_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
+    pass
 
 # TOCONSIDER
 # Don't like the origin, I don't use sync.Pool here, for simplicity.
@@ -389,3 +362,57 @@ def count_spent_outputs(block: btcutil.Block) -> int:
     for tx in block.get_transactions():
         num_spent += len(tx.get_msg_tx().tx_ins)
     return num_spent
+
+# TODO below methods
+# dbFetchHeaderByHash uses an existing database transaction to retrieve the
+# block header for the provided hash.
+def db_fetch_header_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
+    pass
+
+# dbFetchHeaderByHeight uses an existing database transaction to retrieve the
+# block header for the provided hash.
+def db_fetch_header_by_height(db_tx: database.Tx, height:int):
+    pass
+
+# dbFetchBlockByNode uses an existing database transaction to retrieve the
+# raw block for the provided node, deserialize it, and return a btcutil.Block
+# with the height set.
+def db_fetch_block_by_node(db_tx: database.Tx, node: BlockNode):
+    pass
+
+
+# dbStoreBlockNode stores the block header and validation status to the block
+# index bucket. This overwrites the current entry if there exists one.
+def db_store_block_node(db_tx: database.Tx, node):
+    """
+
+    :param database.Tx db_tx:
+    :param BlockNode node:
+    :return:
+    """
+    # Serialize block data to be stored.
+    header = node.header()
+    w = io.BytesIO()
+    header.serialize(w)
+    value = w.getvalue()
+
+    # Write block header data to block index bucket.
+    block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
+    key = block_index_key(node.hash, node.height)
+    return block_index_bucket.put(key, value)
+
+
+# dbStoreBlock stores the provided block in the database if it is not already
+# there. The full block data is written to ffldb.
+def db_store_block(db_tx: database.Tx, block:btcutil.Block):
+    has_block = db_tx.has_block(block.hash())
+    if has_block:
+        return
+    return db_tx.store_block(block)
+
+
+# blockIndexKey generates the binary key for an entry in the block index
+# bucket. The key is composed of the block height encoded as a big-endian
+# 32-bit unsigned int followed by the 32 byte block hash.
+def block_index_key(block_hash: chainhash.Hash, block_height: int) -> bytes:
+    return block_height.to_bytes(4, "big") + block_hash.to_bytes()

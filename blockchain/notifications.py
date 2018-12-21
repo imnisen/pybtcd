@@ -1,23 +1,29 @@
-from enum import IntEnum
-
+# from enum import IntEnum
+#
+#
+# # NotificationType represents the type of a notification message.
+# class NotificationType(IntEnum):
+#
+#
+#     def __str__(self):
+#         return self.name
 
 # NotificationType represents the type of a notification message.
-class NotificationType(IntEnum):
-    # NTBlockAccepted indicates the associated block was accepted into
-    # the block chain.  Note that this does not necessarily mean it was
-    # added to the main chain.  For that, use NTBlockConnected.
-    NTBlockAccepted = 0
+class NotificationType(int):
+    pass
 
-    # NTBlockConnected indicates the associated block was connected to the
-    # main chain.
-    NTBlockConnected = 1
+# NTBlockAccepted indicates the associated block was accepted into
+# the block chain.  Note that this does not necessarily mean it was
+# added to the main chain.  For that, use NTBlockConnected.
+NTBlockAccepted = NotificationType(0)
 
-    # NTBlockDisconnected indicates the associated block was disconnected
-    # from the main chain.
-    NTBlockDisconnected = 2
+# NTBlockConnected indicates the associated block was connected to the
+# main chain.
+NTBlockConnected = NotificationType(1)
 
-    def __str__(self):
-        return self.name
+# NTBlockDisconnected indicates the associated block was disconnected
+# from the main chain.
+NTBlockDisconnected = NotificationType(2)
 
 
 # TODO  NotificationCallback

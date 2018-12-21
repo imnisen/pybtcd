@@ -79,28 +79,27 @@ class BestState:
 # connected and disconnected to and from the tip of the main chain for the
 # purpose of supporting optional indexes.
 class IndexManager:
-    # TODO
     # Init is invoked during chain initialize in order to allow the index
     # manager to initialize itself and any indexes it is managing.  The
     # channel parameter specifies a channel the caller can close to signal
     # that the process should be interrupted.  It can be nil if that
     # behavior is not desired.
     def __init__(self):
-        pass
+        raise NotImplementedError
 
     # ConnectBlock is invoked when a new block has been connected to the
     # main chain. The set of output spent within a block is also passed in
     # so indexers can access the previous output scripts input spent if
     # required.
-    def connect_block(self):
-        pass
+    def connect_block(self, database_tx: database.Tx, block: btcutil.Block, utxo_viewpoint: UtxoViewpoint):
+        raise NotImplementedError
 
     # DisconnectBlock is invoked when a block has been disconnected from
     # the main chain. The set of outputs scripts that were spent within
     # this block is also returned so indexers can clean up the prior index
     # state for this block.
-    def disconnect_block(self):
-        pass
+    def disconnect_block(self, database_tx: database.Tx, block: btcutil.Block, utxo_viewpoint: UtxoViewpoint):
+        raise NotImplementedError
 
 
 # Config is a descriptor which specifies the blockchain instance configuration.
@@ -730,7 +729,7 @@ class BlockChain:
 
         # Prune fully spent entries and mark all entries in the view unmodified
         # now that the modifications have been committed to the database.
-        view.commit()  # TODO
+        view.commit()
 
         # This node is now the end of the best chain.
         self.best_chain.set_tip(node)
@@ -748,7 +747,7 @@ class BlockChain:
         # The caller would typically want to react with actions such as
         # updating wallets.
         self.chain_lock.unlock()
-        self._send_notification()  # TODO
+        self._send_notification(NTBlockConnected, block)
         self.chain_lock.lock()
         return
 
@@ -756,14 +755,98 @@ class BlockChain:
     # the main (best) chain.
     #
     # This function MUST be called with the chain state lock held (for writes)
-    def disconnect_block(self, node, block, view):
-        pass
+    def _disconnect_block(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint):
+        # Make sure the node being disconnected is the end of the best chain.
+        if node.hash != self.best_chain.tip().hash:
+            raise AssertError("disconnectBlock must be called with the block at the end of the main chain")
 
-    # countSpentOutputs returns the number of utxos the passed block spends.
-    @staticmethod
-    def _count_spent_outputs(block: btcutil.Block):
-        pass
+        # Load the previous block since some details for it are needed below.
+        prev_node = node.parent
+        prev_block = btcutil.Block()
 
+        def fn1(db_tx: database.Tx):
+            nonlocal prev_block
+            prev_block = db_fetch_block_by_node(db_tx, prev_node)
+
+        self.db.view(fn1)
+
+        # Write any block status changes to DB before updating best state.
+        self.index.flush_to_db()
+
+        # Generate a new best state snapshot that will be used to update the
+        # database and later memory if all database updates are successful.
+        self.state_lock.r_lock()
+        cur_total_txns = self.state_snapshot.total_txns
+        self.state_lock.r_unlock()
+
+        num_txns = len(prev_block.get_msg_block().transactions)
+        block_size = prev_block.get_msg_block().serialize_size()
+        block_weight = get_block_weight(prev_block)
+        new_total_txns = cur_total_txns - len(block.get_msg_block().transactions)
+        median_time = prev_node.calc_past_median_time()
+        state = BestState(
+            hash=prev_node.hash,
+            height=prev_node.heightm,
+            bits=prev_node.bits,
+            block_size=block_size,
+            block_weight=block_weight,
+            num_txns=num_txns,
+            total_txns=new_total_txns,
+            median_time=median_time
+        )
+
+        def fn2(db_tx: database.Tx):
+            # Update best block state.
+            db_put_best_state(db_tx, state,
+                              node.work_sum)  # TOCHECK, TOCONSIDER why node prev_node.work_sum here? # TODO
+
+            # Remove the block hash and height from the block index which
+            # tracks the main chain.
+            db_remove_block_index(db_tx, block.hash(), node.height)
+
+            # Update the utxo set using the state of the utxo view.  This
+            # entails restoring all of the utxos spent and removing the new
+            # ones created by the block.
+            db_put_utxo_view(db_tx, view)
+
+            # Update the transaction spend journal by removing the record
+            # that contains all txos spent by the block .
+            db_remove_spend_journal_entry(db_tx, block.hash())
+
+            # Allow the index manager to call each of the currently active
+            # optional indexes with the block being disconnected so they
+            # can update themselves accordingly.
+            if self.index_manager is not None:
+                self.index_manager.disconnect_block(db_tx, block, view)
+
+        self.db.update(fn2)
+
+        # Prune fully spent entries and mark all entries in the view unmodified
+        # now that the modifications have been committed to the database.
+        view.commit()
+
+        # This node's parent is now the end of the best chain.
+        self.best_chain.set_tip(node.parent)
+
+        # Update the state for the best block.  Notice how this replaces the
+        # entire struct instead of updating the existing one.  This effectively
+        # allows the old version to act as a snapshot which callers can use
+        # freely without needing to hold a lock for the duration.  See the
+        # comments on the state variable for more details.
+        self.state_lock.lock()
+        self.state_snapshot = state
+        self.state_lock.unlock()
+
+        #  Notify the caller that the block was disconnected from the main
+        # chain.  The caller would typically want to react with actions such as
+        # updating wallets.
+        self.chain_lock.unlock()
+        self._send_notification(NTBlockDisconnected, block)
+        self.chain_lock.lock()
+
+        return
+
+    # TODO
     # reorganizeChain reorganizes the block chain by disconnecting the nodes in the
     # detachNodes list and connecting the nodes in the attach list.  It expects
     # that the lists are already in the correct order and are in sync with the
@@ -2023,7 +2106,8 @@ class BlockChain:
     # with that node.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def _check_connect_block(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint, stxos: [SpentTxOut] or None):
+    def _check_connect_block(self, node: BlockNode, block: btcutil.Block, view: UtxoViewpoint,
+                             stxos: [SpentTxOut] or None):
         # If the side chain blocks end up in the database, a call to
         # CheckBlockSanity should be done here in case a previous version
         # allowed a block that is no longer valid.  However, since the
@@ -2044,8 +2128,8 @@ class BlockChain:
                    "checking block connection: best hash is %s instead " +
                    "of expected %s"
                    ) % (
-                view.get_best_hash(), parent_hash
-            )
+                      view.get_best_hash(), parent_hash
+                  )
             raise AssertError(msg=msg)
 
         # BIP0030 added a rule to prevent blocks which contain duplicate
@@ -2112,7 +2196,8 @@ class BlockChain:
             last_sig_op_cost = total_sig_op_cost  # TOCHANGE not nessary in python
             total_sig_op_cost += sig_op_cost
             if total_sig_op_cost < last_sig_op_cost or total_sig_op_cost > MaxBlockSigOpsCost:
-                msg= "block contains too many signature operations - got %s, max %s" % (total_sig_op_cost, MaxBlockSigOpsCost)
+                msg = "block contains too many signature operations - got %s, max %s" % (
+                total_sig_op_cost, MaxBlockSigOpsCost)
                 raise RuleError(ErrorCode.ErrTooManySigOps, msg)
 
         # Perform several checks on the inputs for each transaction.  Also
@@ -2149,7 +2234,7 @@ class BlockChain:
 
         expected_satoshi_out = calc_block_subsidy(node.height, self.chain_params) + total_fees
         if total_satoshi_out > expected_satoshi_out:
-            msg = "coinbase transaction for block pays %s which is more than expected value of %s" %(
+            msg = "coinbase transaction for block pays %s which is more than expected value of %s" % (
                 total_satoshi_out, expected_satoshi_out
             )
             raise RuleError(ErrorCode.ErrBadCoinbaseValue, msg)
@@ -2204,7 +2289,7 @@ class BlockChain:
                 #  A transaction can only be included within a block
                 # once the sequence locks of *all* its inputs are
                 # active.
-                sequence_lock = self._calc_sequence_lock(node,tx,view, mempool=False)
+                sequence_lock = self._calc_sequence_lock(node, tx, view, mempool=False)
 
                 if not sequence_lock_active(sequence_lock, node.height, median_time):
                     msg = "block contains transaction whose input sequence locks are not met"
@@ -2220,7 +2305,7 @@ class BlockChain:
         # transactions are actually allowed to spend the coins by running the
         # expensive ECDSA signature check scripts.  Doing this last helps
         # prevent CPU exhaustion attacks.
-        if runscript :
+        if runscript:
             check_block_scripts(block, view, script_flags, self.sig_cache, self.hash_cache)
 
         # Update the best hash for view to include this block since all of its
@@ -2336,15 +2421,24 @@ class BlockChain:
         # chain.  The caller would typically want to react by relaying the
         # inventory to other peers.
         self.chain_lock.unlock()
-        self._send_notification(NotificationType.NTBlockAccepted, block)
+        self._send_notification(NTBlockAccepted, block)
         self.chain_lock.lock()
 
         return is_main_chain
 
-    # ------------------------------------
-    # END
-    # ------------------------------------
+        # ------------------------------------
+        # END
+        # ------------------------------------
 
 
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
     pass
+
+
+# countSpentOutputs returns the number of utxos the passed block spends.
+def count_spent_outputs(block: btcutil.Block):
+    # Exclude the coinbase transaction since it can't spend anything.
+    num_spent = 0
+    for tx in block.get_transactions()[1:]:
+        num_spent += len(tx.get_msg_tx().tx_ins)
+    return num_spent

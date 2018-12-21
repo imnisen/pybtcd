@@ -76,5 +76,4 @@
 * Blockchain TODOs
 ** chain
 ** chainio
-** DOING accept
 ** HOLD upgrade
