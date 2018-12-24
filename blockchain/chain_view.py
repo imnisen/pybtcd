@@ -302,7 +302,7 @@ class ChainView:
     # See the exported BlockLocator function comments for more details.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _block_locator(self, node: BlockNode) -> BlockLocator:
+    def _block_locator(self, node: BlockNode or None) -> BlockLocator:
         # Use the current tip if requested.
         if node is None:
             node = self._tip()
@@ -348,7 +348,7 @@ class ChainView:
     # locator.
     #
     # This function is safe for concurrent access.
-    def block_locator(self, node: BlockNode) -> BlockLocator:
+    def block_locator(self, node: BlockNode or None) -> BlockLocator:
         self.lock.acquire()
         locator = self._block_locator(node)
         self.lock.release()
