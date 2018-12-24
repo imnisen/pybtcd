@@ -798,7 +798,7 @@ class BlockChain:
         def fn2(db_tx: database.Tx):
             # Update best block state.
             db_put_best_state(db_tx, state,
-                              node.work_sum)  # TOCHECK, TOCONSIDER why node prev_node.work_sum here? # TODO
+                              node.work_sum)  # TOCHECK, TOCONSIDER why node prev_node.work_sum here?
 
             # Remove the block hash and height from the block index which
             # tracks the main chain.
@@ -1001,7 +1001,7 @@ class BlockChain:
             stxos = []
             view.connect_transactions(block, stxos)
 
-            # TODO check the stxos change as expected
+            # TOCHECK check the stxos change as expected
 
             # Update the database and chain state.
             self._connect_block(n, block, view, stxos)
@@ -1815,7 +1815,7 @@ class BlockChain:
                 self._remove_orphan_block(o)
 
                 # Potentially accept the block into the block chain.
-                self._maybe_accept_block(o.block, flags)  # TODO
+                self._maybe_accept_block(o.block, flags)
 
                 # Add this block to the list of blocks to process so
                 # any orphan blocks that depend on this block are
@@ -1863,7 +1863,7 @@ class BlockChain:
             # used to eat memory, and ensuring expected (versus claimed) proof of
             # work requirements since the previous checkpoint are met.
             block_header = block.get_msg_block().header
-            checkpoint_node = self._find_previous_checkpoint()  # TODO
+            checkpoint_node = self._find_previous_checkpoint()
             if checkpoint_node:
                 # Ensure the block timestamp is after the checkpoint timestamp.
                 if block_header.timestamp < checkpoint_node.timestamp:
@@ -1872,7 +1872,7 @@ class BlockChain:
                     )
                     raise RuleError(ErrorCode.ErrCheckpointTimeTooOld, msg)
 
-                # TOCONSIDER TODO
+                # TOCONSIDER
                 if not fast_add:
                     # Even though the checks prior to now have already ensured the
                     # proof of work exceeds the claimed amount, the claimed amount
@@ -1883,7 +1883,7 @@ class BlockChain:
                     duration = block_header.timestamp - checkpoint_node.timestamp
                     required_target = compact_to_big(self._calc_easiest_difficulty(
                         checkpoint_node.bits, duration
-                    ))  # TODO
+                    ))
                     current_target = compact_to_big(block_header.bits)
                     if current_target > required_target:
                         msg = "block target difficulty of %064x is too low when compared to the previous checkpoint" % current_target

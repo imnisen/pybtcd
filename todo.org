@@ -75,5 +75,5 @@
 * refactor txscript_flag to int
 * Blockchain TODOs
 ** chain
-** chainio
+** TODO chainio
 ** HOLD upgrade
