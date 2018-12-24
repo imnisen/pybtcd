@@ -245,7 +245,7 @@ class UtxoViewpoint:
                 raise AssertError("view missing input %s" % tx_in.previous_out_point)
 
             # Only create the stxo details if requested.
-            if stxos:
+            if stxos is not None:
                 # Populate the stxo details using the utxo entry.
                 stxo = SpentTxOut(
                     amount=entry.get_amount(),
