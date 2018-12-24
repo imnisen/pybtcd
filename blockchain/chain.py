@@ -877,12 +877,12 @@ class BlockChain:
         view.set_best_hash(self.best_chain.tip().hash)
 
         for n in detach_nodes:
-
             block = btcutil.Block(msg_block=wire.MsgBlock())  # define a empty block
 
             def fn1(db_tx: database.Tx):
                 nonlocal block
                 block = db_fetch_block_by_node(db_tx, n)
+
             self.db.view(fn1)
 
             # Load all of the utxos referenced by the block that aren't
@@ -892,9 +892,11 @@ class BlockChain:
             # Load all of the spent txos for the block from the spend
             # journal.
             stxos = []
+
             def fn2(db_tx: database.Tx):
                 nonlocal stxos
                 stxos = db_fetch_spend_journal_entry(db_tx, block)
+
             self.db.view(fn2)
 
             # Store the loaded block and spend journal entry for later.
@@ -956,7 +958,6 @@ class BlockChain:
                 validation_error = e
                 continue
 
-
             self.index.set_status_flags(n, BlockStatus.statusValid)
 
         if validation_error is not None:
@@ -976,7 +977,7 @@ class BlockChain:
 
             # Load all of the utxos referenced by the block that aren't
             # already in the view.
-            view.fetch_input_utxos(self.db,block)
+            view.fetch_input_utxos(self.db, block)
 
             # Update the view to unspend all of the spent txos and remove
             # the utxos created by the block.
@@ -1013,7 +1014,7 @@ class BlockChain:
         logger.info("REORGANIZE: Chain forks at %s" % first_attach_node.parent.hash)
         logger.info("REORGANIZE: Old best chain head was %s" % first_detach_node.hash)
         logger.info("REORGANIZE: New best chain head is %s" % last_attach_node.hash)
-        
+
         return
 
     # connectBestChain handles connecting the passed block to the chain while
@@ -1094,13 +1095,13 @@ class BlockChain:
             if fork.hash == parent_hash:
                 logger.info(("FORK: Block %s forks the chain at height %d" +
                              "/block %s, but does not cause a reorganize") % (
-                    node.hash, fork.height, fork.hash
-                ))
+                                node.hash, fork.height, fork.hash
+                            ))
             else:
-                logger.info(("EXTEND FORK: Block %s extends a side chain "+
-                "which forks the chain at height %d/block %s") % (
-                    node.hash, fork.height, fork.hash
-                ))
+                logger.info(("EXTEND FORK: Block %s extends a side chain " +
+                             "which forks the chain at height %d/block %s") % (
+                                node.hash, fork.height, fork.hash
+                            ))
             return False
 
         # We're extending (or creating) a side chain and the cumulative work
@@ -1125,7 +1126,7 @@ class BlockChain:
                 self.index.flush_to_db()
             except Exception as e:
                 logger.warning("Error flushing block index changes to disk: %s" % e)
-        
+
         return True
 
     # isCurrent returns whether or not the chain believes it is current.  Several
@@ -1168,21 +1169,37 @@ class BlockChain:
     # treated as immutable since it is shared by all callers.
     #
     # This function is safe for concurrent access.
-    def best_snapshot(self):
-        pass
+    def best_snapshot(self) -> BestState:
+        self.state_lock.r_lock()
+        snapshot = self.state_snapshot
+        self.state_lock.r_unlock()
+        return snapshot
 
-    # HeaderByHash returns the block header identified by the given hash or an
-    # error if it doesn't exist. Note that this will return headers from both the
-    # main and side chains.
-    def header_by_hash(self, hash):
-        pass
+    # FetchHeader returns the block header identified by the given hash or an error
+    # if it doesn't exist.
+    def fetch_header(self, hash: chainhash.Hash) -> wire.BlockHeader:
+        # Reconstruct the header from the block index if possible.
+        node = self.index.lookup_node(hash)
+        if node is not None:
+            return node.header()
+
+        # Fall back to loading it from the database.
+        header = wire.BlockHeader()
+
+        def fn(db_tx: database.Tx):
+            nonlocal header
+            header = db_fetch_header_by_hash(db_tx, hash)
+
+        self.db.view(fn)
+        return header
 
     # MainChainHasBlock returns whether or not the block with the given hash is in
     # the main chain.
     #
     # This function is safe for concurrent access.
-    def main_chain_hash_block(self, hash):
-        pass
+    def main_chain_hash_block(self, hash: chainhash.Hash) -> bool:
+        node = self.index.lookup_node(hash)
+        return node is not None and self.best_chain.contains(node)
 
     # BlockLocatorFromHash returns a block locator for the passed block hash.
     # See BlockLocator for details on the algorithm used to create a block locator.
@@ -1192,37 +1209,92 @@ class BlockChain:
     # the passed hash is not currently known.
     #
     # This function is safe for concurrent access.
-    def block_locator_from_hash(self, hash):
-        pass
+    def block_locator_from_hash(self, hash: chainhash.Hash) -> BlockLocator:
+        self.chain_lock.r_lock()
+        node = self.index.lookup_node(hash)
+        locator = self.best_chain._block_locator(node)
+        self.chain_lock.r_unlock()
+        return locator
 
     # LatestBlockLocator returns a block locator for the latest known tip of the
     # main (best) chain.
     #
     # This function is safe for concurrent access.
-    def lastest_block_locator(self):
-        pass
+    def lastest_block_locator(self) -> BlockLocator:
+        self.chain_lock.r_lock()
+        locator = self.best_chain.block_locator(None)
+        self.chain_lock.r_unlock()
+        return locator
 
     # BlockHeightByHash returns the height of the block with the given hash in the
     # main chain.
     #
     # This function is safe for concurrent access.
-    def block_height_by_hash(self, hash):
-        pass
+    def block_height_by_hash(self, hash: chainhash.Hash) -> int:
+        node = self.index.lookup_node(hash)
+        if node is None or not self.best_chain.contains(node):
+            msg = "block %s is not in the main chain" % hash
+            raise NotInMainChainErr(msg)
+
+        return node.height
 
     # BlockHashByHeight returns the hash of the block at the given height in the
     # main chain.
     #
     # This function is safe for concurrent access.
-    def block_hash_by_height(self, block_height):
-        pass
+    def block_hash_by_height(self, block_height: int) -> chainhash.Hash:
+        node = self.best_chain.node_by_height(block_height)
+        if node is None:
+            msg = "no block at height %d exists" % block_height
+            raise NotInMainChainErr(msg)
+
+        return node.hash
 
     # HeightRange returns a range of block hashes for the given start and end
     # heights.  It is inclusive of the start height and exclusive of the end
     # height.  The end height will be limited to the current main chain height.
     #
     # This function is safe for concurrent access.
-    def height_range(self, start_height, end_height):
-        pass
+    def height_range(self, start_height: int, end_height: int) -> [chainhash.Hash]:
+        # Ensure requested heights are sane.
+        if start_height < 0:
+            raise AssertError("start height of fetch range must not be less than zero - got %d" % start_height)
+
+        if end_height < start_height:
+            raise AssertError(
+                "end height of fetch range must not be less than the start height - got start %d, end %d" % (
+                    start_height,
+                    end_height))
+        # There is nothing to do when the start and end heights are the same,
+        # so return now to avoid the chain view lock.
+        if start_height == end_height:
+            return []
+
+        # Grab a lock on the chain view to prevent it from changing due to a
+        # reorg while building the hashes.
+        self.best_chain.lock.acquire()
+        try:
+            # When the requested start height is after the most recent best chain
+            # height, there is nothing to do.
+            latest_height = self.best_chain.tip().height
+            if start_height > latest_height:
+                return []
+
+            # Limit the ending height to the latest height of the chain.
+            if end_height > latest_height + 1:
+                end_height = latest_height + 1
+
+            # Fetch as many as are available within the specified range.
+            hashes = []
+            i = start_height
+            while i < end_height:
+                hashes.append(self.best_chain.node_by_height(i).hash)
+                i += 1
+
+            return hashes
+
+        finally:
+            self.best_chain.lock.release()
 
     # HeightToHashRange returns a range of block hashes for the given start height
     # and end hash, inclusive on both ends.  The hashes are for all blocks that are
@@ -1230,17 +1302,76 @@ class BlockChain:
     # end hash must belong to a block that is known to be valid.
     #
     # This function is safe for concurrent access.
-    def height_to_hash_range(self, start_height, end_height, max_results):
-        pass
+    def height_to_hash_range(self, start_height: int, end_hash: chainhash.Hash, max_results: int) -> [chainhash.Hash]:
+
+        end_node = self.index.lookup_node(end_hash)
+        if end_node is None:
+            raise AssertError("no known block header with hash %s" % end_hash)
+
+        if not self.index.node_status(end_node).known_valid():
+            raise AssertError("block %s is not yet validated" % end_hash)
+
+        end_height = end_node.height
+
+        if start_height < 0:
+            raise AssertError("start height (%d) is below 0" % start_height)
+
+        if start_height > end_height:
+            raise AssertError("start height (%d) is past end height (%d)" % (start_height, end_height))
+
+        result_length = end_height - start_height + 1
+
+        if result_length > max_results:
+            raise AssertError("number of results (%d) would exceed max (%d)" % (result_length, max_results))
+
+        # Walk backwards from endHeight to startHeight, collecting block hashes.
+        hashes = []
+        node = end_node
+        i = result_length - 1
+        while i >= 0:
+            hashes.append(node.hash)
+            node = node.parent
+            i -= 1
+        return hashes
 
     # IntervalBlockHashes returns hashes for all blocks that are ancestors of
     # endHash where the block height is a positive multiple of interval.
     #
     # This function is safe for concurrent access.
-    def interval_block_hashes(self, end_hash, interval):
-        pass
+    def interval_block_hashes(self, end_hash: chainhash.Hash, interval: int) -> [chainhash.Hash]:
+        end_node = self.index.lookup_node(end_hash)
+        if end_node is None:
+            raise AssertError("no known block header with hash %s" % end_hash)
 
-        # TODO
+        if not self.index.node_status(end_node).known_valid():
+            raise AssertError("block %s is not yet validated" % end_hash)
+
+        end_height = end_node.height
+        hashes = []
+
+        self.best_chain.lock.acquire()
+        try:
+            block_node = end_node
+            index = end_height // interval
+            while index > 0:
+                # Use the bestChain chainView for faster lookups once lookup intersects
+                # the best chain.
+                block_heght = index * interval
+
+                if self.best_chain._contains(block_node):
+                    block_node = self.best_chain.node_by_height(block_heght)
+                else:
+                    block_node = block_node.ancestor(block_heght)
+
+                hashes.append(block_node.hash)
+
+                index -= 1
+
+            hashes.reverse()
+            return hashes
+
+        finally:
+            self.best_chain.lock.release()
 
     # ------------------------------------
     # Methods add from threshold_state
@@ -2462,7 +2593,7 @@ class BlockChain:
             total_sig_op_cost += sig_op_cost
             if total_sig_op_cost < last_sig_op_cost or total_sig_op_cost > MaxBlockSigOpsCost:
                 msg = "block contains too many signature operations - got %s, max %s" % (
-                total_sig_op_cost, MaxBlockSigOpsCost)
+                    total_sig_op_cost, MaxBlockSigOpsCost)
                 raise RuleError(ErrorCode.ErrTooManySigOps, msg)
 
         # Perform several checks on the inputs for each transaction.  Also
