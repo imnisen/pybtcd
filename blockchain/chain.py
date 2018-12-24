@@ -1031,17 +1031,124 @@ class BlockChain:
     #
     # This function MUST be called with the chain state lock held (for writes).
     def _connect_best_chain(self, node, block, flags):
-        pass
+        fast_add = (flags & BFFastAdd) == BFFastAdd
+
+        # We are extending the main (best) chain with a new block.  This is the
+        # most common case.
+        parent_hash = block.get_msg_block().header.prev_block
+        if parent_hash == self.best_chain.tip().hash:
+            # Skip checks if node has already been fully validated.
+            fast_add = fast_add or self.index.node_status(node).known_valid()
+
+            # Perform several checks to verify the block can be connected
+            # to the main chain without violating any rules and without
+            # actually connecting the block.
+            view = UtxoViewpoint()
+            view.set_best_hash(parent_hash)
+            stxos = []
+            if not fast_add:
+                need_flush = True
+                try:
+                    self._check_connect_block(node, block, view, stxos)
+                except RuleError as e:
+                    self.index.set_status_flags(node, BlockStatus.statusValidateFailed)
+                    raise e
+                except Exception as e:
+                    need_flush = False
+                    raise e
+                else:
+                    self.index.set_status_flags(node, BlockStatus.statusValid)
+                finally:
+                    # Intentionally ignore errors writing updated node status to DB. If
+                    # it fails to write, it's not the end of the world. If the block is
+                    # valid, we flush in connectBlock and if the block is invalid, the
+                    # worst that can happen is we revalidate the block after a restart.
+                    if need_flush:
+                        try:
+                            self.index.flush_to_db()
+                        except Exception as e:
+                            logger.warning("Error flushing block index changes to disk: %s" % e)
+
+            # In the fast add case the code to check the block connection
+            # was skipped, so the utxo view needs to load the referenced
+            # utxos, spend them, and add the new utxos being created by
+            # this block.
+            if fast_add:
+                view.fetch_input_utxos(self.db, block)
+
+                view.connect_transactions(block, stxos)
+
+            # Connect the block to the main chain.
+            self._connect_block(node, block, view, stxos)
+
+            return True
+
+        if fast_add:
+            logger.warning("fastAdd set in the side chain case? %s\n" % block.hash())
+
+        # We're extending (or creating) a side chain, but the cumulative
+        # work for this new side chain is not enough to make it the new chain.
+        if node.work_sum <= self.best_chain.tip().work_sum:
+            # Log information about how the block is forking the chain.
+            fork = self.best_chain.find_fork(node)
+            if fork.hash == parent_hash:
+                logger.info(("FORK: Block %s forks the chain at height %d" +
+                             "/block %s, but does not cause a reorganize") % (
+                    node.hash, fork.height, fork.hash
+                ))
+            else:
+                logger.info(("EXTEND FORK: Block %s extends a side chain "+
+                "which forks the chain at height %d/block %s") % (
+                    node.hash, fork.height, fork.hash
+                ))
+            return False
+
+        # We're extending (or creating) a side chain and the cumulative work
+        # for this new side chain is more than the old best chain, so this side
+        # chain needs to become the main chain.  In order to accomplish that,
+        # find the common ancestor of both sides of the fork, disconnect the
+        # blocks that form the (now) old fork from the main chain, and attach
+        # the blocks that form the new chain to the main chain starting at the
+        # common ancenstor (the point where the chain forked).
+        detach_nodes, attach_nodes = self._get_reorganize_nodes(node)
+
+        # Reorganize the chain.
+        logger.info("REORGANIZE: Block %s is causing a reorganize." % node.hash)
+        try:
+            self._reorganize_chain(detach_nodes, attach_nodes)
+        finally:
+            # Either getReorganizeNodes or reorganizeChain could have made unsaved
+            # changes to the block index, so flush regardless of whether there was an
+            # error. The index would only be dirty if the block failed to connect, so
+            # we can ignore any errors writing.
+            try:
+                self.index.flush_to_db()
+            except Exception as e:
+                logger.warning("Error flushing block index changes to disk: %s" % e)
+        
+        return True
 
     # isCurrent returns whether or not the chain believes it is current.  Several
     # factors are used to guess, but the key factors that allow the chain to
     # believe it is current are:
     #  - Latest block height is after the latest checkpoint (if enabled)
-    #  - Latest block has a timestamp newer than 24 hours ago
+    #  - Latest block has a timestamp newer than 24 hours ago  # TOCONSIDER why 24hours
     #
     # This function MUST be called with the chain state lock held (for reads).
     def _is_current(self):
-        pass
+        # Not current if the latest main (best) chain height is before the
+        # latest known good checkpoint (when checkpoints are enabled).
+        checkpoint = self.lastest_checkpoint()
+        if checkpoint is not None and self.best_chain.tip().height < checkpoint.height:
+            return False
+
+        # Not current if the latest best block has a timestamp before 24 hours
+        # ago.
+        #
+        # The chain appears to be current if none of the checks reported
+        # otherwise.
+        minus_24_hours = self.time_source.adjusted_time() - 24 * 60 * 60
+        return self.best_chain.tip().timestamp >= minus_24_hours
 
     # IsCurrent returns whether or not the chain believes it is current.  Several
     # factors are used to guess, but the key factors that allow the chain to
@@ -1051,7 +1158,10 @@ class BlockChain:
     #
     # This function is safe for concurrent access.
     def is_current(self):
-        pass
+        self.chain_lock.r_lock()
+        current = self._is_current()
+        self.chain_lock.r_unlock()
+        return current
 
     # BestSnapshot returns information about the current best chain block and
     # related state as of the current point in time.  The returned instance must be
@@ -1875,7 +1985,7 @@ class BlockChain:
     # instance, it will return nil.
     #
     # This function is safe for concurrent access.
-    def lastest_checkpoints(self) -> chaincfg.Checkpoint or None:
+    def lastest_checkpoint(self) -> chaincfg.Checkpoint or None:
         if self.has_checkpoints():
             return self.checkpoints[-1]
         else:
@@ -2400,7 +2510,7 @@ class BlockChain:
         # will therefore be detected by the next checkpoint).  This is a huge
         # optimization because running the scripts is the most time consuming
         # portion of block handling.
-        checkpoint = self.lastest_checkpoints()
+        checkpoint = self.lastest_checkpoint()
         runscript = True
         if checkpoint is not None and node.height <= checkpoint.height:
             runscript = False
