@@ -1,5 +1,6 @@
 import database
 import chainhash
+import btcutil
 
 # spendJournalBucketName is the name of the db bucket used to house
 # transactions outputs that are spent in each block.
@@ -140,6 +141,15 @@ def serialize_spend_journal_entry(stxos: [SpentTxOut]):
         serilized += put_spent_tx_out(stxo)
     return serilized
 
+# TODO
+# dbFetchSpendJournalEntry fetches the spend journal entry for the passed block
+# and deserializes it into a slice of spent txout entries.
+#
+# NOTE: Legacy entries will not have the coinbase flag or height set unless it
+# was the final output spend in the containing transaction.  It is up to the
+# caller to handle this properly by looking the information up in the utxo set.
+def db_fetch_spend_journal_entry(db_tx: database.Tx, block: btcutil.Block) -> [SpentTxOut]:
+    pass
 
 # dbPutSpendJournalEntry uses an existing database transaction to update the
 # spend journal entry for the given block hash using the provided slice of

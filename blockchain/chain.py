@@ -846,7 +846,7 @@ class BlockChain:
 
         return
 
-    # TODO
+    # TOCINSIDER
     # reorganizeChain reorganizes the block chain by disconnecting the nodes in the
     # detachNodes list and connecting the nodes in the attach list.  It expects
     # that the lists are already in the correct order and are in sync with the
@@ -858,8 +858,163 @@ class BlockChain:
     # This function may modify node statuses in the block index without flushing.
     #
     # This function MUST be called with the chain state lock held (for writes).
-    def reorganize_chain(self, detach_nodes, attach_nodes):
-        pass
+    def _reorganize_chain(self, detach_nodes, attach_nodes):
+        # All of the blocks to detach and related spend journal entries needed
+        # to unspend transaction outputs in the blocks being disconnected must
+        # be loaded from the database during the reorg check phase below and
+        # then they are needed again when doing the actual database updates.
+        # Rather than doing two loads, cache the loaded data into these slices.
+        detach_blocks = []
+        detach_spent_tx_outs = []
+        attach_blocks = []
+
+        # Disconnect all of the blocks back to the point of the fork.  This
+        # entails loading the blocks and their associated spent txos from the
+        # database and using that information to unspend all of the spent txos
+        # and remove the utxos created by the blocks.
+
+        view = UtxoViewpoint()
+        view.set_best_hash(self.best_chain.tip().hash)
+
+        for n in detach_nodes:
+
+            block = btcutil.Block(msg_block=wire.MsgBlock())  # define a empty block
+
+            def fn1(db_tx: database.Tx):
+                nonlocal block
+                block = db_fetch_block_by_node(db_tx, n)
+            self.db.view(fn1)
+
+            # Load all of the utxos referenced by the block that aren't
+            # already in the view.
+            view.fetch_input_utxos(self.db, block)
+
+            # Load all of the spent txos for the block from the spend
+            # journal.
+            stxos = []
+            def fn2(db_tx: database.Tx):
+                nonlocal stxos
+                stxos = db_fetch_spend_journal_entry(db_tx, block)
+            self.db.view(fn2)
+
+            # Store the loaded block and spend journal entry for later.
+            detach_blocks.append(block)
+            detach_spent_tx_outs.extend(stxos)
+
+            view.disconnect_transactions(self.db, block, stxos)
+
+        # Perform several checks to verify each block that needs to be attached
+        # to the main chain can be connected without violating any rules and
+        # without actually connecting the block.
+        #
+        # NOTE: These checks could be done directly when connecting a block,
+        # however the downside to that approach is that if any of these checks
+        # fail after disconnecting some blocks or attaching others, all of the
+        # operations have to be rolled back to get the chain back into the
+        # state it was before the rule violation (or other failure).  There are
+        # at least a couple of ways accomplish that rollback, but both involve
+        # tweaking the chain and/or database.  This approach catches these
+        # issues before ever modifying the chain.
+        validation_error = None
+        for n in attach_nodes:
+
+            # If any previous nodes in attachNodes failed validation,
+            # mark this one as having an invalid ancestor.
+            if validation_error is not None:
+                self.index.set_status_flags(n, BlockStatus.statusInvalidAncestor)
+                continue
+
+            block = btcutil.Block(msg_block=wire.MsgBlock())  # define a empty block
+
+            def fn1(db_tx: database.Tx):
+                nonlocal block
+                block = db_fetch_block_by_node(db_tx, n)
+
+            self.db.view(fn1)
+
+            # Store the loaded block for later.
+            attach_blocks.append(block)
+
+            # Skip checks if node has already been fully validated. Although
+            # checkConnectBlock gets skipped, we still need to update the UTXO
+            # view.
+            if self.index.node_status(n).known_valid():
+                view.fetch_input_utxos(self.db, block)
+
+                view.connect_transactions(block, stxos=None)
+
+                continue
+
+            # Notice the spent txout details are not requested here and
+            # thus will not be generated.  This is done because the state
+            # is not being immediately written to the database, so it is
+            # not needed.
+            try:
+                self._check_connect_block(n, block, view, stxos=None)
+            except RuleError as e:
+                self.index.set_status_flags(n, BlockStatus.statusValidateFailed)
+                validation_error = e
+                continue
+
+
+            self.index.set_status_flags(n, BlockStatus.statusValid)
+
+        if validation_error is not None:
+            raise validation_error
+
+        # Reset the view for the actual connection code below.  This is
+        # required because the view was previously modified when checking if
+        # the reorg would be successful and the connection code requires the
+        # view to be valid from the viewpoint of each block being connected or
+        # disconnected.
+        view = UtxoViewpoint()
+        view.set_best_hash(self.best_chain.tip().hash)
+
+        # Disconnect block from the main chain.
+        for i, n in enumerate(detach_nodes):
+            block = detach_blocks[i]
+
+            # Load all of the utxos referenced by the block that aren't
+            # already in the view.
+            view.fetch_input_utxos(self.db,block)
+
+            # Update the view to unspend all of the spent txos and remove
+            # the utxos created by the block.
+            view.disconnect_transactions(self.db, block, detach_spent_tx_outs[i])
+
+            # Update the database and chain state.
+            self._disconnect_block(n, block, view)
+
+        # Connect the new best chain blocks.
+        for i, n in enumerate(attach_nodes):
+            block = attach_blocks[i]
+
+            # Load all of the utxos referenced by the block that aren't
+            # already in the view.
+            view.fetch_input_utxos(self.db, block)
+
+            # Update the view to mark all utxos referenced by the block
+            # as spent and add all transactions being created by this block
+            # to it.  Also, provide an stxo slice so the spent txout
+            # details are generated.
+            stxos = []
+            view.connect_transactions(block, stxos)
+
+            # TODO check the stxos change as expected
+
+            # Update the database and chain state.
+            self._connect_block(n, block, view, stxos)
+
+        # Log the point where the chain forked and old and new best chain
+        # heads.
+        first_attach_node = attach_nodes[0]
+        first_detach_node = detach_nodes[0]
+        last_attach_node = attach_nodes[-1]
+        logger.info("REORGANIZE: Chain forks at %s" % first_attach_node.parent.hash)
+        logger.info("REORGANIZE: Old best chain head was %s" % first_detach_node.hash)
+        logger.info("REORGANIZE: New best chain head is %s" % last_attach_node.hash)
+        
+        return
 
     # connectBestChain handles connecting the passed block to the chain while
     # respecting proper chain selection according to the chain with the most
