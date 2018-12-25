@@ -297,7 +297,7 @@ class Tx:
     # has ended results in undefined behavior.  This constraint prevents
     # additional data copies and allows support for memory-mapped database
     # implementations.
-    def fetch_block_header(self, hash):
+    def fetch_block_header(self, hash) -> bytes:
         raise NotImplementedError
 
     # FetchBlockHeaders returns the raw serialized bytes for the block
