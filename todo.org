@@ -73,6 +73,7 @@
 * Refactor the_ field things
 * make blockchain/script_val.py validate multiprocess
 * refactor txscript_flag to int
+* refacto BlockStatus to inherit bytes
 * Blockchain TODOs
 ** chain
 ** TODO chainio

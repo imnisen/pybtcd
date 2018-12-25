@@ -11,17 +11,17 @@ from .chainio import *
 # blockStatus is a bit field representing the validation state of the block.
 class BlockStatus(Flag):
     # statusDataStored indicates that the block's payload is stored on disk.
-    statusDataStored = 1
+    statusDataStored = 1 << 0
 
     # statusValid indicates that the block has been fully validated.
-    statusValid = 2
+    statusValid = 1 << 1
 
     # statusValidateFailed indicates that the block has failed validation.
-    statusValidateFailed = 3
+    statusValidateFailed = 1 << 2
 
     # statusInvalidAncestor indicates that one of the block's ancestors has
     # has failed validation, thus the block is also invalid.
-    statusInvalidAncestor = 4
+    statusInvalidAncestor = 1 << 3
 
     # statusNone indicates that the block has no validation state flags set.
     #

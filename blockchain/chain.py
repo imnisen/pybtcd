@@ -2750,8 +2750,6 @@ class BlockChain:
     # END
     # ------------------------------------
 
-
-
     # --------------------------------
     # Methods add from accept
     # --------------------------------
@@ -2822,11 +2820,29 @@ class BlockChain:
 
         return is_main_chain
 
-        # ------------------------------------
-        # END
-        # ------------------------------------
+    # ------------------------------------
+    # END
+    # ------------------------------------
 
+    # --------------------------------
+    # Methods add from chainio
+    # --------------------------------
+    # TODO
+    def _create_chain_state(self):
+        pass
 
+    def _init_chain_state(self):
+        pass
+
+    def block_by_height(self, block_height: int)-> btcutil.Block:
+        pass
+
+    def block_by_hash(self, hash:chainhash.Hash) -> btcutil.Block:
+        pass
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
 def lock_time_to_sequence(is_seconds: bool, locktime: int):
     pass
 
