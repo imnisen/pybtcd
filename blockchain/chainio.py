@@ -34,6 +34,41 @@ chainStateKeyName = b"chainstate"
 utxoSetBucketName = b"utxosetv2"
 
 
+# dbFetchVersion fetches an individual version with the given key from the
+# metadata bucket.  It is primarily used to track versions on entities such as
+# buckets.  It returns zero if the provided key does not exist.
+def db_fetch_version(db_tx: database.Tx, key: bytes) -> int:
+    serialized = db_tx.metadata().get(key)
+
+    if serialized is None:
+        return 0
+
+    return int.from_bytes(serialized, byteOrder)
+
+
+# dbPutVersion uses an existing database transaction to update the provided
+# key in the metadata bucket to the given version.  It is primarily used to
+# track versions on entities such as buckets.
+def db_put_version(db_tx: database.Tx, key: bytes, version: int):
+    serialized = version.to_bytes(4, byteOrder)
+    db_tx.metadata().put(key, serialized)
+    return
+
+
+# dbFetchOrCreateVersion uses an existing database transaction to attempt to
+# fetch the provided key from the metadata bucket as a version and in the case
+# it doesn't exist, it adds the entry with the provided default version and
+# returns that.  This is useful during upgrades to automatically handle loading
+# and adding version keys as necessary.
+def db_fetch_or_create_version(db_tx: database.Tx, key: bytes, default_version: int) -> int:
+    version = db_fetch_version(db_tx, key)
+    if version == 0:
+        version = default_version
+        db_put_version(db_tx, key, version)
+
+    return version
+
+
 # dbFetchHeightByHash uses an existing database transaction to retrieve the
 # height for the provided hash from the index.
 def db_fetch_height_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
@@ -45,6 +80,19 @@ def db_fetch_height_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
         raise NotInMainChainErr(msg)
 
     return int.from_bytes(serialized_height, byteOrder)
+
+
+# dbFetchHashByHeight uses an existing database transaction to retrieve the
+# hash for the provided height from the index.
+def db_fetch_hash_by_height(db_tx: database.Tx, height: int) -> chainhash.Hash:
+    meta = db_tx.metadata()
+    height_index_bucket = meta.bucket(heightIndexBucketName)
+    hash_bytes = height_index_bucket.get(height.to_bytes(4, byteOrder))
+    if hash_bytes is None:
+        msg = "no block at height %d exists" % height
+        raise NotInMainChainErr(msg)
+
+    return chainhash.Hash(hash_bytes)
 
 
 class NotInMainChainErr(Exception):
@@ -170,14 +218,21 @@ def db_put_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
     return
 
 
-
-
-# TODO
 # dbRemoveBlockIndex uses an existing database transaction remove block index
 # entries from the hash to height and height to hash mappings for the provided
 # values.
 def db_remove_block_index(db_tx: database.Tx, hash: chainhash.Hash, height: int):
-    pass
+    # Remove the block hash to height mapping
+    meta = db_tx.metadata()
+    hash_index_bucket = meta.bucket(hashIndexBucketName)
+    hash_index_bucket.delete(hash.to_bytes())
+
+    # Remove the block height to hash mapping.
+    height_index_bucket = meta.bucket(heightIndexBucketName)
+    height_index_bucket.delete(height.to_bytes(4, byteOrder))
+
+    return
+
 
 # TOCONSIDER
 # Don't like the origin, I don't use sync.Pool here, for simplicity.
@@ -363,22 +418,34 @@ def count_spent_outputs(block: btcutil.Block) -> int:
         num_spent += len(tx.get_msg_tx().tx_ins)
     return num_spent
 
-# TODO below methods
+
 # dbFetchHeaderByHash uses an existing database transaction to retrieve the
 # block header for the provided hash.
 def db_fetch_header_by_hash(db_tx: database.Tx, hash: chainhash.Hash):
-    pass
+    header_bytes = db_tx.fetch_block_header(hash)
+    header = wire.BlockHeader()
+    header.deserialize(header_bytes)
+    return header
+
 
 # dbFetchHeaderByHeight uses an existing database transaction to retrieve the
 # block header for the provided hash.
-def db_fetch_header_by_height(db_tx: database.Tx, height:int):
-    pass
+def db_fetch_header_by_height(db_tx: database.Tx, height: int):
+    hash = db_fetch_hash_by_height(db_tx, height)
+    return db_fetch_header_by_hash(db_tx, hash)
+
 
 # dbFetchBlockByNode uses an existing database transaction to retrieve the
 # raw block for the provided node, deserialize it, and return a btcutil.Block
 # with the height set.
-def db_fetch_block_by_node(db_tx: database.Tx, node: BlockNode):
-    pass
+def db_fetch_block_by_node(db_tx: database.Tx, node: BlockNode) -> btcutil.Block:
+    # Load the raw block bytes from the database
+    block_bytes = db_tx.fetch_block(node.hash)
+
+    # Create the encapsulated block and set the height appropriately.
+    block = btcutil.Block.from_bytes(block_bytes)
+    block.set_height(node.height)
+    return block
 
 
 # dbStoreBlockNode stores the block header and validation status to the block
@@ -404,7 +471,7 @@ def db_store_block_node(db_tx: database.Tx, node):
 
 # dbStoreBlock stores the provided block in the database if it is not already
 # there. The full block data is written to ffldb.
-def db_store_block(db_tx: database.Tx, block:btcutil.Block):
+def db_store_block(db_tx: database.Tx, block: btcutil.Block):
     has_block = db_tx.has_block(block.hash())
     if has_block:
         return
