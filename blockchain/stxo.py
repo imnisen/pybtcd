@@ -4,9 +4,9 @@ import btcutil
 import wire
 from .compress import *
 
-# spendJournalBucketName is the name of the db bucket used to house
-# transactions outputs that are spent in each block.
-spendJournalBucketName = b"spendjournal"
+# # spendJournalBucketName is the name of the db bucket used to house
+# # transactions outputs that are spent in each block.
+# spendJournalBucketName = b"spendjournal"
 
 
 # -----------------------------------------------------------------------------

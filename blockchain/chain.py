@@ -2827,12 +2827,179 @@ class BlockChain:
     # --------------------------------
     # Methods add from chainio
     # --------------------------------
-    # TODO
+    # createChainState initializes both the database and the chain state to the
+    # genesis block.  This includes creating the necessary buckets and inserting
+    # the genesis block, so it must only be called on an uninitialized database.
     def _create_chain_state(self):
-        pass
+        # Create a new node from the genesis block and set it as the best node.
+        genesis_block = btcutil.Block(msg_block=self.chain_params.genesis_block)
+        genesis_block.set_height(0)
+        header = genesis_block.get_msg_block().header
+        node = BlockNode.init_from(block_header=header, parent=None)
+        node.status = BlockStatus.statusDataStored | BlockStatus.statusValid
+        self.best_chain.set_tip(node)
 
+        # Add the new node to the index which is used for faster lookups.
+        self.index.add_node(node)
+
+        # Initialize the state related to the best block.  Since it is the
+        # genesis block, use its timestamp for the median time.
+        num_txns = len(genesis_block.get_msg_block().transactions)
+        block_size = genesis_block.get_msg_block().serialize_size()
+        block_weight = get_block_weight(genesis_block)
+        self.state_snapshot = BestState(
+            hash = node.hash,
+            height=node.height,
+            bits=node.bits,
+            block_size=block_size,
+            block_weight=block_weight,
+            num_txns=num_txns,
+            total_txns=num_txns,
+            median_time=node.timestamp
+        )
+
+        # Create the initial the database chain state including creating the
+        # necessary index buckets and inserting the genesis block.
+        def fn(db_tx: database.Tx):
+            meta = db_tx.metadata()
+
+            # Create the bucket that houses the block index data.
+            meta.create_bucket(blockIndexBucketName)  # blockheaderidx
+
+            # Create the bucket that houses the chain block hash to height
+            # index.
+            meta.create_bucket(hashIndexBucketName)  # hashidx
+
+            # Create the bucket that houses the chain block height to hash
+            # index.
+            meta.create_bucket(heightIndexBucketName)  # heightidx
+
+            # Create the bucket that houses the spend journal data and
+            # store its version.
+            meta.create_bucket(spendJournalBucketName)  # spendjournal
+
+            db_put_version(db_tx, utxoSetVersionKeyName, latestUtxoSetBucketVersion)
+
+            # Create the bucket that houses the utxo set and store its
+            # version.  Note that the genesis block coinbase transaction is
+            # intentionally not inserted here since it is not spendable by
+            # consensus rules.
+            meta.create_bucket(utxoSetBucketName)
+
+            db_put_version(db_tx, spendJournalVersionKeyName, latestSpendJournalBucketVersion)
+
+            # Save the genesis block to the block index database.
+            db_store_block_node(db_tx, node)
+
+            # Add the genesis block hash to height and height to hash
+            # mappings to the index.
+            db_put_block_index(db_tx, node.hash, node.height)
+
+            # Store the current best chain state into the database.
+            db_put_best_state(db_tx, self.state_snapshot, node.work_sum)
+
+            # Store the genesis block into the database.
+            db_store_block(db_tx, genesis_block)
+
+            return
+        
+        self.db.update(fn)
+
+    # initChainState attempts to load and initialize the chain state from the
+    # database.  When the db does not yet contain any chain state, both it and the
+    # chain state are initialized to the genesis block.
     def _init_chain_state(self):
-        pass
+        pass # TODO
+        # # Determine the state of the chain database. We may need to initialize
+        # # everything from scratch or upgrade certain buckets.
+        # initialized, has_block_index = False, False
+        # def fn1(db_tx: database.Tx):
+        #     nonlocal initialized
+        #     nonlocal has_block_index
+        #
+        #     initialized = db_tx.metadata().get(chainStateKeyName) is not None
+        #     has_block_index = db_tx.metadata().bucket(blockIndexBucketName) is not None
+        #     return
+        #
+        # self.db.view(fn1)
+        #
+        # if not initialized:
+        #     # At this point the database has not already been initialized, so
+		 #    # initialize both it and the chain state to the genesis block.
+        #     return self._create_chain_state()
+        #
+        # if not has_block_index:
+        #     migrate_block_index(self.db)  # TODO
+        #
+        #
+        # # Attempt to load the chain state from the database.
+        # def fn2(db_tx: database.Tx):
+        #     # Fetch the stored chain state from the database metadata.
+        #     # When it doesn't exist, it means the database hasn't been
+        #     # initialized for use with chain yet, so break out now to allow
+        #     # that to happen under a writable database transaction.
+        #     serialized_data = db_tx.metadata().get(chainStateKeyName)
+        #     logger.info("Serialized chain state: %x" % serialized_data)
+        #
+        #     state = deserialize_best_chain_state(serialized_data)
+        #
+        #     # Load all of the headers from the data for the known best
+		 #    # chain and construct the block index accordingly.
+        #     logger.info("Loading block index...")
+        #
+        #     block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
+        #
+        #     block_nodes = []
+        #     i = 0
+        #     last_node = None
+        #     cursor = block_index_bucket.cursor()
+        #     ok = cursor.first()
+        #     while ok:
+        #         header, status = deserialize_block_row(cursor.value())
+        #
+        #         # Determine the parent block node. Since we iterate block headers
+        #         # in order of height, if the blocks are mostly linear there is a
+        #         # very good chance the previous header processed is the parent.
+        #         if last_node is None:
+        #             pass
+        #         elif header.prev_block == last_node.hash:
+        #             pass
+        #         else:
+        #             pass
+        #
+        #         # Initialize the block node for the block, connect it,
+			#     # and add it to the block index.
+        #
+        #
+        #
+        #
+        #
+        #
+        #         ok = cursor.next()
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        #
+        # self.db.view(fn2)
+        # return
+
+
+
+
+
+
+
+
+
 
     def block_by_height(self, block_height: int)-> btcutil.Block:
         pass
