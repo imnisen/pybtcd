@@ -336,3 +336,27 @@ class DeserializeError(Exception):
 
     def __hash__(self):
         return hash(str(self.msg))
+
+
+class NormalError(Exception):
+    def __init__(self, msg=None, err=None, extra=None):
+        """
+
+        :param str msg:
+        :param Exception err:
+        :param extra:
+        """
+
+        self.msg = msg or ""
+        self.err = err
+        self.extra = extra
+
+    def __repr__(self):
+        return "NormalError(msg={})".format(self.msg or "\"\"")
+
+    def __str__(self):
+        return "NormalError(msg={})".format(self.msg or "\"\"")
+
+    def __hash__(self):
+        return hash(str(self.msg))
+
