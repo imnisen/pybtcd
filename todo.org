@@ -76,5 +76,4 @@
 * refacto BlockStatus to inherit bytes
 * Blockchain TODOs
 ** chain
-** TODO chainio
 ** HOLD upgrade

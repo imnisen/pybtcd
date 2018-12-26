@@ -1993,8 +1993,8 @@ class BlockChain:
 
         # TOCONSIDER why the loop conditions?
         while iter_node is not None and \
-                                iter_node.height % self.blocks_per_retarget != 0 and \
-                        iter_node.bits == self.chain_params.pow_limit_bits:
+                iter_node.height % self.blocks_per_retarget != 0 and \
+                iter_node.bits == self.chain_params.pow_limit_bits:
             iter_node = iter_node.parent
 
         # Return the found difficulty or the minimum difficulty if no
@@ -2412,7 +2412,7 @@ class BlockChain:
             # once a majority of the network has upgraded.  This is part of
             # BIP0034.
             if should_have_serialized_block_height(header) and \
-                            block_height >= self.chain_params.bip0034_height:
+                    block_height >= self.chain_params.bip0034_height:
                 coinbase_tx = block.get_transactions()[0]
                 check_serialized_height(coinbase_tx, block_height)
 
@@ -2848,7 +2848,7 @@ class BlockChain:
         block_size = genesis_block.get_msg_block().serialize_size()
         block_weight = get_block_weight(genesis_block)
         self.state_snapshot = BestState(
-            hash = node.hash,
+            hash=node.hash,
             height=node.height,
             bits=node.bits,
             block_size=block_size,
@@ -2902,116 +2902,186 @@ class BlockChain:
             db_store_block(db_tx, genesis_block)
 
             return
-        
+
         self.db.update(fn)
 
     # initChainState attempts to load and initialize the chain state from the
     # database.  When the db does not yet contain any chain state, both it and the
     # chain state are initialized to the genesis block.
     def _init_chain_state(self):
-        pass # TODO
-        # # Determine the state of the chain database. We may need to initialize
-        # # everything from scratch or upgrade certain buckets.
-        # initialized, has_block_index = False, False
-        # def fn1(db_tx: database.Tx):
-        #     nonlocal initialized
-        #     nonlocal has_block_index
-        #
-        #     initialized = db_tx.metadata().get(chainStateKeyName) is not None
-        #     has_block_index = db_tx.metadata().bucket(blockIndexBucketName) is not None
-        #     return
-        #
-        # self.db.view(fn1)
-        #
-        # if not initialized:
-        #     # At this point the database has not already been initialized, so
-		 #    # initialize both it and the chain state to the genesis block.
-        #     return self._create_chain_state()
-        #
-        # if not has_block_index:
-        #     migrate_block_index(self.db)  # TODO
-        #
-        #
-        # # Attempt to load the chain state from the database.
-        # def fn2(db_tx: database.Tx):
-        #     # Fetch the stored chain state from the database metadata.
-        #     # When it doesn't exist, it means the database hasn't been
-        #     # initialized for use with chain yet, so break out now to allow
-        #     # that to happen under a writable database transaction.
-        #     serialized_data = db_tx.metadata().get(chainStateKeyName)
-        #     logger.info("Serialized chain state: %x" % serialized_data)
-        #
-        #     state = deserialize_best_chain_state(serialized_data)
-        #
-        #     # Load all of the headers from the data for the known best
-		 #    # chain and construct the block index accordingly.
-        #     logger.info("Loading block index...")
-        #
-        #     block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
-        #
-        #     block_nodes = []
-        #     i = 0
-        #     last_node = None
-        #     cursor = block_index_bucket.cursor()
-        #     ok = cursor.first()
-        #     while ok:
-        #         header, status = deserialize_block_row(cursor.value())
-        #
-        #         # Determine the parent block node. Since we iterate block headers
-        #         # in order of height, if the blocks are mostly linear there is a
-        #         # very good chance the previous header processed is the parent.
-        #         if last_node is None:
-        #             pass
-        #         elif header.prev_block == last_node.hash:
-        #             pass
-        #         else:
-        #             pass
-        #
-        #         # Initialize the block node for the block, connect it,
-			#     # and add it to the block index.
-        #
-        #
-        #
-        #
-        #
-        #
-        #         ok = cursor.next()
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        #
-        # self.db.view(fn2)
-        # return
+        # Determine the state of the chain database. We may need to initialize
+        # everything from scratch or upgrade certain buckets.
+        initialized, has_block_index = False, False
 
+        def fn1(db_tx: database.Tx):
+            nonlocal initialized
+            nonlocal has_block_index
 
+            initialized = db_tx.metadata().get(chainStateKeyName) is not None
+            has_block_index = db_tx.metadata().bucket(blockIndexBucketName) is not None
+            return
 
+        self.db.view(fn1)
 
+        if not initialized:
+            # At this point the database has not already been initialized, so
+            # initialize both it and the chain state to the genesis block.
+            return self._create_chain_state()
 
+        if not has_block_index:
+            migrate_block_index(self.db)  # TODO
 
+        # Attempt to load the chain state from the database.
+        def fn2(db_tx: database.Tx):
+            # Fetch the stored chain state from the database metadata.
+            # When it doesn't exist, it means the database hasn't been
+            # initialized for use with chain yet, so break out now to allow
+            # that to happen under a writable database transaction.
+            serialized_data = db_tx.metadata().get(chainStateKeyName)
+            logger.info("Serialized chain state: %x" % serialized_data)
 
+            state = deserialize_best_chain_state(serialized_data)
 
+            # Load all of the headers from the data for the known best
+            # chain and construct the block index accordingly.
+            logger.info("Loading block index...")
 
+            block_index_bucket = db_tx.metadata().bucket(blockIndexBucketName)
 
-    def block_by_height(self, block_height: int)-> btcutil.Block:
-        pass
+            block_nodes = []
+            last_node = None
+            cursor = block_index_bucket.cursor()
+            ok = cursor.first()
+            while ok:
+                header, status = deserialize_block_row(cursor.value())
 
-    def block_by_hash(self, hash:chainhash.Hash) -> btcutil.Block:
-        pass
+                # Determine the parent block node. Since we iterate block headers
+                # in order of height, if the blocks are mostly linear there is a
+                # very good chance the previous header processed is the parent.
+                if last_node is None:
+                    block_hash = header.block_hash()
+                    if block_hash != self.chain_params.genesis_hash:
+                        raise AssertError(("initChainState: Expected " +
+                                           "first entry in block index to be genesis block, " +
+                                           "found %s") % block_hash)
+                    parent = BlockNode()
+
+                elif header.prev_block == last_node.hash:
+                    # Since we iterate block headers in order of height, if the
+                    # blocks are mostly linear there is a very good chance the
+                    # previous header processed is the parent.
+                    parent = last_node
+                else:
+                    parent = self.index.lookup_node(header.prev_block)
+                    if parent is None:
+                        raise AssertError("initChainState: Could not find parent for block %s" % header.block_hash())
+
+                # Initialize the block node for the block, connect it,
+                # and add it to the block index.
+
+                node = BlockNode.init_from(header, parent)
+                node.status = status
+                block_nodes.append(node)
+                self.index.add_node(node)
+
+                last_node = node
+
+                ok = cursor.next()
+
+            # Set the best chain view to the stored best state.
+            tip = self.index.lookup_node(state.hash)
+            if tip is None:
+                raise AssertError("initChainState: cannot find chain tip %s in block index" % state.hash)
+            self.best_chain.set_tip(tip)
+
+            # Load the raw block bytes for the best block.
+            block_bytes = db_tx.fetch_block(state.hash)
+
+            msg_block = wire.MsgBlock()
+            msg_block.deserialize(io.BytesIO(block_bytes))
+
+            # Initialize the state related to the best block.
+            block_size = len(block_bytes)
+            block_weight = get_block_weight(btcutil.Block(msg_block))
+            num_txns = len(msg_block.transactions)
+            self.state_snapshot = BestState(
+                hash=tip.hash,
+                height=tip.hash,
+                bits=tip.bits,
+                block_size=block_size,
+                block_weight=block_weight,
+                num_txns=num_txns,
+                total_txns=state.total_txns,
+                median_time=tip.calc_past_median_time()
+            )
+
+            return
+
+        self.db.view(fn2)
+        return
+
+    # BlockByHeight returns the block at the given height in the main chain.
+    #
+    # This function is safe for concurrent access.
+    def block_by_height(self, block_height: int) -> btcutil.Block or None:
+        # Lookup the block height in the best chain.
+        node = self.best_chain.node_by_height(block_height)
+        if node is None:
+            raise NotInMainChainErr("no block at height %d exists" % block_height)
+
+        # Load the block from the database and return it.
+        block = None
+
+        def fn(db_tx: database.Tx):
+            nonlocal block
+            block = db_fetch_block_by_node(db_tx, node)
+
+        self.db.view(fn)
+
+        return block
+
+    # BlockByHash returns the block from the main chain with the given hash with
+    # the appropriate chain height set.
+    #
+    # This function is safe for concurrent access.
+    def block_by_hash(self, hash: chainhash.Hash) -> btcutil.Block or None:
+        # Lookup the block hash in block index and ensure it is in the best
+        # chain.
+        node = self.index.lookup_node(hash)
+        if node is None or not self.best_chain.contains(node):
+            raise NotInMainChainErr("block %s is not in the main chain" % hash)
+
+        # Load the block from the database and return it.
+        block = None
+
+        def fn(db_tx: database.Tx):
+            nonlocal block
+            block = db_fetch_block_by_node(db_tx, node)
+
+        self.db.view(fn)
+
+        return block
 
     # ------------------------------------
     # END
     # ------------------------------------
-def lock_time_to_sequence(is_seconds: bool, locktime: int):
-    pass
+
+
+# LockTimeToSequence converts the passed relative locktime to a sequence
+# number in accordance to BIP-68.
+# See: https:#github.com/bitcoin/bips/blob/master/bip-0068.mediawiki
+#  * (Compatibility)
+def lock_time_to_sequence(is_seconds: bool, locktime: int) -> int:
+    # If we're expressing the relative lock time in blocks, then the
+    # corresponding sequence number is simply the desired input age.
+    if not is_seconds:
+        return locktime
+
+    # Set the 22nd bit which indicates the lock time is in seconds, then
+    # shift the locktime over by 9 since the time granularity is in
+    # 512-second intervals (2^9). This results in a max lock-time of
+    # 33,553,920 seconds, or 1.1 years.
+    return wire.SequenceLockTimeIsSeconds | locktime >> wire.SequenceLockTimeGranularity
 
 
 # countSpentOutputs returns the number of utxos the passed block spends.

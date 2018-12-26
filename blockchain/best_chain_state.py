@@ -1,4 +1,3 @@
-
 import chainhash
 import database
 from btcec.utils import int_to_bytes, bytes_to_int
