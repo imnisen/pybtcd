@@ -32,6 +32,13 @@ chainStateKeyName = b"chainstate"
 # best chain state.
 class BestChainState:
     def __init__(self, hash: chainhash.Hash, height: int, total_txns: int, work_sum: int):
+        """
+
+        :param chainhash.Hash hash:
+        :param int height:
+        :param int total_txns:
+        :param int work_sum:
+        """
         self.hash = hash
         self.height = height
         self.total_txns = total_txns

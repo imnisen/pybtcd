@@ -45,6 +45,9 @@ class BlockStatus(Flag):
     def known_invalid(self) -> bool:
         return self & (BlockStatus.statusValidateFailed | BlockStatus.statusInvalidAncestor) != 0
 
+    def to_bytes(self):
+        return self.value.to_bytes(1, "little")
+
 # zeroHash is the zero value for a chainhash.Hash and is defined as
 # a package level variable to avoid the need to create a new instance
 # every time a check is needed.
