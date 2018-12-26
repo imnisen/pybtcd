@@ -17,7 +17,7 @@ from .validate import *
 from .notifications import *
 from .checkpoints import *
 from .script_val import *
-
+from .upgrade import *
 import logging
 
 logger = logging.getLogger(__name__)
