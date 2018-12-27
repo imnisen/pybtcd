@@ -2929,7 +2929,7 @@ class BlockChain:
             return self._create_chain_state()
 
         if not has_block_index:
-            migrate_block_index(self.db)  # TODO
+            migrate_block_index(self.db)
 
         # Attempt to load the chain state from the database.
         def fn2(db_tx: database.Tx):

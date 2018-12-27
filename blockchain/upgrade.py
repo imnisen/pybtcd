@@ -447,7 +447,7 @@ def deserialize_utxo_entry_v0(serialized: bytes) -> dict:
                 # The first 2 outputs are encoded via the
                 # header code, so adjust the output number
                 # accordingly.
-                output_num = 2 + i * 8 + j
+                output_num = 2 + i * 8 + j  # example [0x00 0x00 0x10] (bit 20 is set, so output 20+2 = 22 is unspent). Cacluated is bit offset.
                 output_indexes.append(output_num)
 
             unspent_byte >>= 1
