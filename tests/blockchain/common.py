@@ -2,9 +2,23 @@ import os
 import btcutil
 import wire
 import bz2
+import shutil
 import chainhash
-from blockchain.utxo_viewpoint import UtxoViewpoint
-from blockchain.chainio import deserialize_utxo_entry
+import chaincfg
+from blockchain.chain import *
+import database
+from txscript import SigCache
+from typing import Callable
+
+
+# testDbType is the database backend type to use for the tests.
+testDbType = "ffldb"
+
+# testDbRoot is the root directory used to create all test databases.
+testDbRoot = "testdbs"
+
+# blockDataNet is the expected network in the test block data.
+blockDataNet = wire.BitcoinNet.MainNet
 
 
 # loadBlocks reads files containing bitcoin block data (gzipped but otherwise
@@ -56,6 +70,85 @@ def load_blocks(filename: str) -> [btcutil.Block]:
 
     finally:
         f.close()
+
+
+
+# isSupportedDbType returns whether or not the passed database type is
+# currently supported.
+def is_supported_db_type(db_type: str) -> bool:
+    supported_drivers = database.supported_drivers()
+    return db_type in supported_drivers
+
+
+
+
+
+
+
+# chainSetup is used to create a new db and chain instance with the genesis
+# block already inserted.  In addition to the new chain instance, it returns
+# a teardown function the caller should invoke when done testing to clean up.
+def chain_setup(db_name: str, params: chaincfg.Params) -> (BlockChain, Callable):
+    if not is_supported_db_type(testDbType):
+        raise Exception("unsupported db type %s" % testDbType)
+
+    # Handle memory database specially since it doesn't need the disk
+    # specific handling.
+    db = None
+    teardown = None
+
+    if testDbType == "memdb":
+        ndb = database.create(testDbType)
+        db = ndb
+
+        # Setup a teardown function for cleaning up.  This function is
+        # returned to the caller to be invoked when it is done testing.
+        def fn_teardown():
+            db.close()
+
+        teardown = fn_teardown
+
+    else:
+        # Create the root directory for test databases.
+        if not os.path.exists(testDbRoot):
+            os.makedirs(testDbRoot, mode=0o700)
+
+        # Create a new database to store the accepted blocks into.
+        db_path = os.path.join(testDbRoot, db_name)
+        shutil.rmtree(db_path)
+
+        ndb = database.create(testDbType, db_path, blockDataNet)  #TOCHECK the db_path correctness
+
+        db = ndb
+
+        # Setup a teardown function for cleaning up.  This function is
+        # returned to the caller to be invoked when it is done testing.
+
+        def fn_teardown():
+            db.close()
+            shutil.rmtree(db_path)
+            shutil.rmtree(testDbRoot)
+
+        teardown = fn_teardown
+
+    # Copy the chain params to ensure any modifications the tests do to
+    # the chain parameters do not affect the global instance.
+    params_copy = params  # TODO write the copy method
+
+    # Create the main chain instance.
+    try:
+        chain = Config(
+            db=db,
+            chain_params=params_copy,
+            checkpoints=None,
+            time_source=MedianTime(),
+            sig_cache=SigCache()
+        ).new_chain()
+    except Exception as e:
+        teardown()
+        raise e
+
+    return chain, teardown
 
 
 # loadUtxoView returns a utxo view loaded from a file.

@@ -103,7 +103,7 @@ class IndexManager:
 
 
 # Config is a descriptor which specifies the blockchain instance configuration.
-class Config:
+class Config: # TODo set default values
     def __init__(self, db, interrupt, chain_params, checkpoints, time_source, sig_cache, index_manager, hash_cache):
         """
 
@@ -177,6 +177,9 @@ class Config:
         # signature cache.
         self.hash_cache = hash_cache
 
+    # Make a new chain from this config
+    def new_chain(self):  # TODO
+        pass
 
 # BlockChain provides functions for working with the bitcoin block chain.
 # It includes functionality such as rejecting duplicate blocks, ensuring blocks
