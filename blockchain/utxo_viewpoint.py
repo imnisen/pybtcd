@@ -48,6 +48,12 @@ class UtxoEntry:
         # usage since there will be a lot of these in memory.
         self.packed_flags = packed_flags
 
+    def __eq__(self, other):
+        return self.amount == other.amount and \
+               self.pk_script == other.pk_script and \
+               self.block_height == other.block_height and \
+               self.packed_flags == other.packed_flags
+
     # isModified returns whether or not the output has been modified since it was
     # loaded.
     def is_modified(self) -> bool:
