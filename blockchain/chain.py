@@ -3066,6 +3066,32 @@ class BlockChain:
     # END
     # ------------------------------------
 
+    # --------------------------------
+    # Methods add from upgrade
+    # --------------------------------
+    def _maybe_upgrade_db_buckets(self, interrupt):
+        # Load or create bucket versions as needed.
+        utxo_set_version = 0
+
+        def fn(db_tx: database.Tx):
+            # Load the utxo set version from the database or create it and
+            # initialize it to version 1 if it doesn't exist.
+            nonlocal utxo_set_version
+            utxo_set_version = db_fetch_or_create_version(db_tx, utxoSetVersionKeyName, default_version=1)
+            return
+
+        self.db.update(fn)
+
+        # Update the utxo set to v2 if needed.
+        if utxo_set_version < 2:
+            upgrade_utxo_set_to_v2(self.db, interrupt)
+
+        return
+
+    # ------------------------------------
+    # END
+    # ------------------------------------
+
 
 # LockTimeToSequence converts the passed relative locktime to a sequence
 # number in accordance to BIP-68.
