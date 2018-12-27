@@ -74,6 +74,6 @@
 * make blockchain/script_val.py validate multiprocess
 * refactor txscript_flag to int
 * refacto BlockStatus to inherit bytes
+* Find unbuffer channel like mechanism to finish blockchain/upgrade interrupt_requested
 * Blockchain TODOs
 ** chain
-** HOLD upgrade
