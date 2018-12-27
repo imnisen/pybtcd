@@ -97,6 +97,12 @@ def list_equal(l1, l2):
         return False
 
 
+
+
+def hex_to_bytes(s):
+    return bytes.fromhex(s)
+
+
 ###################
 # Some debug utils
 ###################
