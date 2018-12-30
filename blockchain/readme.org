@@ -1,0 +1,103 @@
+* dependence relation
+0: best_chain_state, check_points, compress, difficulty,
+median_time,notification,process,sequence_lock, threshold_state
+constant, block_status,merkle
+
+
+1.
+stxo-> compress ;
+
+block_node -> constant difficulty block_status ;
+
+
+
+utxo ->  constant, compress, error ;
+
+version_bits -> threshold_state
+
+2 .
+chainio -> block_node
+
+
+chain_view -> block_node
+
+utxo_view_point -> stxo, utxo
+
+
+---
+
+3.
+
+block_index -> ; chainio
+upgrade -> best_chain_state, utxo, chainio
+
+
+script_val -> utxo_view_point
+weight -> utxo_view_point
+
+---
+
+4.
+validate ->  weight, merkle
+
+
+
+n: chain
+
+* tmp backup
+# # First try, use multiprocess pool, but failed
+# # because of multiprocess `can't pickle local object multiprocessing` if put this method in `validate`
+# def helper_fn(q, x, self):
+#     print('execute once')
+#     try:
+#         self.validate_handler(x)
+#         print('hhhhh')
+#         q.put_nowait(True)
+#     except Exception as e:
+#         print(';;;;;')
+#         q.put_nowait(False)
+#
+#
+# def err_callback(x):
+#     print('err_callback:', x)
+#
+# def callback(x):
+#     print('callback:', x)
+
+
+
+
+# No multiprocess case
+# for item in items:
+#     self.validate_handler(item)
+
+# First try, use multiprocess pool, but failed   # TOCONSIDER, why multiprocess pool cannot work?
+#
+# # def fn(q, x):
+# #     print('execute once')
+# #     try:
+# #         self.validate_handler(x)
+# #         q.put(True)
+# #     except Exception as e:
+# #         q.put(False)
+#
+# # use manager because `Queue objects should only be shared between processes through inheritance`
+# manager = Manager()
+# result_q = manager.Queue()
+# with Pool() as pool:
+#     for item in items:
+#         # print('submit task')
+#         pool.apply_async(helper_fn, (result_q, item, self), {}, callback, err_callback)
+#
+# results = []
+# count = 0
+# limit = len(items)
+# while count < limit:
+#     result = result_q.get()
+#     results.append(result)
+#     count += 1
+#
+# # pool.close()
+# # pool.join()
+#
+# # print(len(items))
