@@ -1,10 +1,5 @@
-from .difficulty import *
-import pyutil
-from .block_node import *
-import chainhash
-import wire
-from .validate import *
 import database
+import pyutil
 from .chainio import *
 
 
@@ -60,7 +55,7 @@ class BlockIndex:
         self.lock.writer_acquire()
         self._add_node(node)
         self.dirty[node] = {}  # TODO
-        self.lock.writer_acquire()
+        self.lock.writer_release()
         return
 
     # addNode adds the provided node to the block index, but does not mark it as
@@ -88,7 +83,7 @@ class BlockIndex:
         self.lock.writer_acquire()
         node.status |= flags
         self.dirty[node] = {}
-        self.lock.writer_acquire()
+        self.lock.writer_release()
 
     # UnsetStatusFlags flips the provided status flags on the block node to off,
     # regardless of whether they were on or off previously.
@@ -98,7 +93,7 @@ class BlockIndex:
         self.lock.writer_acquire()
         node.status = node.status & (~ flags)  # TOCHECK it the operator right?
         self.dirty[node] = {}
-        self.lock.writer_acquire()
+        self.lock.writer_reslease()
 
     # flushToDB writes all dirty block nodes to the database. If all writes
     # succeed, this clears the dirty set.
@@ -106,7 +101,7 @@ class BlockIndex:
         self.lock.writer_acquire()
 
         if len(self.dirty) == 0:
-            self.lock.writer_acquire()
+            self.lock.writer_release()
             return
 
         # TOCHECK
@@ -121,9 +116,9 @@ class BlockIndex:
         try:
             self.db.update(f)
         except Exception as e:
-            self.lock.writer_acquire()
+            self.lock.writer_release()
             raise e
         else:
             self.dirty = {}
 
-        self.lock.writer_acquire()
+        self.lock.writer_release()
