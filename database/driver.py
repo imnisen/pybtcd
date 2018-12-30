@@ -47,7 +47,7 @@ def register_driver(driver: Driver):
 # drivers that have been registered and are therefore supported.
 def supported_drivers():
     supported_db = []
-    for drv in drivers:
+    for drv in drivers.values():
         supported_db.append(drv.db_type)
     return supported_db
 

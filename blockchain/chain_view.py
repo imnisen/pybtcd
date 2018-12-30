@@ -1,5 +1,5 @@
-from .block_index import *
 import threading
+from .block_node import *
 
 
 # BlockLocator is used to help locate a specific block.  The algorithm for
@@ -41,7 +41,7 @@ class ChainView:
         self.nodes = nodes or []
 
     @classmethod
-    def new_from(cls, tip: BlockNode):
+    def new_from_tip(cls, tip: BlockNode or None):
         # The mutex is intentionally not held since this is a constructor.
         c = cls()
         c._set_tip(tip)
@@ -72,7 +72,7 @@ class ChainView:
     # it is up to the caller to ensure the lock is held.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _tip(self) -> BlockNode:
+    def _tip(self) -> BlockNode or None:
         if len(self.nodes) == 0:
             return None
 
@@ -96,7 +96,7 @@ class ChainView:
     # up to the caller to ensure the lock is held.
     #
     # This function MUST be called with the view mutex locked (for writes).
-    def _set_tip(self, node: BlockNode):
+    def _set_tip(self, node: BlockNode or None):
         if node is None:
             self.nodes = []
             return
@@ -154,7 +154,7 @@ class ChainView:
     # version in that it is up to the caller to ensure the lock is held.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _node_by_height(self, height: int) -> BlockNode:
+    def _node_by_height(self, height: int) -> BlockNode or None:
         if height < 0 or height >= len(self.nodes):
             return None
         return self.nodes[height]
@@ -244,7 +244,7 @@ class ChainView:
     # See the exported FindFork comments for more details.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _find_fork(self, node: BlockNode) -> BlockNode:
+    def _find_fork(self, node: BlockNode) -> BlockNode or None:
         # No fork point for node that doesn't exist.
         if node is None:
             return None
@@ -302,7 +302,7 @@ class ChainView:
     # See the exported BlockLocator function comments for more details.
     #
     # This function MUST be called with the view mutex locked (for reads).
-    def _block_locator(self, node: BlockNode or None) -> BlockLocator:
+    def _block_locator(self, node: BlockNode or None) -> BlockLocator or None:
         # Use the current tip if requested.
         if node is None:
             node = self._tip()

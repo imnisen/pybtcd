@@ -2,7 +2,7 @@ import time
 import threading
 import logging
 
-_logger = logging.Logger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 # This is an interface

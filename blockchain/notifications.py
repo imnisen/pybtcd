@@ -12,6 +12,7 @@
 class NotificationType(int):
     pass
 
+
 # NTBlockAccepted indicates the associated block was accepted into
 # the block chain.  Note that this does not necessarily mean it was
 # added to the main chain.  For that, use NTBlockConnected.

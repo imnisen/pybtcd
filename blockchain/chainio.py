@@ -1,67 +1,7 @@
 import io
-import copy
 import database
-import chainhash
-import btcutil
-from btcec.utils import int_to_bytes, bytes_to_int
-from .utxo_viewpoint import *
-from .compress import *
-from .stxo import *
-from .utxo import *
-from .best_chain_state import *
 from .block_node import *
 
-# Constant
-# blockHdrSize is the size of a block header.  This is simply the
-# constant from wire and is only provided here for convenience since
-# wire.MaxBlockHeaderPayload is quite long.
-blockHdrSize = wire.MaxBlockHeaderPayload
-
-# latestUtxoSetBucketVersion is the current version of the utxo set
-# bucket that is used to track all unspent outputs.
-latestUtxoSetBucketVersion = 2
-
-# latestSpendJournalBucketVersion is the current version of the spend
-# journal bucket that is used to track all spent transactions for use
-# in reorgs.
-latestSpendJournalBucketVersion = 1
-
-# blockIndexBucketName is the name of the db bucket used to house to the
-# block headers and contextual information.
-blockIndexBucketName = b"blockheaderidx"
-
-# hashIndexBucketName is the name of the db bucket used to house to the
-# block hash -> block height index.
-hashIndexBucketName = b"hashidx"
-
-# heightIndexBucketName is the name of the db bucket used to house to
-# the block height -> block hash index.
-heightIndexBucketName = b"heightidx"
-
-# chainStateKeyName is the name of the db key used to store the best
-# chain state.
-chainStateKeyName = b"chainstate"
-
-# spendJournalVersionKeyName is the name of the db key used to store
-# the version of the spend journal currently in the database.
-spendJournalVersionKeyName = b"spendjournalversion"
-
-# spendJournalBucketName is the name of the db bucket used to house
-# transactions outputs that are spent in each block.
-spendJournalBucketName = b"spendjournal"
-
-# utxoSetVersionKeyName is the name of the db key used to store the
-# version of the utxo set currently in the database.
-utxoSetVersionKeyName = b"utxosetversion"
-
-# utxoSetBucketName is the name of the db bucket used to house the
-# unspent transaction output set.
-utxoSetBucketName = b"utxosetv2"
-
-# byteOrder is the preferred byte order used for serializing numeric
-# fields for storage in the database.
-byteOrder = "little"
-    
 
 # dbFetchVersion fetches an individual version with the given key from the
 # metadata bucket.  It is primarily used to track versions on entities such as

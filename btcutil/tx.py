@@ -1,6 +1,7 @@
 import chainhash
 import wire
 import io
+import pyutil
 
 # TxIndexUnknown is the value returned for a transaction index that is unknown.
 # This is typically because the transaction has not been inserted into a block
@@ -85,3 +86,29 @@ class Tx:
 
     def set_index(self, index: int):
         self.tx_index = index
+
+
+    # IsCoinBase determines whether or not a transaction is a coinbase.  A coinbase
+    # is a special transaction created by miners that has no inputs.  This is
+    # represented in the block chain by a transaction with a single input that has
+    # a previous output transaction index set to the maximum value along with a
+    # zero hash.
+    #
+    # This function only differs from IsCoinBaseTx in that it works with a higher
+    # level util transaction as opposed to a raw wire transaction.
+    def is_coin_base(self):
+
+        msg_tx = self.get_msg_tx()
+
+        # A coin base must only have one transaction input.
+        if len(msg_tx.tx_ins) != 1:
+            return False
+
+            # The previous output of a coin base must have a max value index and
+        # a zero hash.
+        prev_out = msg_tx.tx_ins[0].previous_out_point
+        if prev_out.index != pyutil.MaxUint32 or prev_out.hash != chainhash.Hash():
+            return False
+
+        return True
+

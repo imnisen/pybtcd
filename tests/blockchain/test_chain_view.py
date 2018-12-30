@@ -70,16 +70,16 @@ class TestChainView(unittest.TestCase):
             # another view for branch 1 as the side chain.
             {
                 "name": "chain0-chain1",
-                "view": ChainView.new_from(tst_tip(branch0Nodes)),
+                "view": ChainView.new_from_tip(tst_tip(branch0Nodes)),
                 "genesis": branch0Nodes[0],
                 "tip": tst_tip(branch0Nodes),
-                "side": ChainView.new_from(tst_tip(branch1Nodes)),
+                "side": ChainView.new_from_tip(tst_tip(branch1Nodes)),
                 "sideTip": tst_tip(branch1Nodes),
                 "fork": branch0Nodes[1],
                 "contains": branch0Nodes,
                 "noContains": branch1Nodes,
-                "equal": ChainView.new_from(tst_tip(branch0Nodes)),
-                "unequal": ChainView.new_from(tst_tip(branch1Nodes)),
+                "equal": ChainView.new_from_tip(tst_tip(branch0Nodes)),
+                "unequal": ChainView.new_from_tip(tst_tip(branch1Nodes)),
                 "locator": locator_hashes(branch0Nodes, 4, 3, 2, 1, 0),
             },
 
@@ -87,16 +87,16 @@ class TestChainView(unittest.TestCase):
             # another view for branch 2 as the side chain.
             {
                 "name": "chain1-chain2",
-                "view": ChainView.new_from(tst_tip(branch1Nodes)),
+                "view": ChainView.new_from_tip(tst_tip(branch1Nodes)),
                 "genesis": branch0Nodes[0],
                 "tip": tst_tip(branch1Nodes),
-                "side": ChainView.new_from(tst_tip(branch2Nodes)),
+                "side": ChainView.new_from_tip(tst_tip(branch2Nodes)),
                 "sideTip": tst_tip(branch2Nodes),
                 "fork": branch1Nodes[0],
                 "contains": branch1Nodes,
                 "noContains": branch2Nodes,
-                "equal": ChainView.new_from(tst_tip(branch1Nodes)),
-                "unequal": ChainView.new_from(tst_tip(branch2Nodes)),
+                "equal": ChainView.new_from_tip(tst_tip(branch1Nodes)),
+                "unequal": ChainView.new_from_tip(tst_tip(branch2Nodes)),
                 "locator": zip_locators(
                     locator_hashes(branch1Nodes, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 11, 7),
                     locator_hashes(branch0Nodes, 1, 0)),
@@ -106,16 +106,16 @@ class TestChainView(unittest.TestCase):
             # another view for branch 2 as the side chain.
             {
                 "name": "chain2-chain0",
-                "view": ChainView.new_from(tst_tip(branch2Nodes)),
+                "view": ChainView.new_from_tip(tst_tip(branch2Nodes)),
                 "genesis": branch0Nodes[0],
                 "tip": tst_tip(branch2Nodes),
-                "side": ChainView.new_from(tst_tip(branch0Nodes)),
+                "side": ChainView.new_from_tip(tst_tip(branch0Nodes)),
                 "sideTip": tst_tip(branch0Nodes),
                 "fork": branch0Nodes[1],
                 "contains": branch2Nodes,
                 "noContains": branch0Nodes[2:],
-                "equal": ChainView.new_from(tst_tip(branch2Nodes)),
-                "unequal": ChainView.new_from(tst_tip(branch0Nodes)),
+                "equal": ChainView.new_from_tip(tst_tip(branch2Nodes)),
+                "unequal": ChainView.new_from_tip(tst_tip(branch0Nodes)),
                 "locator": zip_locators(
                     locator_hashes(branch2Nodes, 2, 1, 0),
                     locator_hashes(branch1Nodes, 0),
@@ -187,8 +187,8 @@ class TestChainViewForkCorners(unittest.TestCase):
         unrelatedBranchNodes = chained_nodes(None, 7)
 
         # Create chain views for the two unrelated histories.
-        view1 = ChainView.new_from(tst_tip(branchNodes))
-        view2 = ChainView.new_from(tst_tip(unrelatedBranchNodes))
+        view1 = ChainView.new_from_tip(tst_tip(branchNodes))
+        view2 = ChainView.new_from_tip(tst_tip(unrelatedBranchNodes))
 
         # Ensure attempting to find a fork point with a node that doesn't exist
         # doesn't produce a node.
@@ -219,7 +219,7 @@ class TestChainViewSetTip(unittest.TestCase):
             # longer chains.
             {
                 "name": "increasing",
-                "view": ChainView.new_from(None),
+                "view": ChainView.new_from_tip(None),
                 "tips": [tst_tip(branch0Nodes), tst_tip(branch1Nodes)],
                 "contains": [branch0Nodes, branch1Nodes]
             }
@@ -238,10 +238,10 @@ class TestChainViewSetTip(unittest.TestCase):
 # as expected.
 class TestChainViewNil(unittest.TestCase):
     def test_chain_view_nil(self):
-        view = ChainView.new_from(None)
+        view = ChainView.new_from_tip(None)
 
         # Ensure two unininitialized views are considered equal.
-        self.assertTrue(view.equals(ChainView.new_from(None)))
+        self.assertTrue(view.equals(ChainView.new_from_tip(None)))
 
         # Ensure the genesis of an uninitialized view does not produce a node.
         self.assertIsNone(view.genesis())

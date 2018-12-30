@@ -2,6 +2,8 @@ import chainhash
 import btcutil
 import txscript
 
+import logging
+logger = logging.getLogger(__name__)
 # CheckpointConfirmations is the number of blocks before the end of the current
 # best block chain that a good checkpoint candidate must be.
 CheckpointConfirmations = 2016
@@ -11,6 +13,7 @@ def new_hash_from_str(hex_str: str) -> chainhash.Hash:
     try:
         hash = chainhash.Hash(str)
     except Exception:
+        logger.warning("Exception happens in new_hash_from_str: %s" % e)
         hash = chainhash.Hash()
 
     return hash

@@ -1,36 +1,4 @@
-import btcutil
 from .utxo_viewpoint import *
-
-# MaxBlockWeight defines the maximum block weight, where "block
-# weight" is interpreted as defined in BIP0141. A block's weight is
-# calculated as the sum of the of bytes in the existing transactions
-# and header, plus the weight of each byte within a transaction. The
-# weight of a "base" byte is 4, while the weight of a witness byte is
-# 1. As a result, for a block to be valid, the BlockWeight MUST be
-# less than, or equal to MaxBlockWeight.
-MaxBlockWeight = 4000000
-
-# MaxBlockBaseSize is the maximum number of bytes within a block
-# which can be allocated to non-witness data.
-MaxBlockBaseSize = 1000000
-
-# MaxBlockSigOpsCost is the maximum number of signature operations
-# allowed for a block. It is calculated via a weighted algorithm which
-# weights segregated witness sig ops lower than regular sig ops.
-MaxBlockSigOpsCost = 80000
-
-# WitnessScaleFactor determines the level of "discount" witness data
-# receives compared to "base" data. A scale factor of 4, denotes that
-# witness data is 1/4 as cheap as regular non-witness data.
-WitnessScaleFactor = 4
-
-# MinTxOutputWeight is the minimum possible weight for a transaction
-# output.
-MinTxOutputWeight = WitnessScaleFactor * wire.MinTxOutPayload
-
-# MaxOutputsPerBlock is the maximum number of transaction outputs there
-# can be in a block of max weight size.
-MaxOutputsPerBlock = MaxBlockWeight // MinTxOutputWeight
 
 
 # GetBlockWeight computes the value of the weight metric for a given block.
@@ -59,6 +27,72 @@ def get_transaction_weight(tx: btcutil.Tx) -> int:
 
     # (baseSize * 3) + totalSize
     return (base_size * (WitnessScaleFactor - 1)) + total_size
+
+
+# CountSigOps returns the number of signature operations for all transaction
+# input and output scripts in the provided transaction.  This uses the
+# quicker, but imprecise, signature operation counting mechanism from
+# txscript.
+def count_sig_ops(tx: btcutil.Tx) -> int:
+    msg_tx = tx.get_msg_tx()
+
+    # Accumulate the number of signature operations in all transaction
+    # inputs
+    total_sig_ops = 0
+    for tx_in in msg_tx.tx_ins:
+        num_sig_ops = txscript.get_sig_op_count(tx_in.signature_script)
+        total_sig_ops += num_sig_ops
+
+    # Accumulate the number of signature operations in all transaction
+    # outputs.
+    for tx_out in msg_tx.tx_outs:
+        num_sig_ops = txscript.get_sig_op_count(tx_out.pk_script)
+        total_sig_ops += num_sig_ops
+
+    return total_sig_ops
+
+
+# CountP2SHSigOps returns the number of signature operations for all input
+# transactions which are of the pay-to-script-hash type.  This uses the
+# precise, signature operation counting mechanism from the script engine which
+# requires access to the input transaction scripts.
+def count_p2sh_sig_ops(tx: btcutil.Tx, is_coin_base_tx_p: bool, utxo_view: UtxoViewpoint) -> int:
+    # Coinbase transactions have no interesting inputs.
+    if is_coin_base_tx_p:
+        return 0
+
+    # Accumulate the number of signature operations in all transaction
+    # inputs.
+    msg_tx = tx.get_msg_tx()
+    total_sig_ops = 0
+
+    for i, tx_in in enumerate(msg_tx.tx_ins):
+
+        # Ensure the referenced input transaction is available.
+        utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
+        if utxo is None or utxo.is_spent():
+            msg = ("output %s referenced from " +
+                   "transaction %s:%d either does not exist or " +
+                   "has already been spent") % (tx_in.previous_out_point, tx.hash(), i)
+            raise RuleError(ErrorCode.ErrMissingTxOut, msg)
+
+        # We're only interested in pay-to-script-hash types, so skip
+        # this input if it's not one.
+        pk_script = utxo.get_pk_script()
+        if not txscript.is_pay_to_script_hash(pk_script):
+            continue
+
+        # Count the precise number of signature operations in the
+        # referenced public key script.
+        sig_script = tx_in.signature_script
+        num_sig_ops = txscript.get_precise_sig_op_count(sig_script, pk_script, bip16=True)
+
+        # We could potentially overflow the accumulator so check for
+        # overflow.
+        # In python no need
+        total_sig_ops += num_sig_ops
+
+    return total_sig_ops
 
 
 # GetSigOpCost returns the unified sig op cost for the passed transaction

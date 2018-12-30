@@ -152,7 +152,7 @@ class Immutable:
             if parent is None:
                 new_root = node
             else:
-                new_root = parent
+                new_root = parent_stack[0]
 
             new_total_size = self.total_size - len(node.value) + len(value)
             node.value = value

@@ -2,6 +2,8 @@ import txscript
 import btcec
 from .error import *
 
+import logging
+logger = logging.getLogger(__name__)
 
 # -----------------------------------------------------------------------------
 # A variable length quantity (VLQ) is an encoding that uses an arbitrary number
@@ -171,11 +173,11 @@ numSpecialScripts = 6
 # if it is.
 def is_pub_key_hash(script: bytes) -> (bool, bytes or None):
     if len(script) == 25 and \
-                    script[0] == txscript.OP_DUP and \
-                    script[1] == txscript.OP_HASH160 and \
-                    script[2] == txscript.OP_DATA_20 and \
-                    script[23] == txscript.OP_EQUALVERIFY and \
-                    script[24] == txscript.OP_CHECKSIG:
+            script[0] == txscript.OP_DUP and \
+            script[1] == txscript.OP_HASH160 and \
+            script[2] == txscript.OP_DATA_20 and \
+            script[23] == txscript.OP_EQUALVERIFY and \
+            script[24] == txscript.OP_CHECKSIG:
         return True, script[3:23]
     else:
         return False, None
@@ -186,9 +188,9 @@ def is_pub_key_hash(script: bytes) -> (bool, bytes or None):
 # if it is.
 def is_script_hash(script: bytes) -> (bool, bytes):
     if len(script) == 23 and \
-                    script[0] == txscript.OP_HASH160 and \
-                    script[1] == txscript.OP_DATA_20 and \
-                    script[22] == txscript.OP_EQUAL:
+            script[0] == txscript.OP_HASH160 and \
+            script[1] == txscript.OP_DATA_20 and \
+            script[22] == txscript.OP_EQUAL:
         return True, script[2:22]
     else:
         return False, None
@@ -206,8 +208,8 @@ def is_script_hash(script: bytes) -> (bool, bytes):
 def is_pub_key(script: bytes) -> (bool, bytes or None):
     # Pay-to-compressed-pubkey script.
     if len(script) == 35 and \
-                    script[0] == txscript.OP_DATA_33 and \
-                    script[34] == txscript.OP_CHECKSIG and \
+            script[0] == txscript.OP_DATA_33 and \
+            script[34] == txscript.OP_CHECKSIG and \
             (script[1] == 0x02 or script[1] == 0x03):
         # Ensure the public key is valid.
         serialized_pub_key = script[1:34]
@@ -216,9 +218,9 @@ def is_pub_key(script: bytes) -> (bool, bytes or None):
 
     # Pay-to-uncompressed-pubkey script.
     if len(script) == 67 and \
-                    script[0] == txscript.OP_DATA_65 and \
-                    script[66] == txscript.OP_CHECKSIG and \
-                    script[1] == 0x04:
+            script[0] == txscript.OP_DATA_65 and \
+            script[66] == txscript.OP_CHECKSIG and \
+            script[1] == 0x04:
         # Ensure the public key is valid.
         serialized_pub_key = script[1:66]
         btcec.parse_pub_key(serialized_pub_key, btcec.s256())
@@ -375,7 +377,8 @@ def decompress_script(compressed_pk_script: bytes) -> bytes:
         compressed_key[1:] = compressed_pk_script[1:]
         try:
             key = btcec.parse_pub_key(bytes(compressed_key), btcec.s256())
-        except Exception:
+        except Exception as e:
+            logger.debug("Exception happens in  decompress_script %s" % e)
             return bytes()
 
         pk_script = bytearray(67)

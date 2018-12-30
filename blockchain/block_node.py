@@ -1,57 +1,8 @@
-from enum import Flag
-from .difficulty import *
-import pyutil
 import chainhash
 import wire
-from .validate import *
-import database
-
-
-# blockStatus is a bit field representing the validation state of the block.
-class BlockStatus(Flag):
-    # statusDataStored indicates that the block's payload is stored on disk.
-    statusDataStored = 1 << 0
-
-    # statusValid indicates that the block has been fully validated.
-    statusValid = 1 << 1
-
-    # statusValidateFailed indicates that the block has failed validation.
-    statusValidateFailed = 1 << 2
-
-    # statusInvalidAncestor indicates that one of the block's ancestors has
-    # has failed validation, thus the block is also invalid.
-    statusInvalidAncestor = 1 << 3
-
-    # statusNone indicates that the block has no validation state flags set.
-    #
-    # NOTE: This must be defined last in order to avoid influencing iota.
-    statusNone = 0
-
-    # HaveData returns whether the full block data is stored in the database. This
-    # will return false for a block node where only the header is downloaded or
-    # kept.
-    def have_data(self) -> bool:
-        return self & BlockStatus.statusDataStored != 0
-
-    # KnownValid returns whether the block is known to be valid. This will return
-    # false for a valid block that has not been fully validated yet.
-    def known_valid(self) -> bool:
-        return self & BlockStatus.statusValid != 0
-
-    # KnownInvalid returns whether the block is known to be invalid. This may be
-    # because the block itself failed validation or any of its ancestors is
-    # invalid. This will return false for invalid blocks that have not been proven
-    # invalid yet.
-    def known_invalid(self) -> bool:
-        return self & (BlockStatus.statusValidateFailed | BlockStatus.statusInvalidAncestor) != 0
-
-    def to_bytes(self):
-        return self.value.to_bytes(1, "little")
-
-# zeroHash is the zero value for a chainhash.Hash and is defined as
-# a package level variable to avoid the need to create a new instance
-# every time a check is needed.
-zeroHash = chainhash.Hash()
+from .constant import *
+from .difficulty import *
+from .block_status import *
 
 
 # blockNode represents a block within the block chain and is primarily used to
@@ -152,7 +103,7 @@ class BlockNode:
     # than zero.
     #
     # This function is safe for concurrent access.
-    def ancestor(self, height: int) -> 'BlockNode':
+    def ancestor(self, height: int) -> 'BlockNode' or None:
         if height < 0 or height > self.height:
             return None
 

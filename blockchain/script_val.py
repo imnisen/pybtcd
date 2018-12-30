@@ -1,15 +1,11 @@
-import wire
-import btcutil
-import txscript
-import pyutil
 import time
-from .utxo_viewpoint import *
-from .error import *
+import pyutil
 from multiprocessing import Pool, Queue, Manager, Process, cpu_count
+from .utxo_viewpoint import *
 
 import logging
 
-_logger = logging.Logger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class TxValidateItem:
@@ -82,61 +78,35 @@ class TxValidator:
         if len(items) == 0:
             return
 
-        # No multiprocess case
-        # for item in items:
-        #     self.validate_handler(item)
-
-        # First try, use multiprocess pool, but failed   # TOCONSIDER, why multiprocess pool cannot work?
-        #
-        # # def fn(q, x):
-        # #     print('execute once')
-        # #     try:
-        # #         self.validate_handler(x)
-        # #         q.put(True)
-        # #     except Exception as e:
-        # #         q.put(False)
-        #
-        # # use manager because `Queue objects should only be shared between processes through inheritance`
-        # manager = Manager()
-        # result_q = manager.Queue()
-        # with Pool() as pool:
-        #     for item in items:
-        #         # print('submit task')
-        #         pool.apply_async(helper_fn, (result_q, item, self), {}, callback, err_callback)
-        #
-        # results = []
-        # count = 0
-        # limit = len(items)
-        # while count < limit:
-        #     result = result_q.get()
-        #     results.append(result)
-        #     count += 1
-        #
-        # # pool.close()
-        # # pool.join()
-        #
-        # # print(len(items))
-
         # Try 2, use raw multi process, not pool, save half time of all tests
         # Actually, Queue is not proper solution here, what I need is golang channel
         # That I can put as fast as worker can process, not whole initially,
         # because, while one fail validate, don't need validate rest cases.
         NUMBER_OF_PROCESSES = cpu_count()
-        task_queue = Queue()
-        done_queue = Queue()
+        manager = Manager()
+        task_queue = manager.Queue()
+        done_queue = manager.Queue()
 
         # submit task
         for item in items:
-            task_queue.put((self, item))
+            task_queue.put(item)
 
         # Start worker processes
         for _ in range(NUMBER_OF_PROCESSES):
-            Process(target=worker, args=(task_queue, done_queue)).start()
+            Process(target=worker, args=(self, task_queue, done_queue)).start()
 
         # Get and print results
         for _ in range(len(items)):
-            result = done_queue.get()
+            result = done_queue.get()  #
 
+            # if result is False:
+            #     # Tell child processes to stop
+            #     for _ in range(NUMBER_OF_PROCESSES):
+            #         task_queue.put('STOP')
+            #
+            #     raise RuleError(ErrorCode.ErrScriptValidation, desc="Exception happens in validator worker, but cannot gei it now")
+
+            # TOCHANGE TOCONSIDER Can't pass exception in queue?
             if type(result) is Exception:
 
                 # Tell child processes to stop, little ugly
@@ -150,35 +120,16 @@ class TxValidator:
 
         return
 
-
-# # First try, use multiprocess pool, but failed
-# # because of multiprocess `can't pickle local object multiprocessing` if put this method in `validate`
-# def helper_fn(q, x, self):
-#     print('execute once')
-#     try:
-#         self.validate_handler(x)
-#         print('hhhhh')
-#         q.put_nowait(True)
-#     except Exception as e:
-#         print(';;;;;')
-#         q.put_nowait(False)
-#
-#
-# def err_callback(x):
-#     print('err_callback:', x)
-#
-# def callback(x):
-#     print('callback:', x)
-
-def worker(input_q, output_q):
-    for self, item in iter(input_q.get, 'STOP'):
+def worker(self, input_q, output_q):
+    for item in iter(input_q.get, 'STOP'):
         try:
             # output_q.put(Exception("hi,exception"))
             self.validate_handler(item)
             output_q.put(True)
         except Exception as e:
-            output_q.put(e)
-
+            output_q.put(e)  # TOCONDIER # I cannot put exception in queue?
+            # output_q.put(False)
+    return
 
 def validate_transaction_scripts(tx: btcutil.Tx, utxo_view: UtxoViewpoint, flags: txscript.ScriptFlags,
                                  sig_cache: txscript.SigCache, hash_cache: txscript.HashCache):

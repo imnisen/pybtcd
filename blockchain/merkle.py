@@ -3,7 +3,6 @@ import chainhash
 import pyutil
 import txscript
 import btcutil
-from .validate import *
 from .error import *
 
 # CoinbaseWitnessDataLen is the required length of the only element within
@@ -121,7 +120,7 @@ def build_merkle_tree_store(transactions: [btcutil.Tx], witness: bool) -> [chain
 def extract_witness_commitment(tx: btcutil.Tx) -> (bytes or None, bool):
     # The witness commitment *must* be located within one of the coinbase
     # transaction's outputs.
-    if not is_coin_base(tx):
+    if not tx.is_coin_base():
         return None, False
 
     msg_tx = tx.get_msg_tx()
@@ -185,7 +184,7 @@ def validate_witness_commitment(blk: btcutil.Block):
     witness_nonce = coinbase_witness[0]
     if len(witness_nonce) != CoinbaseWitnessDataLen:
         msg = "the coinbase transaction witness nonce has %d bytes when it must be %d bytes" % (
-          len(witness_nonce), CoinbaseWitnessDataLen)
+            len(witness_nonce), CoinbaseWitnessDataLen)
         raise RuleError(ErrorCode.ErrInvalidWitnessCommitment, msg)
 
     # Finally, with the preliminary checks out of the way, we can check if
@@ -199,7 +198,7 @@ def validate_witness_commitment(blk: btcutil.Block):
     computed_commitment = chainhash.double_hash_b(witness_preimage)
     if computed_commitment != witness_commitment:
         msg = "witness commitment does not match: computed %s, coinbase includes %s" % (
-          computed_commitment, witness_commitment)
+            computed_commitment, witness_commitment)
         raise RuleError(ErrorCode.ErrWitnessCommitmentMismatch, msg)
 
     return

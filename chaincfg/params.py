@@ -185,7 +185,7 @@ class Params:
         # RetargetAdjustmentFactor is the adjustment factor used to limit
         # the minimum and maximum amount of adjustment that can occur between
         # difficulty retargets.
-        self.retarget_adjustment_factor = retarget_adjustment_factor or 0
+        self.retarget_adjustment_factor = retarget_adjustment_factor or 1
 
         # ReduceMinDifficulty defines whether the network should reduce the
         # minimum required difficulty after a long enough period of time has

@@ -1,25 +1,19 @@
+from collections import defaultdict
 import chainhash
 import chaincfg
-import wire
 import btcutil
 import database
 import txscript
 import pyutil
-import time
 from .chain_view import *
-from .utxo_viewpoint import *
-from .threshold_state import *
-from .error import *
 from .version_bits import *
-from .weight import *
-from .sequence_lock import *
-from .validate import *
 from .notifications import *
 from .checkpoints import *
 from .script_val import *
+from .block_index import *
 from .upgrade import *
+from .validate import *
 import logging
-
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -103,13 +97,15 @@ class IndexManager:
 
 
 # Config is a descriptor which specifies the blockchain instance configuration.
-class Config: # TODo set default values
-    def __init__(self, db, interrupt, chain_params, checkpoints, time_source, sig_cache, index_manager, hash_cache):
+class Config:
+    def __init__(self, db, chain_params, time_source,
+                 interrupt=None, checkpoints=None,
+                 sig_cache=None, index_manager=None, hash_cache=None):
         """
 
         :param database.DB db:
         :param <-chan struct{} interrupt:
-        :param *chaincfg.Params chain_params:
+        :param chaincfg.Params chain_params:
         :param []chaincfg.Checkpoint checkpoints:
         :param MedianTimeSource time_source:
         :param *txscript.SigCache sig_cache:
@@ -120,20 +116,20 @@ class Config: # TODo set default values
         # store all metadata created by this package such as the utxo set.
         #
         # This field is required.
-        self.db = db
+        self.db = db  # Must have
 
         # Interrupt specifies a channel the caller can close to signal that
         # long running operations, such as catching up indexes or performing
         # database migrations, should be interrupted.
         #
         # This field can be nil if the caller does not desire the behavior.
-        self.interrupt = interrupt
+        self.interrupt = interrupt  # TODO
 
         # ChainParams identifies which chain parameters the chain is associated
         # with.
         #
         # This field is required.
-        self.chain_params = chain_params
+        self.chain_params = chain_params  # Must have
 
         # Checkpoints hold caller-defined checkpoints that should be added to
         # the default checkpoints in ChainParams.  Checkpoints must be sorted
@@ -141,7 +137,7 @@ class Config: # TODo set default values
         #
         # This field can be nil if the caller does not wish to specify any
         # checkpoints.
-        self.checkpoints = checkpoints
+        self.checkpoints = checkpoints or []
 
         # TimeSource defines the median time source to use for things such as
         # block processing and determining whether or not the chain is current.
@@ -149,7 +145,7 @@ class Config: # TODo set default values
         # The caller is expected to keep a reference to the time source as well
         # and add time samples from other peers on the network so the local
         # time is adjusted to be in agreement with other peers.
-        self.time_source = time_source
+        self.time_source = time_source  # Must have
 
         # SigCache defines a signature cache to use when when validating
         # signatures.  This is typically most useful when individual
@@ -158,14 +154,14 @@ class Config: # TODo set default values
         #
         # This field can be nil if the caller is not interested in using a
         # signature cache.
-        self.sig_cache = sig_cache
+        self.sig_cache = sig_cache or None
 
         # IndexManager defines an index manager to use when initializing the
         # chain and connecting and disconnecting blocks.
         #
         # This field can be nil if the caller does not wish to make use of an
         # index manager.
-        self.index_manager = index_manager
+        self.index_manager = index_manager or None
 
         # HashCache defines a transaction hash mid-state cache to use when
         # validating transactions. This cache has the potential to greatly
@@ -175,11 +171,81 @@ class Config: # TODo set default values
         #
         # This field can be nil if the caller is not interested in using a
         # signature cache.
-        self.hash_cache = hash_cache
+        self.hash_cache = hash_cache or None
 
     # Make a new chain from this config
-    def new_chain(self):  # TODO
-        pass
+    def new_block_chain(self):
+        # Enforce required config fields
+        if self.db is None:
+            raise AssertError("Config database is None")
+        if self.chain_params is None:
+            raise AssertError("Config chain_params is None")
+        if self.time_source is None:
+            raise AssertError("Config time_source is None")
+
+        # Generate a checkpoint by height map from the provided checkpoints
+        # and assert the provided checkpoints are sorted by height as required.        
+        checkpoints_by_height = {}
+
+        if len(self.checkpoints) > 0:
+            previous_checkpoint_height = 0
+            for checkpoint in self.checkpoints:
+
+                if checkpoint.height <= previous_checkpoint_height:  # Note, genesis block can't be checkpoint
+                    raise AssertError("checkpoints are not sorted by height")
+
+                checkpoints_by_height[checkpoint.height] = checkpoint
+                previous_checkpoint_height = checkpoint.height
+
+        target_timespan = self.chain_params.target_timespan
+        adjustment_factor = self.chain_params.retarget_adjustment_factor
+        target_time_per_block = self.chain_params.target_time_per_block
+        block_chain = BlockChain(
+            checkpoints=self.checkpoints,
+            checkpoints_by_height=checkpoints_by_height,
+            db=self.db,
+            chain_params=self.chain_params,
+            time_source=self.time_source,
+            sig_cache=self.sig_cache,
+            index_manager=self.index_manager,
+            min_retarget_timespan=target_timespan // adjustment_factor,
+            max_retarget_timespan=target_timespan * adjustment_factor,
+            blocks_per_retarget=target_timespan // target_time_per_block,
+            index=BlockIndex(self.db, self.chain_params),
+            hash_cache=self.hash_cache,
+            best_chain=ChainView.new_from_tip(tip=None),
+            orphans={},
+            prev_orphans=defaultdict(list),
+            warning_caches=ThresholdStateCache.new_many_caches(vbNumBits),
+            deployment_caches=ThresholdStateCache.new_many_caches(chaincfg.DefinedDeployments),
+        )
+
+        # Initialize the chain state from the passed database.  When the db
+        # does not yet contain any chain state, both it and the chain state
+        # will be initialized to contain only the genesis block.
+        block_chain._init_chain_state()
+
+        # Perform any upgrades to the various chain-specific buckets as needed.
+        block_chain._maybe_upgrade_db_buckets(self.interrupt)
+
+        # Initialize and catch up all of the currently active optional indexes
+        # as needed.
+        if self.index_manager is not None:
+            # self.index_manager.init  # TODO
+            pass
+
+        # Initialize rule change threshold state caches.
+        block_chain._init_threshold_caches()
+
+        best_node = block_chain.best_chain.tip()
+        logger.info("Chain state (height %d, hash %s, totaltx %d, work %s)" % (
+            best_node.height, best_node.hash, block_chain.state_snapshot.total_txns,
+            # TODO this could case None.total_txns
+            best_node.work_sum
+        ))
+
+        return block_chain
+
 
 # BlockChain provides functions for working with the bitcoin block chain.
 # It includes functionality such as rejecting duplicate blocks, ensuring blocks
@@ -253,7 +319,7 @@ class BlockChain:
         :param *blockNode checkpoint_node:
 
         :param pyutil.RWLockRWLock state_lock:
-        :param *BestState stateSnapshot:
+        :param BestState state_snapshot:
 
         :param []thresholdStateCache warning_caches:
         :param []thresholdStateCache deployment_caches:
@@ -270,14 +336,15 @@ class BlockChain:
         # The following fields are set when the instance is created and can't
         # be changed afterwards, so there is no need to protect them with a
         # separate mutex.
-        self.checkpoints = checkpoints
-        self.checkpoints_by_height = checkpoints_by_height
-        self.db = db
-        self.chain_params = chain_params
-        self.time_source = time_source
-        self.sig_cache = sig_cache
-        self.index_manager = index_manager
-        self.hash_cache = hash_cache
+        # Note: the default None could be ignored, as I write here for make it't default value clear
+        self.checkpoints = checkpoints or None
+        self.checkpoints_by_height = checkpoints_by_height or None
+        self.db = db or None
+        self.chain_params = chain_params or None
+        self.time_source = time_source or None
+        self.sig_cache = sig_cache or None
+        self.index_manager = index_manager or None
+        self.hash_cache = hash_cache or None
 
         # The following fields are calculated based upon the provided chain
         # parameters.  They are also set when the instance is created and
@@ -488,7 +555,7 @@ class BlockChain:
     def calc_sequence_lock(self, tx: btcutil.Tx, utxo_view: UtxoViewpoint, mempool: bool) -> SequenceLock:
         self.chain_lock.lock()
         try:
-            self._calc_sequence_lock(self.best_chain.tip(), tx, utxo_view, mempool)
+            return self._calc_sequence_lock(self.best_chain.tip(), tx, utxo_view, mempool)
         finally:
             self.chain_lock.unlock()
 
@@ -524,7 +591,7 @@ class BlockChain:
         # can be included within a block at any given height or time.
         m_tx = tx.get_msg_tx()
         sequence_lock_active = m_tx.version >= 2 and csv_soft_fork_active
-        if not sequence_lock_active or is_coin_base(tx):
+        if not sequence_lock_active or tx.is_coin_base():
             return sequence_lock
 
         # Grab the next height from the PoV of the passed blockNode to use for
@@ -667,7 +734,7 @@ class BlockChain:
             raise AssertError("connectBlock must be called with a block that extends the main chain")
 
         # Sanity check the correct number of stxos are provided.
-        if len(stxos) != self._count_spent_outputs(block):
+        if len(stxos) != count_spent_outputs(block):
             raise AssertError("connectBlock called with inconsistent spent transaction out information")
 
         # No warnings about unknown rules or versions until the chain is
@@ -1055,6 +1122,7 @@ class BlockChain:
                 try:
                     self._check_connect_block(node, block, view, stxos)
                 except RuleError as e:
+                    logger.warning("_connect_best_chain case RuleError: %s" % e)
                     self.index.set_status_flags(node, BlockStatus.statusValidateFailed)
                     raise e
                 except Exception as e:
@@ -1539,7 +1607,7 @@ class BlockChain:
     # initThresholdCaches initializes the threshold state caches for each warning
     # bit and defined deployment and provides warnings if the chain is current per
     # the warnUnknownVersions and warnUnknownRuleActivations functions.
-    def init_threshold_caches(self):
+    def _init_threshold_caches(self):
         # Initialize the warning and deployment caches by calculating the
         # threshold state for each of them.  This will ensure the caches are
         # populated and any states that needed to be recalculated due to
@@ -1698,7 +1766,7 @@ class BlockChain:
             prev_out = wire.OutPoint(hash=tx.hash(), index=tx_out_idx)
             needed_set[prev_out] = {}  # the {} here is not for store data. need change to set()
 
-        if not is_coin_base(tx):
+        if not tx.is_coin_base():
             for tx_in in tx.get_msg_tx().tx_ins:
                 needed_set[tx_in.previous_out_point] = {}
 
@@ -1722,7 +1790,7 @@ class BlockChain:
     #
     # This function is safe for concurrent access however the returned entry (if
     # any) is NOT.
-    def fetch_utxo_entry(self, outpoint: wire.OutPoint) -> UtxoEntry:
+    def fetch_utxo_entry(self, outpoint: wire.OutPoint) -> UtxoEntry or None:
         self.chain_lock.r_lock()
         try:
             entry = None
@@ -1733,11 +1801,9 @@ class BlockChain:
                 return
 
             self.db.view(fn)
-
+            return entry
         finally:
             self.chain_lock.r_unlock()
-
-        return entry
 
     # ------------------------------------
     # END
@@ -1812,7 +1878,7 @@ class BlockChain:
             # intentionally used over a range here as range does not
             # reevaluate the slice on each iteration nor does it adjust the
             # index for the modified slice.
-            not_orphans = self.prev_orphans[process_hash]
+            not_orphans = self.prev_orphans.get(process_hash, [])
             for o in not_orphans:
                 # Remove the orphan from the orphan pool.
                 self._remove_orphan_block(o)
@@ -1913,8 +1979,26 @@ class BlockChain:
 
             return is_main_chain, False
 
+        # TOREMOVE the exception
+        except Exception as e:
+            logger.warning("process_block exception: %s" % e)
+            raise e
+            # return False, False
+
         finally:
             self.chain_lock.unlock()
+
+    # An wrapper for rocess_block
+    def process_block_no_exception(self, block: btcutil.Block, flags: BehaviorFlags) -> (bool, bool):
+        try:
+            return self.process_block(block, flags)
+        except RuleError as e1:
+            logger.debug("Rule Error happens in process block: %s" % e1)
+            return False, False
+        except Exception as e2:
+            logger.warning("Exception happens in process block: %s" % e2)
+            return False, False
+
 
     # ------------------------------------
     # END
@@ -1936,16 +2020,16 @@ class BlockChain:
     # caller requested notifications by providing a callback function in the call
     # to New.
     def _send_notification(self, typ: NotificationType, data):
-        # Generate and send the notification.
-        n = Notification(type=typ, data=data)
 
-        self.notifications_lock.r_lock()
+        if self.notifications:
+            # Generate and send the notification.
+            n = Notification(type=typ, data=data)
 
-        for callback in self.notifications:
-            callback(n)
-
-        self.notifications_lock.r_unlock()
-        return
+            self.notifications_lock.r_lock()
+            for callback in self.notifications:
+                callback(n)
+            self.notifications_lock.r_unlock()
+            return
 
     # ------------------------------------
     # END
@@ -2112,7 +2196,7 @@ class BlockChain:
     #
     # This function is safe for concurrent access.
     def has_checkpoints(self) -> bool:
-        return len(self.checkpoints) > 0
+        return self.checkpoints and len(self.checkpoints) > 0
 
     # LatestCheckpoint returns the most recent checkpoint (regardless of whether it
     # is already known). When there are no defined checkpoints for the active chain
@@ -2151,7 +2235,7 @@ class BlockChain:
     # should really only happen for blocks before the first checkpoint).
     #
     # This function MUST be called with the chain lock held (for reads).
-    def _find_previous_checkpoint(self) -> BlockNode:
+    def _find_previous_checkpoint(self) -> BlockNode or None:
         if not self.has_checkpoints():
             return None
 
@@ -2466,7 +2550,7 @@ class BlockChain:
         # Typically, there will not be any utxos for any of the outputs.
         fetch_set = {}  # TOCHANGE to set() struct
         for tx in block.get_transactions():
-            for idx, _ in enumerate(tx.tx_outs):
+            for idx, _ in enumerate(tx.get_msg_tx().tx_outs):
                 prev_out = wire.OutPoint(hash=tx.hash(), index=idx)
                 fetch_set[prev_out] = {}
 
@@ -3111,12 +3195,3 @@ def lock_time_to_sequence(is_seconds: bool, locktime: int) -> int:
     # 512-second intervals (2^9). This results in a max lock-time of
     # 33,553,920 seconds, or 1.1 years.
     return wire.SequenceLockTimeIsSeconds | locktime >> wire.SequenceLockTimeGranularity
-
-
-# countSpentOutputs returns the number of utxos the passed block spends.
-def count_spent_outputs(block: btcutil.Block):
-    # Exclude the coinbase transaction since it can't spend anything.
-    num_spent = 0
-    for tx in block.get_transactions()[1:]:
-        num_spent += len(tx.get_msg_tx().tx_ins)
-    return num_spent

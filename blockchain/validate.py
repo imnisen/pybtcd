@@ -1,55 +1,10 @@
-import btcutil
-import wire
-import pyutil
-import chainhash
-import txscript
 import chaincfg
 from .sequence_lock import *
-from .block_index import *
-from .weight import *
-from .process import *
-from .difficulty import *
 from .median_time import *
+from .difficulty import *
+from .process import *
 from .merkle import *
-
-# --- Some constant ---
-# medianTimeBlocks is the number of previous blocks which should be
-# used to calculate the median time used to validate block timestamps.
-medianTimeBlocks = 11
-
-# serializedHeightVersion is the block version which changed block
-# coinbases to start with the serialized block height.
-serializedHeightVersion = 2
-
-# baseSubsidy is the starting subsidy amount for mined blocks.  This
-# value is halved every SubsidyHalvingInterval blocks.
-baseSubsidy = 50 * btcutil.SatoshiPerBitcoin
-
-# MinCoinbaseScriptLen is the minimum length a coinbase script can be.
-MinCoinbaseScriptLen = 2
-
-# MaxCoinbaseScriptLen is the maximum length a coinbase script can be.
-MaxCoinbaseScriptLen = 100
-
-# MaxTimeOffsetSeconds is the maximum number of seconds a block time
-# is allowed to be ahead of the current time.  This is currently 2
-# hours.
-MaxTimeOffsetSeconds = 2 * 60 * 60
-
-# zeroHash is the zero value for a chainhash.Hash and is defined as
-# a package level variable to avoid the need to create a new instance
-# every time a check is needed.
-zeroHash = chainhash.Hash()
-
-# block91842Hash is one of the two nodes which violate the rules
-# set forth in BIP0030.  It is defined as a package level variable to
-# avoid the need to create a new instance every time a check is needed.
-block91842Hash = chainhash.Hash("00000000000a4d0a398161ffc163c503763b1f4360639393e0e4c8e300e0caec")
-
-# block91880Hash is one of the two nodes which violate the rules
-# set forth in BIP0030.  It is defined as a package level variable to
-# avoid the need to create a new instance every time a check is needed.
-block91880Hash = chainhash.Hash("00000000000743f190a18c5577a3c2d2a1f610ae9601ac046a38084ccb7cd721")
+from .weight import *
 
 
 # isNullOutpoint determines whether or not a previous transaction output point
@@ -67,40 +22,6 @@ def is_null_outpoint(outpoint: wire.OutPoint) -> bool:
 # for further information.
 def should_have_serialized_block_height(header: wire.BlockHeader) -> bool:
     return header.version >= serializedHeightVersion
-
-
-# IsCoinBaseTx determines whether or not a transaction is a coinbase.  A coinbase
-# is a special transaction created by miners that has no inputs.  This is
-# represented in the block chain by a transaction with a single input that has
-# a previous output transaction index set to the maximum value along with a
-# zero hash.
-#
-# This function only differs from IsCoinBase in that it works with a raw wire
-# transaction as opposed to a higher level util transaction.
-def is_coin_base_tx(msg_tx: wire.MsgTx) -> bool:
-    # A coin base must only have one transaction input.
-    if len(msg_tx.tx_ins) != 1:
-        return False
-
-        # The previous output of a coin base must have a max value index and
-    # a zero hash.
-    prev_out = msg_tx.tx_ins[0].previous_out_point
-    if prev_out.index != pyutil.MaxUint32 or prev_out.hash != zeroHash:
-        return False
-
-    return True
-
-
-# IsCoinBase determines whether or not a transaction is a coinbase.  A coinbase
-# is a special transaction created by miners that has no inputs.  This is
-# represented in the block chain by a transaction with a single input that has
-# a previous output transaction index set to the maximum value along with a
-# zero hash.
-#
-# This function only differs from IsCoinBaseTx in that it works with a higher
-# level util transaction as opposed to a raw wire transaction.
-def is_coin_base(tx: btcutil.Tx) -> bool:
-    return is_coin_base_tx(tx.get_msg_tx())
 
 
 # SequenceLockActive determines if a transaction's sequence locks have been
@@ -177,7 +98,7 @@ def calc_block_subsidy(height: int, chain_params: chaincfg.Params) -> int:
         return baseSubsidy
 
     # Equivalent to: baseSubsidy / 2^(height/subsidyHalvingInterval)
-    return baseSubsidy >> (height / chain_params.subsidy_reduction_interval)
+    return baseSubsidy >> (height // chain_params.subsidy_reduction_interval)
 
 
 # CheckTransactionSanity performs some preliminary checks on a transaction to
@@ -236,7 +157,7 @@ def check_transaction_sanity(tx: btcutil.Tx):
         existing_tx_out[tx_in.previous_out_point] = True
 
     # Coinbase script length must be between min and max length.
-    if is_coin_base(tx):
+    if tx.is_coin_base():
         s_len = len(msg_tx.tx_ins[0].signature_script)
         if not MinCoinbaseScriptLen <= s_len <= MaxCoinbaseScriptLen:
             msg = "coinbase transaction script length " + \
@@ -292,72 +213,6 @@ def _check_proof_of_work(header: wire.BlockHeader, pow_limit: int, flags: Behavi
 # target difficulty as claimed.
 def check_proof_of_work(block: btcutil.Block, pow_limit: int):
     return _check_proof_of_work(block.get_msg_block().header, pow_limit, BFNone)
-
-
-# CountSigOps returns the number of signature operations for all transaction
-# input and output scripts in the provided transaction.  This uses the
-# quicker, but imprecise, signature operation counting mechanism from
-# txscript.
-def count_sig_ops(tx: btcutil.Tx) -> int:
-    msg_tx = tx.get_msg_tx()
-
-    # Accumulate the number of signature operations in all transaction
-    # inputs
-    total_sig_ops = 0
-    for tx_in in msg_tx.tx_ins:
-        num_sig_ops = txscript.get_sig_op_count(tx_in.signature_script)
-        total_sig_ops += num_sig_ops
-
-    # Accumulate the number of signature operations in all transaction
-    # outputs.
-    for tx_out in msg_tx.tx_outs:
-        num_sig_ops = txscript.get_sig_op_count(tx_out.pk_script)
-        total_sig_ops += num_sig_ops
-
-    return total_sig_ops
-
-
-# CountP2SHSigOps returns the number of signature operations for all input
-# transactions which are of the pay-to-script-hash type.  This uses the
-# precise, signature operation counting mechanism from the script engine which
-# requires access to the input transaction scripts.
-def count_p2sh_sig_ops(tx: btcutil.Tx, is_coin_base_tx_p: bool, utxo_view: UtxoViewpoint) -> int:
-    # Coinbase transactions have no interesting inputs.
-    if is_coin_base_tx_p:
-        return 0
-
-    # Accumulate the number of signature operations in all transaction
-    # inputs.
-    msg_tx = tx.get_msg_tx()
-    total_sig_ops = 0
-
-    for i, tx_in in enumerate(msg_tx.tx_ins):
-
-        # Ensure the referenced input transaction is available.
-        utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
-        if utxo is None or utxo.is_spent():
-            msg = ("output %s referenced from " +
-                   "transaction %s:%d either does not exist or " +
-                   "has already been spent") % (tx_in.previous_out_point, tx.hash(), i)
-            raise RuleError(ErrorCode.ErrMissingTxOut, msg)
-
-        # We're only interested in pay-to-script-hash types, so skip
-        # this input if it's not one.
-        pk_script = utxo.get_pk_script()
-        if not txscript.is_pay_to_script_hash(pk_script):
-            continue
-
-        # Count the precise number of signature operations in the
-        # referenced public key script.
-        sig_script = tx_in.signature_script
-        num_sig_ops = txscript.get_precise_sig_op_count(sig_script, pk_script, bip16=True)
-
-        # We could potentially overflow the accumulator so check for
-        # overflow.
-        # In python no need
-        total_sig_ops += num_sig_ops
-
-    return total_sig_ops
 
 
 # checkBlockHeaderSanity performs some preliminary checks on a block header to
@@ -423,12 +278,12 @@ def check_block_sanity_noexport(block: btcutil.block, pow_limit: int,
 
     # The first transaction in a block must be a coinbase.
     transactions = block.get_transactions()
-    if not is_coin_base(transactions[0]):
+    if not transactions[0].is_coin_base():
         raise RuleError(ErrorCode.ErrFirstTxNotCoinbase, "first transaction in block is not a coinbase")
 
     # A block must not have more than one coinbase.
     for i, tx in enumerate(transactions[1:]):
-        if is_coin_base(tx):
+        if tx.is_coin_base():
             msg = "block contains second coinbase at index %d" % (i + 1)
             raise RuleError(ErrorCode.ErrMultipleCoinbases, msg)
 
@@ -546,7 +401,7 @@ def check_serialized_height(coin_base_tx: btcutil.Tx, want_height: int):
 def check_transaction_inputs(tx: btcutil.Tx, tx_height: int, utxo_view: UtxoViewpoint,
                              chain_params: chaincfg.Params) -> int:
     # Coinbase transactions have no inputs.
-    if is_coin_base(tx):
+    if tx.is_coin_base():
         return 0
 
     total_satoshi_in = 0
@@ -554,7 +409,7 @@ def check_transaction_inputs(tx: btcutil.Tx, tx_height: int, utxo_view: UtxoView
         # Ensure the referenced input transaction is available.
         utxo = utxo_view.lookup_entry(tx_in.previous_out_point)
         if utxo is None or utxo.is_spent():
-            msg = ("output %v referenced from " +
+            msg = ("output %s referenced from " +
                    "transaction %s:%d either does not exist or " +
                    "has already been spent") % (
                       tx_in.previous_out_point, tx.hash(), tx_in_idx
@@ -610,7 +465,7 @@ def check_transaction_inputs(tx: btcutil.Tx, tx_height: int, utxo_view: UtxoView
     # conditions would have already been caught by checkTransactionSanity.
     total_satoshi_out = 0
     for tx_out in tx.get_msg_tx().tx_outs:
-        total_satoshi_out += tx_out
+        total_satoshi_out += tx_out.value
 
     # Ensure the transaction does not spend more than its inputs.
     if total_satoshi_in < total_satoshi_out:

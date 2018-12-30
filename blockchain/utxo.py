@@ -1,5 +1,100 @@
+import database
+from .error import *
+from .constant import *
+from .compress import *
 
-from .utxo_viewpoint import *
+
+# txoFlags is a bitmask defining additional information and state for a
+# transaction output in a utxo view.
+class TxoFlags(int):
+    pass
+
+
+# tfCoinBase indicates that a txout was contained in a coinbase tx.
+tfCoinBase = TxoFlags(1 << 0)
+
+# tfSpent indicates that a txout is spent.
+tfSpent = TxoFlags(1 << 1)
+
+# tfModified indicates that a txout has been modified since it was
+# loaded.
+tfModified = TxoFlags(1 << 2)
+
+
+class UtxoEntry:
+    def __init__(self, amount: int = None, pk_script: bytes = None, block_height: int = None,
+                 packed_flags: TxoFlags = None):
+        """
+
+        :param int64 amount:
+        :param bytes pk_script:
+        :param int32 block_height:
+        :param TxoFlags packed_flags:
+        """
+        self.amount = amount or 0
+
+        # The public key script for the output.
+        self.pk_script = pk_script or bytes()
+
+        # Height of block containing tx.
+        self.block_height = block_height or 0
+
+        # packedFlags contains additional info about output such as whether it
+        # is a coinbase, whether it is spent, and whether it has been modified
+        # since it was loaded.  This approach is used in order to reduce memory
+        # usage since there will be a lot of these in memory.
+        self.packed_flags = packed_flags
+
+    def __eq__(self, other):
+        return self.amount == other.amount and \
+               self.pk_script == other.pk_script and \
+               self.block_height == other.block_height and \
+               self.packed_flags == other.packed_flags
+
+    # isModified returns whether or not the output has been modified since it was
+    # loaded.
+    def is_modified(self) -> bool:
+        return self.packed_flags & tfModified == tfModified
+
+    # IsCoinBase returns whether or not the output was contained in a coinbase
+    # transaction.
+    def is_coin_base(self) -> bool:
+        return self.packed_flags & tfCoinBase == tfCoinBase
+
+    # IsSpent returns whether or not the output has been spent based upon the
+    # current state of the unspent transaction output view it was obtained from.
+    def is_spent(self) -> bool:
+        return self.packed_flags & tfSpent == tfSpent
+
+    # BlockHeight returns the height of the block containing the output.
+    def get_block_height(self) -> int:
+        return self.block_height
+
+    # Spend marks the output as spent.  Spending an output that is already spent
+    # has no effect.
+    def spend(self):
+        if self.is_spent():
+            return
+
+        self.packed_flags = self.packed_flags | (tfSpent | tfModified)
+
+    # Amount returns the amount of the output.
+    def get_amount(self):
+        return self.amount
+
+    # PkScript returns the public key script for the output.
+    def get_pk_script(self):
+        return self.pk_script
+
+    # Clone returns a shallow copy of the utxo entry.
+    def clone(self):
+        return UtxoEntry(
+            amount=self.amount,
+            pk_script=self.pk_script,
+            block_height=self.block_height,
+            packed_flags=self.packed_flags,
+        )
+
 
 # -----------------------------------------------------------------------------
 # The unspent transaction output (utxo) set consists of an entry for each
@@ -84,7 +179,7 @@ from .utxo_viewpoint import *
 def outpoint_key(outpoint: wire.OutPoint) -> bytes:
     outpoint_index_bytearray = bytearray(serialize_size_vlq(outpoint.index))
     put_vlq(outpoint_index_bytearray, outpoint.index)
-    return outpoint.hash + bytes(outpoint_index_bytearray)
+    return outpoint.hash.to_bytes() + bytes(outpoint_index_bytearray)  # TOCHECK
 
 
 # def recycle_outpoint_key(key):
@@ -131,6 +226,7 @@ def serialize_utxo_entry(entry: UtxoEntry) -> bytes or None:
     serialized[header_offset:] = serialized_slice
     return bytes(serialized)
 
+
 # deserializeUtxoEntry decodes a utxo entry from the passed serialized byte
 # slice into a new UtxoEntry using a format that is suitable for long-term
 # storage.  The format is described in detail above.
@@ -164,6 +260,7 @@ def deserialize_utxo_entry(serialized: bytes) -> UtxoEntry:
 
     return entry
 
+
 # dbFetchUtxoEntryByHash attempts to find and fetch a utxo for the given hash.
 # It uses a cursor and seek to try and do this as efficiently as possible.
 #
@@ -192,6 +289,7 @@ def db_fetch_utxo_entry_by_hash(db_tx: database.Tx, hash: chainhash.Hash) -> Utx
 
     return deserialize_utxo_entry(cursor.value())
 
+
 # dbFetchUtxoEntry uses an existing database transaction to fetch the specified
 # transaction output from the utxo set.
 #
@@ -218,35 +316,3 @@ def db_fetch_utxo_entry(db_tx: database.Tx, outpoint: wire.OutPoint) -> UtxoEntr
                                desc="corrupt utxo entry for %s: %s" % (outpoint, e))
 
     return entry
-
-
-# dbPutUtxoView uses an existing database transaction to update the utxo set
-# in the database based on the provided utxo view contents and state.  In
-# particular, only the entries that have been marked as modified are written
-# to the database.
-def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
-    utxo_bucket = db_tx.metadata().bucket(utxoSetBucketName)
-    for outpoint, entry in view.entries.items():
-        # No need to update the database if the entry was not modified.
-        if entry is None or not entry.is_modified():
-            continue
-
-        # Remove the utxo entry if it is spent.
-        if entry.is_spent():
-            key = outpoint_key(outpoint)
-            utxo_bucket.delete(key)
-            # recycle_outpoint_key(key)
-            continue
-
-        # Serialize and store the utxo entry.
-        serialized = serialize_utxo_entry(entry)
-
-        key = outpoint_key(outpoint)
-        utxo_bucket.put(key, serialized)
-
-        # NOTE: The key is intentionally not recycled here since the
-        # database interface contract prohibits modifications.  It will
-        # be garbage collected normally when the database is done with
-        # it.
-
-    return

@@ -2,7 +2,9 @@ import database
 import chainhash
 import btcutil
 import wire
+from .constant import *
 from .compress import *
+
 
 # # spendJournalBucketName is the name of the db bucket used to house
 # # transactions outputs that are spent in each block.
@@ -145,7 +147,7 @@ def spent_tx_out_serialize_size(stxo: SpentTxOut) -> int:
 def put_spent_tx_out(target: bytearray, stxo: SpentTxOut) -> int:
     header_code = spent_tx_out_header_code(stxo)
     offset = put_vlq(target, header_code)
-    if stxo > 0:
+    if stxo.height > 0:
         # The legacy v1 spend journal format conditionally tracked the
         # containing transaction version when the height was non-zero,
         # so this is required for backwards compat.

@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 # DeploymentError identifies an error that indicates a deployment ID was
 # specified that does not exist.
 class DeploymentError(Exception):
@@ -23,6 +24,7 @@ class DeploymentError(Exception):
 
     def __hash__(self):
         return hash(str(self.msg))
+
 
 # AssertError identifies an error that indicates an internal code consistency
 # issue and should be treated as a critical and unrecoverable error.
@@ -242,6 +244,7 @@ class ErrorCode(Enum):
     def __str__(self):
         return errorCodeStrings[self]
 
+
 errorCodeStrings = {
     ErrorCode.ErrDuplicateBlock: "ErrDuplicateBlock",
     ErrorCode.ErrBlockTooBig: "ErrBlockTooBig",
@@ -287,6 +290,7 @@ errorCodeStrings = {
     ErrorCode.ErrInvalidAncestorBlock: "ErrInvalidAncestorBlock",
     ErrorCode.ErrPrevBlockNotBest: "ErrPrevBlockNotBest",
 }
+
 
 class RuleError(Exception):
     def __init__(self, c, desc=None, err=None):

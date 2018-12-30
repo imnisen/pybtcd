@@ -61,8 +61,13 @@ class ThresholdStateCache:
         self.entries[hash] = state
         return
 
+    @classmethod
+    def new_many_caches(cls, num):
+        caches = []
+        for i in range(num):
+            caches.append(ThresholdStateCache())
+        return caches
 
-    # TODO TOADD some method to add to blockchain class
 
 # newThresholdCaches returns a new array of caches to be used when calculating
 # threshold states.

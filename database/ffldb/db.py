@@ -121,7 +121,8 @@ class Bucket(database.Bucket):
         # Ensure transaction state is valid.
         try:
             self.tx.check_closed()
-        except:
+        except Exception as e:
+            _logger.warning("A ignored exception happens" % e)
             return None  # if there is error, return None
 
         # Attempt to fetch the ID for the child bucket.  The bucket does not

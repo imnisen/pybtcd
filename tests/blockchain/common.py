@@ -1,10 +1,7 @@
 import os
-import btcutil
-import wire
 import bz2
 import shutil
-import chainhash
-import chaincfg
+import copy
 from blockchain.chain import *
 import database
 from txscript import SigCache
@@ -80,11 +77,6 @@ def is_supported_db_type(db_type: str) -> bool:
     return db_type in supported_drivers
 
 
-
-
-
-
-
 # chainSetup is used to create a new db and chain instance with the genesis
 # block already inserted.  In addition to the new chain instance, it returns
 # a teardown function the caller should invoke when done testing to clean up.
@@ -115,7 +107,8 @@ def chain_setup(db_name: str, params: chaincfg.Params) -> (BlockChain, Callable)
 
         # Create a new database to store the accepted blocks into.
         db_path = os.path.join(testDbRoot, db_name)
-        shutil.rmtree(db_path)
+        if os.path.exists(db_path):
+            shutil.rmtree(db_path)
 
         ndb = database.create(testDbType, db_path, blockDataNet)  #TOCHECK the db_path correctness
 
@@ -133,7 +126,7 @@ def chain_setup(db_name: str, params: chaincfg.Params) -> (BlockChain, Callable)
 
     # Copy the chain params to ensure any modifications the tests do to
     # the chain parameters do not affect the global instance.
-    params_copy = params  # TODO write the copy method
+    params_copy = copy.deepcopy(params)
 
     # Create the main chain instance.
     try:
@@ -143,7 +136,7 @@ def chain_setup(db_name: str, params: chaincfg.Params) -> (BlockChain, Callable)
             checkpoints=None,
             time_source=MedianTime(),
             sig_cache=SigCache()
-        ).new_chain()
+        ).new_block_chain()
     except Exception as e:
         teardown()
         raise e

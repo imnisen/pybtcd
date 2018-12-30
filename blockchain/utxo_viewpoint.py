@@ -1,102 +1,6 @@
 import chainhash
-import wire
-import txscript
-import btcutil
-import database
-from .validate import *
 from .stxo import *
-
-
-# txoFlags is a bitmask defining additional information and state for a
-# transaction output in a utxo view.
-class TxoFlags(int):
-    pass
-
-
-# tfCoinBase indicates that a txout was contained in a coinbase tx.
-tfCoinBase = TxoFlags(1 << 0)
-
-# tfSpent indicates that a txout is spent.
-tfSpent = TxoFlags(1 << 1)
-
-# tfModified indicates that a txout has been modified since it was
-# loaded.
-tfModified = TxoFlags(1 << 2)
-
-
-class UtxoEntry:
-    def __init__(self, amount: int = None, pk_script: bytes = None, block_height: int = None,
-                 packed_flags: TxoFlags = None):
-        """
-
-        :param int64 amount:
-        :param bytes pk_script:
-        :param int32 block_height:
-        :param TxoFlags packed_flags:
-        """
-        self.amount = amount or 0
-
-        # The public key script for the output.
-        self.pk_script = pk_script or bytes()
-
-        # Height of block containing tx.
-        self.block_height = block_height or 0
-
-        # packedFlags contains additional info about output such as whether it
-        # is a coinbase, whether it is spent, and whether it has been modified
-        # since it was loaded.  This approach is used in order to reduce memory
-        # usage since there will be a lot of these in memory.
-        self.packed_flags = packed_flags
-
-    def __eq__(self, other):
-        return self.amount == other.amount and \
-               self.pk_script == other.pk_script and \
-               self.block_height == other.block_height and \
-               self.packed_flags == other.packed_flags
-
-    # isModified returns whether or not the output has been modified since it was
-    # loaded.
-    def is_modified(self) -> bool:
-        return self.packed_flags & tfModified == tfModified
-
-    # IsCoinBase returns whether or not the output was contained in a coinbase
-    # transaction.
-    def is_coin_base(self) -> bool:
-        return self.packed_flags & tfCoinBase == tfCoinBase
-
-    # IsSpent returns whether or not the output has been spent based upon the
-    # current state of the unspent transaction output view it was obtained from.
-    def is_spent(self) -> bool:
-        return self.packed_flags & tfSpent == tfSpent
-
-    # BlockHeight returns the height of the block containing the output.
-    def get_block_height(self) -> int:
-        return self.block_height
-
-    # Spend marks the output as spent.  Spending an output that is already spent
-    # has no effect.
-    def spend(self):
-        if self.is_spent():
-            return
-
-        self.packed_flags = self.packed_flags | (tfSpent | tfModified)
-
-    # Amount returns the amount of the output.
-    def get_amount(self):
-        return self.amount
-
-    # PkScript returns the public key script for the output.
-    def get_pk_script(self):
-        return self.pk_script
-
-    # Clone returns a shallow copy of the utxo entry.
-    def clone(self):
-        return UtxoEntry(
-            amount=self.amount,
-            pk_script=self.pk_script,
-            block_height=self.block_height,
-            packed_flags=self.packed_flags,
-        )
+from .utxo import *
 
 
 # UtxoViewpoint represents a view into the set of unspent transaction outputs
@@ -147,12 +51,22 @@ class UtxoViewpoint:
     # commit prunes all entries marked modified that are now fully spent and marks
     # all entries as unmodified.
     def commit(self):
+        # # Due to: `RuntimeError: dictionary changed size during iteration`
+        # for outpoint, entry in self.entries.items():
+        #     if entry is None or (entry.is_modified and entry.is_spent()):
+        #         del self.entries[outpoint]
+        #         continue
+        #
+        #     entry.packed_flags ^= tfModified  # Tocheck the xor operator
+
+        new_entries = {}
         for outpoint, entry in self.entries.items():
             if entry is None or (entry.is_modified and entry.is_spent()):
-                del self.entries[outpoint]
                 continue
 
             entry.packed_flags ^= tfModified  # Tocheck the xor operator
+            new_entries[outpoint] = entry
+        self.entries = new_entries
 
         return
 
@@ -199,7 +113,7 @@ class UtxoViewpoint:
         # is allowed so long as the previous transaction is fully spent.
         prev_out = wire.OutPoint(hash=tx.hash(), index=tx_out_idx)
         tx_out = tx.get_msg_tx().tx_outs[tx_out_idx]
-        self._add_tx_out(prev_out, tx_out, is_coin_base(tx), block_height)
+        self._add_tx_out(prev_out, tx_out, tx.is_coin_base(), block_height)
 
         return
 
@@ -208,7 +122,7 @@ class UtxoViewpoint:
     # outputs, they are simply marked unspent.  All fields will be updated for
     # existing entries since it's possible it has changed during a reorg.
     def add_tx_outs(self, tx: btcutil.Tx, block_height: int):
-        coin_base_p = is_coin_base(tx)
+        coin_base_p = tx.is_coin_base()
 
         for idx, tx_out in enumerate(tx.get_msg_tx().tx_outs):
             # Update existing entries.  All fields are updated because it's
@@ -235,7 +149,7 @@ class UtxoViewpoint:
         :return:
         """
         # Coinbase transactions don't have any inputs to spend.
-        if is_coin_base(tx):
+        if tx.is_coin_base():
             # Add the transaction's outputs as available utxos.
             self.add_tx_outs(tx, block_height)
             return
@@ -453,7 +367,7 @@ class UtxoViewpoint:
                 entry = db_fetch_utxo_entry(db_tx, outpoint)
                 self.entries[outpoint] = entry
             return
-
+        db.view(fn)
         return
 
     # fetchUtxos loads the unspent transaction outputs for the provided set of
@@ -530,3 +444,44 @@ class UtxoViewpoint:
 
         # Request the input utxos from the database.
         return self.fetch_utxos_main(db, needed_set)
+
+
+# dbPutUtxoView uses an existing database transaction to update the utxo set
+# in the database based on the provided utxo view contents and state.  In
+# particular, only the entries that have been marked as modified are written
+# to the database.
+def db_put_utxo_view(db_tx: database.Tx, view: UtxoViewpoint):
+    utxo_bucket = db_tx.metadata().bucket(utxoSetBucketName)
+    for outpoint, entry in view.entries.items():
+        # No need to update the database if the entry was not modified.
+        if entry is None or not entry.is_modified():
+            continue
+
+        # Remove the utxo entry if it is spent.
+        if entry.is_spent():
+            key = outpoint_key(outpoint)
+            utxo_bucket.delete(key)
+            # recycle_outpoint_key(key)
+            continue
+
+        # Serialize and store the utxo entry.
+        serialized = serialize_utxo_entry(entry)
+
+        key = outpoint_key(outpoint)
+        utxo_bucket.put(key, serialized)
+
+        # NOTE: The key is intentionally not recycled here since the
+        # database interface contract prohibits modifications.  It will
+        # be garbage collected normally when the database is done with
+        # it.
+
+    return
+
+
+# countSpentOutputs returns the number of utxos the passed block spends.
+def count_spent_outputs(block: btcutil.Block):
+    # Exclude the coinbase transaction since it can't spend anything.
+    num_spent = 0
+    for tx in block.get_transactions()[1:]:
+        num_spent += len(tx.get_msg_tx().tx_ins)
+    return num_spent

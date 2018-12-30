@@ -99,5 +99,3 @@ def db_put_best_state(db_tx: database.Tx, snapshot, work_sum: int):
         ))
     #  Store the current best chain state into the database.
     return db_tx.metadata().put(chainStateKeyName, serialized_data)
-
-
