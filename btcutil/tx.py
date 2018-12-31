@@ -41,6 +41,10 @@ class Tx:
         r = io.BytesIO(serialized_tx)
         return cls.from_reader(r)
 
+    @classmethod
+    def from_msg_tx(cls,  msg_tx: wire.MsgTx):
+        return cls(msg_tx=msg_tx, tx_index=TxIndexUnknown)
+
     # MsgTx returns the underlying wire.MsgTx for the transaction.
     def get_msg_tx(self):
         return self.msg_tx
