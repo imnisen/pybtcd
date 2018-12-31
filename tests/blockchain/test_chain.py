@@ -5,7 +5,6 @@ from tests.blockchain.common import *
 
 
 class TestChain(unittest.TestCase):
-
     # TestHaveBlock tests the HaveBlock API to ensure proper functionality.
     def test_have_block(self):
         # Load up blocks such that there is a side chain.
@@ -59,3 +58,379 @@ class TestChain(unittest.TestCase):
                 self.assertEqual(result, test['want'])
         finally:
             teardown_func()
+
+    # TestCalcSequenceLock tests the LockTimeToSequence function, and the
+    # CalcSequenceLock method of a Chain instance. The tests exercise several
+    # combinations of inputs to the CalcSequenceLock function in order to ensure
+    # the returned SequenceLocks are correct for each test instance.
+    def test_calc_sequence_lock(self):
+        net_params = chaincfg.SimNetParams
+
+        # We need to activate CSV in order to test the processing logic, so
+        # manually craft the block version that's used to signal the soft-fork
+        # activation.
+        csv_bit = net_params.deployments[chaincfg.DeploymentCSV].bit_number
+        block_version = 0x20000000 | (1 << csv_bit)
+
+        # Generate enough synthetic blocks to activate CSV.
+        chain = new_fake_chain(net_params)
+        node = chain.best_chain.tip()
+        block_time = node.header().timestamp
+        num_blocks_to_active = (net_params.miner_confirmation_window * 3)  # defined -> started -> locked_in -> active
+
+        for _ in range(num_blocks_to_active):
+            # the new block time
+            block_time = block_time + 1
+            # Make the new fake node
+            node = new_fake_node(parent=node, block_version=block_version, bits=0, timestamp=block_time)
+            # Add to chain index
+            chain.index.add_node(node)
+            # set chainview
+            chain.best_chain.set_tip(node)
+
+        # Create a utxo view with a fake utxo for the inputs used in the
+        # transactions created below.  This utxo is added such that it has an
+        # age of 4 blocks.
+        target_tx = btcutil.Tx.from_msg_tx(
+            wire.MsgTx(
+                tx_outs=[
+                    wire.TxOut(
+                        pk_script=bytes(),
+                        value=10
+                    )
+                ]
+            )
+        )
+
+        utxo_view = UtxoViewpoint()
+        utxo_view.add_tx_outs(target_tx, num_blocks_to_active - 4)
+        utxo_view.set_best_hash(node.hash)
+
+        # Create a utxo that spends the fake utxo created above for use in the
+        # transactions created in the tests.  It has an age of 4 blocks.  Note
+        # that the sequence lock heights are always calculated from the same
+        # point of view that they were originally calculated from for a given
+        # utxo.  That is to say, the height prior to it.
+        utxo = wire.OutPoint(
+            hash=target_tx.hash(),
+            index=0
+        )
+        prev_utxo_height = num_blocks_to_active - 4
+
+        # Obtain the median time past from the PoV of the input created above.
+        # The MTP for the input is the MTP from the PoV of the block *prior*
+        # to the one that included it.
+        median_time = node.relative_ancestor(distance=5).calc_past_median_time()
+
+        # The median time calculated from the PoV of the best block in the
+        # test chain.  For unconfirmed inputs, this value will be used since
+        # the MTP will be calculated from the PoV of the yet-to-be-mined
+        # block.
+        next_median_time = node.calc_past_median_time()
+        next_block_height = num_blocks_to_active + 1
+
+        # Add an additional transaction which will serve as our unconfirmed
+        # output.
+        un_conf_tx = wire.MsgTx(
+            tx_outs=[
+                wire.TxOut(
+                    pk_script=bytes(),
+                    value=5
+                )
+            ]
+        )
+
+        un_conf_utxo = wire.OutPoint(
+            hash=un_conf_tx.tx_hash(),
+            index=0,
+        )
+
+        # TOCONSIDER why height 0x7fffffff?
+        # Adding a utxo with a height of 0x7fffffff indicates that the output
+        # is currently unmined.
+        utxo_view.add_tx_outs(btcutil.Tx.from_msg_tx(un_conf_tx), block_height=0x7fffffff)
+
+        # Here comes the test cases
+        tests = [
+
+            # A transaction of version one should disable sequence locks
+            # as the new sequence number semantics only apply to
+            # transactions version 2 or higher.
+            {
+                "tx": wire.MsgTx(
+                    version=1,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=3)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=-1,
+                    block_height=-1
+                )
+            },
+
+            # A transaction with a single input with max sequence number.
+            # This sequence number has the high bit set, so sequence locks
+            # should be disabled.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=wire.MaxTxInSequenceNum
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=-1,
+                    block_height=-1
+                )
+            },
+
+            # A transaction with a single input whose lock time is
+            # expressed in seconds.  However, the specified lock time is
+            # below the required floor for time based lock times since
+            # they have time granularity of 512 seconds.  As a result, the
+            # seconds lock-time should be just before the median time of
+            # the targeted block.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=2)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=median_time - 1,
+                    block_height=-1
+                )
+            },
+
+            # A transaction with a single input whose lock time is
+            # expressed in seconds.  The number of seconds should be 1023
+            # seconds after the median past time of the last block in the
+            # chain.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=1024)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=median_time + 1023,
+                    block_height=-1
+                )
+            },
+
+            # A transaction with multiple inputs.  The first input has a
+            # lock time expressed in seconds.  The second input has a
+            # sequence lock in blocks with a value of 4.  The last input
+            # has a sequence number with a value of 5, but has the disable
+            # bit set.  So the first lock should be selected as it's the
+            # latest lock that isn't disabled.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=2560)
+                        ),
+
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=4)
+                        ),
+
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=5) | wire.SequenceLockTimeDisabled
+                        ),
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=median_time + (5 << wire.SequenceLockTimeGranularity) - 1,
+                    block_height=prev_utxo_height + 3
+                )
+            },
+
+            # Transaction with a single input.  The input's sequence number
+            # encodes a relative lock-time in blocks (3 blocks).  The
+            # sequence lock should  have a value of -1 for seconds, but a
+            # height of 2 meaning it can be included at height 3.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=3)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=-1,
+                    block_height=prev_utxo_height + 2
+                )
+            },
+
+            # A transaction with two inputs with lock times expressed in
+            # seconds.  The selected sequence lock value for seconds should
+            # be the time further in the future.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=5120)
+                        ),
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=2560)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=median_time + (10 << wire.SequenceLockTimeGranularity) - 1,
+                    block_height=-1
+                )
+            },
+
+            # A transaction with two inputs with lock times expressed in
+            # blocks.  The selected sequence lock value for blocks should
+            # be the height further in the future, so a height of 10
+            # indicating it can be included at height 11.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=1)
+                        ),
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=11)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=-1,
+                    block_height=prev_utxo_height + 10
+                )
+            },
+
+            # A transaction with multiple inputs.  Two inputs are time
+            # based, and the other two are block based. The lock lying
+            # further into the future for both inputs should be chosen.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=2560)
+                        ),
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=6656)
+                        ),
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=3)
+                        ),
+                        wire.TxIn(
+                            previous_out_point=utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=9)
+                        )
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": False,
+                "want": SequenceLock(
+                    seconds=median_time + (13 << wire.SequenceLockTimeGranularity) - 1,
+                    block_height=prev_utxo_height + 8
+                )
+            },
+
+            # A transaction with a single unconfirmed input.  As the input
+            # is confirmed, the height of the input should be interpreted
+            # as the height of the *next* block.  So, a 2 block relative
+            # lock means the sequence lock should be for 1 block after the
+            # *next* block height, indicating it can be included 2 blocks
+            # after that.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=un_conf_utxo,
+                            sequence=lock_time_to_sequence(is_seconds=False, locktime=2)
+                        ),
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": True,
+                "want": SequenceLock(
+                    seconds=-1,
+                    block_height=next_block_height + 1
+                )
+            },
+
+            # A transaction with a single unconfirmed input.  The input has
+            # a time based lock, so the lock time should be based off the
+            # MTP of the *next* block.
+            {
+                "tx": wire.MsgTx(
+                    version=2,
+                    tx_ins=[
+                        wire.TxIn(
+                            previous_out_point=un_conf_utxo,
+                            sequence=lock_time_to_sequence(is_seconds=True, locktime=1024)
+                        ),
+                    ]
+                ),
+                "view": utxo_view,
+                "mempool": True,
+                "want": SequenceLock(
+                    seconds=next_median_time + 1023,
+                    block_height=-1,
+                )
+            },
+
+        ]
+
+        for test in tests:
+            util_tx = btcutil.Tx.from_msg_tx(test['tx'])
+            seq_lock = chain.calc_sequence_lock(util_tx, test['view'], test['mempool'])
+
+            self.assertEqual(seq_lock.seconds, test['want'].seconds)
+            self.assertEqual(seq_lock.block_height, test['want'].block_height)

@@ -129,7 +129,42 @@ class Params:
                  hd_private_key_id=None, hd_public_key_id=None, hd_coin_type=None
 
                  ):
-        """"""
+        """
+
+        :param name:
+        :param net:
+        :param default_port:
+        :param dns_seeds:
+        :param genesis_block:
+        :param genesis_hash:
+        :param pow_limit:
+        :param pow_limit_bits:
+        :param bip0034_height:
+        :param bip0065_height:
+        :param bip0066_height:
+        :param coinbase_maturity:
+        :param subsidy_reduction_interval:
+        :param target_timespan:
+        :param target_time_per_block:
+        :param retarget_adjustment_factor:
+        :param reduce_min_difficulty:
+        :param min_diff_reduction_time:
+        :param generate_supported:
+        :param checkpoints:
+        :param rule_change_activation_threshold:
+        :param miner_confirmation_window:
+        :param [ConsensusDeployment] deployments:
+        :param relay_non_std_txs:
+        :param bech32_hrp_segwit:
+        :param pub_key_hash_addr_id:
+        :param script_hash_addr_id:
+        :param private_key_id:
+        :param witness_pub_key_hash_addr_id:
+        :param witness_script_hash_addr_id:
+        :param hd_private_key_id:
+        :param hd_public_key_id:
+        :param hd_coin_type:
+        """
 
         # Name defines a human-readable identifier for the network.
         self.name = name or ""

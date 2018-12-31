@@ -14,6 +14,7 @@ from .block_index import *
 from .upgrade import *
 from .validate import *
 import logging
+
 logger = logging.getLogger(__name__)
 
 # Constants
@@ -313,7 +314,7 @@ class BlockChain:
         :param pyutil.RWLock orphan_lock:
         :param map[chainhash.Hash]*orphanBlock orphans:
         :param map[chainhash.Hash][]*orphanBlock prev_orphans:
-        :param *orphanBlock oldest_orphan:
+        :param OrphanBlock oldest_orphan:
 
         :param *chaincfg.Checkpointnext_checkpoint:
         :param *blockNode checkpoint_node:
@@ -373,8 +374,8 @@ class BlockChain:
         # These fields are related to handling of orphan blocks.  They are
         # protected by a combination of the chain lock and the orphan lock.
         self.orphan_lock = orphan_lock or pyutil.RWLock()
-        self.orphans = orphans
-        self.prev_orphans = prev_orphans
+        self.orphans = orphans or {}
+        self.prev_orphans = prev_orphans or defaultdict(list)
         self.oldest_orphan = oldest_orphan
 
         # These fields are related to checkpoint handling.  They are protected
@@ -1999,7 +2000,6 @@ class BlockChain:
             logger.warning("Exception happens in process block: %s" % e2)
             return False, False
 
-
     # ------------------------------------
     # END
     # ------------------------------------
@@ -2080,8 +2080,8 @@ class BlockChain:
 
         # TOCONSIDER why the loop conditions?
         while iter_node is not None and \
-                iter_node.height % self.blocks_per_retarget != 0 and \
-                iter_node.bits == self.chain_params.pow_limit_bits:
+                                iter_node.height % self.blocks_per_retarget != 0 and \
+                        iter_node.bits == self.chain_params.pow_limit_bits:
             iter_node = iter_node.parent
 
         # Return the found difficulty or the minimum difficulty if no
@@ -2499,7 +2499,7 @@ class BlockChain:
             # once a majority of the network has upgraded.  This is part of
             # BIP0034.
             if should_have_serialized_block_height(header) and \
-                    block_height >= self.chain_params.bip0034_height:
+                            block_height >= self.chain_params.bip0034_height:
                 coinbase_tx = block.get_transactions()[0]
                 check_serialized_height(coinbase_tx, block_height)
 
@@ -3175,9 +3175,9 @@ class BlockChain:
 
         return
 
-    # ------------------------------------
-    # END
-    # ------------------------------------
+        # ------------------------------------
+        # END
+        # ------------------------------------
 
 
 # LockTimeToSequence converts the passed relative locktime to a sequence

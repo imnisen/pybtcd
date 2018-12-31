@@ -14,7 +14,7 @@ class UtxoViewpoint:
     def __init__(self, entries: dict = None, best_hash: chainhash.Hash = None):
         """
 
-        :param dict of wire.OutPoint: UtxoEntry entries:
+        :param {wire.OutPoint -> UtxoEntry} entries:
         :param chainhash.Hash best_hash:
         """
         self.entries = entries or {}
@@ -367,6 +367,7 @@ class UtxoViewpoint:
                 entry = db_fetch_utxo_entry(db_tx, outpoint)
                 self.entries[outpoint] = entry
             return
+
         db.view(fn)
         return
 

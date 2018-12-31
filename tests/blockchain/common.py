@@ -7,7 +7,6 @@ import database
 from txscript import SigCache
 from typing import Callable
 
-
 # testDbType is the database backend type to use for the tests.
 testDbType = "ffldb"
 
@@ -69,7 +68,6 @@ def load_blocks(filename: str) -> [btcutil.Block]:
         f.close()
 
 
-
 # isSupportedDbType returns whether or not the passed database type is
 # currently supported.
 def is_supported_db_type(db_type: str) -> bool:
@@ -110,7 +108,7 @@ def chain_setup(db_name: str, params: chaincfg.Params) -> (BlockChain, Callable)
         if os.path.exists(db_path):
             shutil.rmtree(db_path)
 
-        ndb = database.create(testDbType, db_path, blockDataNet)  #TOCHECK the db_path correctness
+        ndb = database.create(testDbType, db_path, blockDataNet)  # TOCHECK the db_path correctness
 
         db = ndb
 
@@ -454,3 +452,48 @@ Block100000 = wire.MsgBlock(
 
     ]
 )
+
+
+# newFakeChain returns a chain that is usable for syntetic tests.  It is
+# important to note that this chain has no database associated with it, so
+# it is not usable with all functions and the tests must take care when making
+# use of it.
+def new_fake_chain(params: chaincfg.Params) -> BlockChain:
+    # Create a genesis block node and block index index populated with it
+    # for use when creating the fake chain below.
+    node = BlockNode.init_from(block_header=params.genesis_block.header, parent=None)
+    index = BlockIndex(db=None, chain_params=params)
+
+    index.add_node(node)
+
+    target_timespan = params.target_timespan
+    adjustment_factor = params.retarget_adjustment_factor
+    target_time_per_block = params.target_time_per_block
+
+    block_chain = BlockChain(
+        chain_params=params,
+        time_source=MedianTime(),
+        min_retarget_timespan=target_timespan // adjustment_factor,
+        max_retarget_timespan=target_timespan * adjustment_factor,
+        blocks_per_retarget=target_timespan // target_time_per_block,
+        index=index,
+        best_chain=ChainView.new_from_tip(tip=node),
+        warning_caches=ThresholdStateCache.new_many_caches(vbNumBits),
+        deployment_caches=ThresholdStateCache.new_many_caches(chaincfg.DefinedDeployments)
+    )
+
+    return block_chain
+
+
+# newFakeNode creates a block node connected to the passed parent with the
+# provided fields populated and fake values for the other fields.
+def new_fake_node(parent: BlockNode, block_version: int, bits: int, timestamp: int) -> BlockNode:
+    # Make up a header and create a block node from it
+    header = wire.BlockHeader(
+        version=block_version,
+        prev_block=parent.hash,
+        bits=bits,
+        timestamp=timestamp
+    )
+
+    return BlockNode.init_from(header, parent)
