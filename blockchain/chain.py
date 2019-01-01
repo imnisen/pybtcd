@@ -1411,7 +1411,7 @@ class BlockChain:
     # endHash where the block height is a positive multiple of interval.
     #
     # This function is safe for concurrent access.
-    def interval_block_hashes(self, end_hash: chainhash.Hash, interval: int) -> [chainhash.Hash]:
+    def interval_block_hashes(self, end_hash: chainhash.Hash, interval: int) -> [chainhash.Hash] or None:
         end_node = self.index.lookup_node(end_hash)
         if end_node is None:
             raise AssertError("no known block header with hash %s" % end_hash)
@@ -1432,7 +1432,7 @@ class BlockChain:
                 block_heght = index * interval
 
                 if self.best_chain._contains(block_node):
-                    block_node = self.best_chain.node_by_height(block_heght)
+                    block_node = self.best_chain._node_by_height(block_heght)
                 else:
                     block_node = block_node.ancestor(block_heght)
 
@@ -1441,7 +1441,7 @@ class BlockChain:
                 index -= 1
 
             hashes.reverse()
-            return hashes
+            return hashes or None
 
         finally:
             self.best_chain.lock.release()
