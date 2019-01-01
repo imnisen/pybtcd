@@ -4,6 +4,26 @@ from blockchain.chain import *
 from tests.blockchain.common import *
 
 
+# nodeHeaders is a convenience function that returns the headers for all of
+# the passed indexes of the provided nodes.  It is used to construct expected
+# located headers in the tests.
+def node_headers(nodes: [BlockNode], *indexes) -> [wire.BlockHeader]:
+    headers = []
+    for i in indexes:
+        headers.append(nodes[i].header())
+    return headers
+
+
+# nodeHashes is a convenience function that returns the hashes for all of the
+# passed indexes of the provided nodes.  It is used to construct expected hash
+# slices in the tests.
+def node_hashes(nodes: [BlockNode], *indexes) -> [chainhash.Hash]:
+    hashes = []
+    for i in indexes:
+        hashes.append(nodes[i].hash)
+    return hashes
+
+
 class TestChain(unittest.TestCase):
     # TestHaveBlock tests the HaveBlock API to ensure proper functionality.
     def test_have_block(self):
@@ -434,3 +454,374 @@ class TestChain(unittest.TestCase):
 
             self.assertEqual(seq_lock.seconds, test['want'].seconds)
             self.assertEqual(seq_lock.block_height, test['want'].block_height)
+
+    # TestLocateInventory ensures that locating inventory via the LocateHeaders and
+    # LocateBlocks functions behaves as expected.
+    def test_locate_inventory(self):
+        # Construct a synthetic block chain with a block index consisting of
+        # the following structure.
+        #     genesis -> 1 -> 2 -> ... -> 15 -> 16  -> 17  -> 18
+        #                                   \-> 16a -> 17a
+        chain = new_fake_chain(chaincfg.MainNetParams)
+        branch0_nodes = chained_nodes(chain.best_chain.genesis(), num_nodes=18)
+        branch1_nodes = chained_nodes(branch0_nodes[14],
+                                      num_nodes=2)
+
+        for node in branch0_nodes:
+            chain.index.add_node(node)
+
+        for node in branch1_nodes:
+            chain.index.add_node(node)
+
+        chain.best_chain.set_tip(branch0_nodes[-1])
+
+        # Create chain views for different branches of the overall chain to
+        # simulate a local and remote node on different parts of the chain.
+        local_view = ChainView.new_from_tip(branch0_nodes[-1])
+        remote_view = ChainView.new_from_tip(branch1_nodes[-1])
+
+        # Create a chain view for a completely unrelated block chain to
+        # simulate a remote node on a totally different chain.
+        unrelated_branch_nodes = chained_nodes(parent=None, num_nodes=5)
+        unrelated_view = ChainView.new_from_tip(unrelated_branch_nodes[-1])
+
+        tests = [
+            # Empty block locators and unknown stop hash.  No
+            # inventory should be located.
+            {
+                "name": "no locators, no stop",
+                "locator": None,
+                "hash_stop": chainhash.Hash(),
+                "max_allowed": 0,
+                "headers": None,
+                "hashes": None,
+            },
+
+            # Empty block locators and stop hash in side chain.
+            # The expected result is the requested block.
+            {
+                "name": "no locators, stop in side",
+                "locator": None,
+                "hash_stop": branch1_nodes[-1].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch1_nodes, 1),
+                "hashes": node_hashes(branch1_nodes, 1),
+            },
+
+            # Empty block locators and stop hash in main chain.
+            # The expected result is the requested block.
+            {
+                "name": "no locators, stop in main",
+                "locator": None,
+                "hash_stop": branch0_nodes[12].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 12),
+                "hashes": node_hashes(branch0_nodes, 12),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash local node doesn't know about.  The
+            # expected result is the blocks after the fork point in
+            # the main chain and the stop hash has no effect.
+            {
+                "name": "remote side chain, unknown stop",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": chainhash.Hash(bytes([0x01])),
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 15, 16, 17),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash in side chain.  The expected result is the
+            # blocks after the fork point in the main chain and the
+            # stop hash has no effect.
+            {
+                "name": "remote side chain, stop in side",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": branch1_nodes[-1].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 15, 16, 17),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash in main chain, but before fork point.  The
+            # expected result is the blocks after the fork point in
+            # the main chain and the stop hash has no effect.
+            {
+                "name": "remote side chain, stop in main before",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": branch0_nodes[13].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 15, 16, 17),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash in main chain, but exactly at the fork
+            # point.  The expected result is the blocks after the
+            # fork point in the main chain and the stop hash has no
+            # effect.
+            {
+                "name": "remote side chain, stop in main exact",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": branch0_nodes[14].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 15, 16, 17),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash in main chain just after the fork point.
+            # The expected result is the blocks after the fork
+            # point in the main chain up to and including the stop
+            # hash.
+            {
+                "name": "remote side chain, stop in main after",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": branch0_nodes[15].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15),
+                "hashes": node_hashes(branch0_nodes, 15),
+            },
+
+            # Locators based on remote being on side chain and a
+            # stop hash in main chain some time after the fork
+            # point.  The expected result is the blocks after the
+            # fork point in the main chain up to and including the
+            # stop hash.
+            {
+                "name": "remote side chain, stop in main after more",
+                "locator": remote_view.block_locator(node=None),
+                "hash_stop": branch0_nodes[16].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 15, 16),
+                "hashes": node_hashes(branch0_nodes, 15, 16),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash local node doesn't know about.
+            # The expected result is the blocks after the known
+            # point in the main chain and the stop hash has no
+            # effect.
+            {
+                "name": "remote main chain past, unknown stop",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": chainhash.Hash(bytes([0x01])),
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 13, 14, 15, 16, 17),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash in a side chain.  The expected
+            # result is the blocks after the known point in the
+            # main chain and the stop hash has no effect.
+            {
+                "name": "remote main chain past, stop in side",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": branch1_nodes[-1].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 13, 14, 15, 16, 17),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash in the main chain before that
+            # point.  The expected result is the blocks after the
+            # known point in the main chain and the stop hash has
+            # no effect.
+            {
+                "name": "remote main chain past, stop in main before",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": branch0_nodes[11].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 13, 14, 15, 16, 17),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash in the main chain exactly at that
+            # point.  The expected result is the blocks after the
+            # known point in the main chain and the stop hash has
+            # no effect.
+            {
+                "name": "remote main chain past, stop in main exact",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": branch0_nodes[12].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 13, 14, 15, 16, 17),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash in the main chain just after
+            # that point.  The expected result is the blocks after
+            # the known point in the main chain and the stop hash
+            # has no effect.
+            {
+                "name": "remote main chain past, stop in main after",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": branch0_nodes[13].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13),
+                "hashes": node_hashes(branch0_nodes, 13),
+            },
+
+            # Locators based on remote being on main chain in the
+            # past and a stop hash in the main chain some time
+            # after that point.  The expected result is the blocks
+            # after the known point in the main chain and the stop
+            # hash has no effect.
+            {
+                "name": "remote main chain past, stop in main after more",
+                "locator": local_view.block_locator(node=branch0_nodes[12]),
+                "hash_stop": branch0_nodes[15].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 13, 14, 15),
+                "hashes": node_hashes(branch0_nodes, 13, 14, 15),
+            },
+
+            # Locators based on remote being at exactly the same
+            # point in the main chain and a stop hash local node
+            # doesn't know about.  The expected result is no
+            # located inventory.
+            {
+                "name": "remote main chain same, unknown stop",
+                "locator": local_view.block_locator(node=None),
+                "hash_stop": chainhash.Hash(bytes([0x01])),
+                "max_allowed": 0,
+                "headers": None,
+                "hashes": None,
+            },
+
+            # Locators based on remote being at exactly the same
+            # point in the main chain and a stop hash at exactly
+            # the same point.  The expected result is no located
+            # inventory.
+            {
+                "name": "remote main chain same, stop same point",
+                "locator": local_view.block_locator(node=None),
+                "hash_stop": branch0_nodes[-1].hash,
+                "max_allowed": 0,
+                "headers": None,
+                "hashes": None,
+            },
+
+            # Locators from remote that don't include any blocks
+            # the local node knows.  This would happen if the
+            # remote node is on a completely separate chain that
+            # isn't rooted with the same genesis block.  The
+            # expected result is the blocks after the genesis
+            # block.
+            {
+                "name": "remote unrelated chain",
+                "locator": unrelated_view.block_locator(node=None),
+                "hash_stop": chainhash.Hash(bytes()),
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                        7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                      7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+            },
+
+            # Locators from remote for second block in main chain
+            # and no stop hash, but with an overridden max limit.
+            # The expected result is the blocks after the second
+            # block limited by the max.
+            {
+                "name": "remote genesis",
+                "locator": [branch0_nodes[0].hash],
+                "hash_stop": chainhash.Hash(bytes()),
+                "max_allowed": 3,
+                "headers": node_headers(branch0_nodes, 1, 2, 3),
+                "hashes": node_hashes(branch0_nodes, 1, 2, 3),
+            },
+
+            # Poorly formed locator.
+            #
+            # Locator from remote that only includes a single
+            # block on a side chain the local node knows.  The
+            # expected result is the blocks after the genesis
+            # block since even though the block is known, it is on
+            # a side chain and there are no more locators to find
+            # the fork point.
+            {
+                "name": "weak locator, single known side block",
+                "locator": [branch1_nodes[1].hash],
+                "hash_stop": chainhash.Hash(bytes()),
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                        7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                      7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+            },
+
+            # Poorly formed locator.
+            #
+            # Locator from remote that only includes multiple
+            # blocks on a side chain the local node knows however
+            # none in the main chain.  The expected result is the
+            # blocks after the genesis block since even though the
+            # blocks are known, they are all on a side chain and
+            # there are no more locators to find the fork point.
+            {
+                "name": "weak locator, multiple known side blocks",
+                "locator": [branch1_nodes[1].hash, branch1_nodes[0].hash],
+                "hash_stop": chainhash.Hash(bytes()),
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                        7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+                "hashes": node_hashes(branch0_nodes, 0, 1, 2, 3, 4, 5, 6,
+                                      7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17),
+            },
+
+            # Poorly formed locator.
+            #
+            # Locator from remote that only includes multiple
+            # blocks on a side chain the local node knows however
+            # none in the main chain but includes a stop hash in
+            # the main chain.  The expected result is the blocks
+            # after the genesis block up to the stop hash since
+            # even though the blocks are known, they are all on a
+            # side chain and there are no more locators to find the
+            # fork point.
+            {
+                "name": "weak locator, multiple known side blocks, stop in main",
+                "locator": [branch1_nodes[1].hash, branch1_nodes[0].hash],
+                "hash_stop": branch0_nodes[5].hash,
+                "max_allowed": 0,
+                "headers": node_headers(branch0_nodes, 0, 1, 2, 3, 4, 5),
+                "hashes": node_hashes(branch0_nodes, 0, 1, 2, 3, 4, 5),
+            },
+
+        ]
+
+        for test in tests:
+            # Ensure the expected headers are located
+            if test['max_allowed'] != 0:
+                # Need to use the unexported function to override the
+                # max allowed for headers.
+                chain.chain_lock.r_lock()
+                headers = chain._locate_headers(test['locator'], test['hash_stop'], test['max_allowed'])
+                chain.chain_lock.r_unlock()
+            else:
+                headers = chain.locate_headers(test['locator'], test['hash_stop'])
+
+            if test['headers']:
+                self.assertListEqual(headers, test['headers'])
+            else:
+                self.assertIsNone(headers)
+
+            # Ensure the expected block hashes are located
+            max_allowed = wire.MaxBlockHeadersPerMsg
+            if test['max_allowed'] != 0:
+                max_allowed = test['max_allowed']
+
+            hashes = chain.locate_blocks(test['locator'], test['hash_stop'], max_allowed)
+
+            if test['hashes']:
+                self.assertListEqual(hashes, test['hashes'])
+            else:
+                self.assertIsNone(hashes)

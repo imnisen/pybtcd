@@ -109,7 +109,7 @@ class ChainView:
         elif len(self.nodes) > needed:
             self.nodes = self.nodes[0:needed]
 
-        # let's fill self.nodes, untile we meet some node that right index as we need
+        # let's fill self.nodes, until we meet some node that right index as we need
         # so we assume it and every node before it is all we need
         while node is not None and self.nodes[node.height] != node:
             self.nodes[node.height] = node

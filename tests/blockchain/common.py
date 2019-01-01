@@ -2,6 +2,8 @@ import os
 import bz2
 import shutil
 import copy
+import random
+import pyutil
 from blockchain.chain import *
 import database
 from txscript import SigCache
@@ -497,3 +499,25 @@ def new_fake_node(parent: BlockNode, block_version: int, bits: int, timestamp: i
     )
 
     return BlockNode.init_from(header, parent)
+
+
+# chainedNodes returns the specified number of nodes constructed such that each
+# subsequent node points to the previous one to create a chain.  The first node
+# will point to the passed parent which can be nil if desired.
+def chained_nodes(parent: BlockNode or None, num_nodes: int) -> [BlockNode]:
+    nodes = []
+
+    tip = parent
+    for _ in range(num_nodes):
+        # This is invalid, but all that is needed is enough to get the
+        # synthetic tests to work.
+        header = wire.BlockHeader(nonce=random.randint(0, pyutil.MaxUint32))
+
+        if tip is not None:
+            header.prev_block = tip.hash
+
+        new_node = BlockNode.init_from(header, tip)
+        nodes.append(new_node)
+        tip = new_node
+
+    return nodes

@@ -1445,6 +1445,145 @@ class BlockChain:
         finally:
             self.best_chain.lock.release()
 
+    # locateInventory returns the node of the block after the first known block in
+    # the locator along with the number of subsequent nodes needed to either reach
+    # the provided stop hash or the provided max number of entries.
+    #
+    # In addition, there are two special cases:
+    #
+    # - When no locators are provided, the stop hash is treated as a request for
+    #   that block, so it will either return the node associated with the stop hash
+    #   if it is known, or nil if it is unknown
+    # - When locators are provided, but none of them are known, nodes starting
+    #   after the genesis block will be returned
+    #
+    # This is primarily a helper function for the locateBlocks and locateHeaders
+    # functions.
+    #
+    # This function MUST be called with the chain state lock held (for reads).
+    def _locate_inventory(self, locator: BlockLocator, hash_stop: chainhash.Hash, max_entries: int) -> (BlockNode or None, int):
+        # There are no block locators so a specific block is being requested
+        # as identified by the stop hash.
+        stop_node = self.index.lookup_node(hash_stop)
+        if not locator:
+            if stop_node is None:
+                # No blocks with the stop hash were found so there is
+                # nothing to do.
+                return None, 0
+
+            return stop_node, 1
+
+        # Find the most recent locator block hash in the main chain.  In the
+        # case none of the hashes in the locator are in the main chain, fall
+        # back to the genesis block.
+        start_node = self.best_chain.genesis()
+
+        for hash in locator:
+            node = self.index.lookup_node(hash)
+            if node is not None and self.best_chain.contains(node):
+                start_node = node
+                break
+
+        # Start at the block after the most recently known block.  When there
+        # is no next block it means the most recently known block is the tip of
+        # the best chain, so there is nothing more to do.
+        start_node = self.best_chain.next(start_node)
+        if start_node is None:
+            return None, 0
+
+        # Calculate how many entries are needed.
+        total = (self.best_chain.tip().height - start_node.height) + 1
+        if stop_node is not None and self.best_chain.contains(stop_node) and stop_node.height >= start_node.height:
+            total = (stop_node.height - start_node.height) + 1
+
+        if total > max_entries:
+            total = max_entries
+
+        return start_node, total
+
+    # locateBlocks returns the hashes of the blocks after the first known block in
+    # the locator until the provided stop hash is reached, or up to the provided
+    # max number of block hashes.
+    #
+    # See the comment on the exported function for more details on special cases.
+    #
+    # This function MUST be called with the chain state lock held (for reads).
+    def _locate_blocks(self, locator: BlockLocator, hash_stop: chainhash.Hash, max_hashes: int) -> [chainhash.Hash] or None:
+        # Find the node after the first known block in the locator and the
+        # total number of nodes after it needed while respecting the stop hash
+        # and max entries.
+        node, total = self._locate_inventory(locator, hash_stop, max_hashes)
+        if total == 0:
+            return None
+
+        # Populate and return the found hashes
+        hashes = []
+        for _ in range(total):
+            hashes.append(node.hash)
+            node = self.best_chain.next(node)
+        return hashes
+
+    # LocateBlocks returns the hashes of the blocks after the first known block in
+    # the locator until the provided stop hash is reached, or up to the provided
+    # max number of block hashes.
+    #
+    # In addition, there are two special cases:
+    #
+    # - When no locators are provided, the stop hash is treated as a request for
+    #   that block, so it will either return the stop hash itself if it is known,
+    #   or nil if it is unknown
+    # - When locators are provided, but none of them are known, hashes starting
+    #   after the genesis block will be returned
+    #
+    # This function is safe for concurrent access.
+    def locate_blocks(self, locator: BlockLocator, hash_stop: chainhash.Hash, max_hashes: int) -> [chainhash.Hash] or None:
+        self.chain_lock.r_lock()
+        hashes = self._locate_blocks(locator, hash_stop, max_hashes)
+        self.chain_lock.r_unlock()
+        return hashes
+
+    # locateHeaders returns the headers of the blocks after the first known block
+    # in the locator until the provided stop hash is reached, or up to the provided
+    # max number of block headers.
+    #
+    # See the comment on the exported function for more details on special cases.
+    #
+    # This function MUST be called with the chain state lock held (for reads).
+    def _locate_headers(self, locator: BlockLocator, hash_stop: chainhash.Hash, max_headers: int) -> [wire.BlockHeader] or None:
+        # Find the node after the first known block in the locator and the
+        # total number of nodes after it needed while respecting the stop hash
+        # and max entries.
+        node, total = self._locate_inventory(locator, hash_stop, max_headers)
+        if total == 0:
+            return None
+
+        # Populate and return the found headers
+        headers = []
+        for _ in range(total):
+            headers.append(node.header())
+            node = self.best_chain.next(node)
+
+        return headers
+
+    # LocateHeaders returns the headers of the blocks after the first known block
+    # in the locator until the provided stop hash is reached, or up to a max of
+    # wire.MaxBlockHeadersPerMsg headers.
+    #
+    # In addition, there are two special cases:
+    #
+    # - When no locators are provided, the stop hash is treated as a request for
+    #   that header, so it will either return the header for the stop hash itself
+    #   if it is known, or nil if it is unknown
+    # - When locators are provided, but none of them are known, headers starting
+    #   after the genesis block will be returned
+    #
+    # This function is safe for concurrent access.
+    def locate_headers(self, locator: BlockLocator, hash_stop: chainhash.Hash) -> [wire.BlockHeader] or None:
+        self.chain_lock.r_lock()
+        hashes = self._locate_headers(locator, hash_stop, wire.MaxBlockHeadersPerMsg)
+        self.chain_lock.r_unlock()
+        return hashes
+
     # ------------------------------------
     # Methods add from threshold_state
     # ------------------------------------
