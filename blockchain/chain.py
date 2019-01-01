@@ -1374,7 +1374,7 @@ class BlockChain:
     # end hash must belong to a block that is known to be valid.
     #
     # This function is safe for concurrent access.
-    def height_to_hash_range(self, start_height: int, end_hash: chainhash.Hash, max_results: int) -> [chainhash.Hash]:
+    def height_to_hash_range(self, start_height: int, end_hash: chainhash.Hash, max_results: int) -> [chainhash.Hash] or None:
 
         end_node = self.index.lookup_node(end_hash)
         if end_node is None:
@@ -1404,7 +1404,8 @@ class BlockChain:
             hashes.append(node.hash)
             node = node.parent
             i -= 1
-        return hashes
+        hashes = list(reversed(hashes))
+        return hashes or None
 
     # IntervalBlockHashes returns hashes for all blocks that are ancestors of
     # endHash where the block height is a positive multiple of interval.

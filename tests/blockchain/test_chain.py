@@ -825,3 +825,90 @@ class TestChain(unittest.TestCase):
                 self.assertListEqual(hashes, test['hashes'])
             else:
                 self.assertIsNone(hashes)
+
+    # TestHeightToHashRange ensures that fetching a range of block hashes by start
+    # height and end hash works as expected.
+    def test_height_to_hash_range(self):
+        # Construct a synthetic block chain with a block index consisting of
+        # the following structure.
+        # 	genesis -> 1 -> 2 -> ... -> 15 -> 16  -> 17  -> 18
+        # 	                              \-> 16a -> 17a -> 18a (unvalidated)
+        chain = new_fake_chain(chaincfg.MainNetParams)
+        branch0_nodes = chained_nodes(chain.best_chain.genesis(), num_nodes=18)
+        branch1_nodes = chained_nodes(branch0_nodes[14],
+                                      num_nodes=3)
+
+        for node in branch0_nodes:
+            chain.index.set_status_flags(node, BlockStatus.statusValid)
+            chain.index.add_node(node)
+
+        for node in branch1_nodes:
+            if node.height < 18:
+                chain.index.set_status_flags(node, BlockStatus.statusValid)
+            chain.index.add_node(node)
+
+        chain.best_chain.set_tip(branch0_nodes[-1])
+
+        tests = [
+            {
+                "name": "blocks below tip",
+                "start_height": 11,
+                "end_hash": branch0_nodes[14].hash,
+                "max_results": 10,
+                "hashes": node_hashes(branch0_nodes, 10, 11, 12, 13, 14)
+            },
+
+            {
+                "name": "blocks on main chain",
+                "start_height": 15,
+                "end_hash": branch0_nodes[17].hash,
+                "max_results": 10,
+                "hashes": node_hashes(branch0_nodes, 14, 15, 16, 17)
+            },
+
+            {
+                "name": "blocks on stale chain",
+                "start_height": 15,
+                "end_hash": branch1_nodes[1].hash,
+                "max_results": 10,
+                "hashes": node_hashes(branch0_nodes, 14) + node_hashes(branch1_nodes, 0, 1)
+            },
+
+            {
+                "name": "invalid start height",
+                "start_height": 19,
+                "end_hash": branch0_nodes[17].hash,
+                "max_results": 10,
+                "expect_error": True,
+                "hashes": None
+            },
+
+            {
+                "name": "too many results",
+                "start_height": 1,
+                "end_hash": branch0_nodes[17].hash,
+                "max_results": 10,
+                "expect_error": True,
+                "hashes": None
+            },
+
+            {
+                "name": "unvalidated block",
+                "start_height": 15,
+                "end_hash": branch1_nodes[2].hash,
+                "max_results": 10,
+                "expect_error": True,
+                "hashes": None
+            },
+        ]
+
+        for test in tests:
+            if test.get("expect_error", False):
+                with self.assertRaises(AssertError):
+                    chain.height_to_hash_range(test['start_height'], test['end_hash'], test['max_results'])
+            else:
+                hashes = chain.height_to_hash_range(test['start_height'], test['end_hash'], test['max_results'])
+                if test['hashes']:
+                    self.assertListEqual(hashes, test['hashes'])
+                else:
+                    self.assertIsNone(hashes)

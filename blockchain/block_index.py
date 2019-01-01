@@ -26,7 +26,7 @@ class BlockIndex:
 
         self.lock = lock or pyutil.RWLock()
         self.index = index or dict()
-        self.dirty = dirty or dict()
+        self.dirty = dirty or dict()  # TOCHANGEchange to set
 
     # HaveBlock returns whether or not the block index contains the provided hash.
     #
