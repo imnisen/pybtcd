@@ -6,12 +6,10 @@ from chainhash.hashfuncs import *
 # of a transaction input can be.
 MaxTxInSequenceNum = 0xffffffff
 
-
 # SequenceLockTimeDisabled is a flag that if set on a transaction
 # input's sequence number, the sequence number will not be interpreted
 # as a relative locktime.
 SequenceLockTimeDisabled = 1 << 31
-
 
 # SequenceLockTimeIsSeconds is a flag that if set on a transaction
 # input's sequence number, the relative locktime has units of 512
@@ -21,7 +19,6 @@ SequenceLockTimeIsSeconds = 1 << 22
 # SequenceLockTimeMask is a mask that extracts the relative locktime
 # when masked against the transaction input sequence number.
 SequenceLockTimeMask = 0x0000ffff
-
 
 # SequenceLockTimeGranularity is the defined time based granularity
 # for seconds-based relative time locks. When converting from seconds
@@ -106,7 +103,6 @@ class OutPoint:
 
     def __hash__(self):
         return hash(self.hash.to_bytes() + self.index.to_bytes(4, "little"))
-
 
 
 class TxIn:
@@ -205,7 +201,7 @@ class TxOut:
 
 
 class MsgTx(Message):
-    def __init__(self, version=None, tx_ins=None, tx_outs=None, lock_time=None):
+    def __init__(self, version: int = None, tx_ins: [TxIn] = None, tx_outs: [TxOut] = None, lock_time: int = None):
         """
 
         :param uint32 version:
@@ -466,7 +462,7 @@ class MsgTx(Message):
 
     def __eq__(self, other):
         if self.version == other.version and self.lock_time == other.lock_time and \
-                        len(self.tx_ins) == len(other.tx_ins) and len(self.tx_outs) == len(other.tx_outs):
+                len(self.tx_ins) == len(other.tx_ins) and len(self.tx_outs) == len(other.tx_outs):
             for i in range(len(self.tx_ins)):
                 if self.tx_ins[i] != other.tx_ins[i]:
                     return False
