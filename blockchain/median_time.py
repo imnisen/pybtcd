@@ -13,17 +13,17 @@ class MedianTimeSource:
     # AdjustedTime returns the current time adjusted by the median time
     # offset as calculated from the time samples added by AddTimeSample.
     def adjusted_time(self) -> int:
-        pass
+        raise NotImplementedError
 
     # AddTimeSample adds a time sample that is used when determining the
     # median time of the added samples.
     def add_time_sample(self, id, time_val):
-        pass
+        raise NotImplementedError
 
     # Offset returns the number of seconds to adjust the local clock based
     # upon the median of the time samples added by AddTimeData.
     def offset(self) -> int:
-        pass
+        raise NotImplementedError
 
 
 #
