@@ -648,14 +648,41 @@ class BlkTmplGenerator:
     # based on the new time for the test networks since their target difficulty can
     # change based upon time.
     def update_block_time(self, msg_block: wire.MsgBlock):
-        pass  # TODO
+        # The new timestamp is potentially adjusted to ensure it comes after
+        # the median time of the last several blocks per the chain consensus
+        # rules.
+        new_time = median_adjusted_time(self.chain.best_snapshot(), self.time_source)
+        msg_block.header.timestamp = new_time
+
+        # Recalculate the difficulty if running on a network that requires it.
+        if self.chain_params.reduce_min_difficulty:
+            difficulty = self.chain.calc_next_required_difficulty(new_time)
+            msg_block.header.bits = difficulty
+        return
 
     # UpdateExtraNonce updates the extra nonce in the coinbase script of the passed
     # block by regenerating the coinbase script with the passed value and block
     # height.  It also recalculates and updates the new merkle root that results
     # from changing the coinbase script.
     def update_extra_nonce(self, msg_block: wire.MsgBlock, block_height: int, extra_nonce: int):
-        pass  # TODO
+        coinbase_script = standard_coinbase_script(block_height, extra_nonce)
+
+        if len(coinbase_script) > blockchain.MaxCoinbaseScriptLen:
+            raise Exception("coinbase transaction script length of %d is out of range (min: %d, max: %d)" % (
+                len(coinbase_script), blockchain.MinCoinbaseScriptLen, blockchain.MaxCoinbaseScriptLen
+            ))
+
+        msg_block.transactions[0].tx_ins[0].signature_script = coinbase_script
+
+        # TODO(davec): A btcutil.Block should use saved in the state to avoid
+        # recalculating all of the other transaction hashes.
+        # block.Transactions[0].InvalidateCache()
+
+        # Recalculate the merkle root with the updated extra nonce.
+        block = btcutil.Block.from_msg_block(msg_block)
+        merkles = blockchain.build_merkle_tree_store(block.get_transactions(), witness=False)
+        msg_block.header.merkle_root = merkles[-1]
+        return
 
     # BestSnapshot returns information about the current best chain block and
     # related state as of the current point in time using the chain instance
@@ -664,13 +691,13 @@ class BlkTmplGenerator:
     #
     # This function is safe for concurrent access.
     def best_snapshot(self) -> blockchain.BestState:
-        pass  # TODO
+        return self.chain.best_snapshot()
 
     # TxSource returns the associated transaction source.
     #
     # This function is safe for concurrent access.
     def tx_source(self) -> TxSource:
-        pass  # TODO
+        return self.tx_source()
 
 
 # TODO
