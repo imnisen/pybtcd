@@ -2,9 +2,16 @@ import io
 from .common import *
 from chainhash.hashfuncs import *
 
+# TxVersion is the current latest supported transaction version.
+TxVersion = 1
+
 # MaxTxInSequenceNum is the maximum sequence number the sequence field
 # of a transaction input can be.
 MaxTxInSequenceNum = 0xffffffff
+
+# MaxPrevOutIndex is the maximum index the index field of a previous
+# outpoint can be.
+MaxPrevOutIndex = 0xffffffff
 
 # SequenceLockTimeDisabled is a flag that if set on a transaction
 # input's sequence number, the sequence number will not be interpreted
