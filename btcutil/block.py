@@ -46,6 +46,9 @@ class Block:
     def from_block_and_bytes(cls, msg_block, serialized_block):
         return cls(msg_block=msg_block, serialized_block=serialized_block, block_height=BlockHeightUnknown)
 
+    @classmethod
+    def from_msg_block(cls, msg_block: wire.MsgBlock):
+        return cls(msg_block=msg_block)
 
     # TODO same name as filed, fix latter
     # MsgBlock returns the underlying wire.MsgBlock for the Block.

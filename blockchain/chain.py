@@ -47,17 +47,18 @@ class OrphanBlock:
 # However, the returned snapshot must be treated as immutable since it is
 # shared by all callers.
 class BestState:
-    def __init__(self, hash, height, bits, block_size, block_weight, num_txns, total_txns, median_time):
+    def __init__(self, hash: chainhash.Hash, height: int, bits: int, block_size: int, block_weight: int, num_txns: int,
+                 total_txns: int, median_time: int):
         """
 
-        :param chainhash.Hash hash:
-        :param int32 height:
-        :param uint32 bits:
-        :param uint64 block_size:
-        :param uint64 block_weight:
-        :param uint64 num_txns:
-        :param uint64 total_txns:
-        :param time.Time median_time:
+        :param chainhash.Hash *chainhash.Hash hash:
+        :param int int32 height:
+        :param int uint32 bits:
+        :param int uint64 block_size:
+        :param int uint64 block_weight:
+        :param int uint64 num_txns:
+        :param int uint64 total_txns:
+        :param int time.Time median_time:
         """
         self.hash = hash  # The hash of the block.
         self.height = height  # The height of the block.

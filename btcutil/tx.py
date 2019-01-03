@@ -42,7 +42,7 @@ class Tx:
         return cls.from_reader(r)
 
     @classmethod
-    def from_msg_tx(cls,  msg_tx: wire.MsgTx):
+    def from_msg_tx(cls, msg_tx: wire.MsgTx):
         return cls(msg_tx=msg_tx, tx_index=TxIndexUnknown)
 
     # MsgTx returns the underlying wire.MsgTx for the transaction.
@@ -91,7 +91,6 @@ class Tx:
     def set_index(self, index: int):
         self.tx_index = index
 
-
     # IsCoinBase determines whether or not a transaction is a coinbase.  A coinbase
     # is a special transaction created by miners that has no inputs.  This is
     # represented in the block chain by a transaction with a single input that has
@@ -115,4 +114,3 @@ class Tx:
             return False
 
         return True
-
