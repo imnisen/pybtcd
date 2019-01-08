@@ -77,4 +77,4 @@
 * Find unbuffer channel like mechanism to finish blockchain/upgrade interrupt_requested
 * Refactor whole logger things
 * Rethink when methods return [], return None instead? How to choose?
-* TODO Find python csp way
+* Refactor blockchain/script_val with aiochan
