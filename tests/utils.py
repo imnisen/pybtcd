@@ -96,9 +96,6 @@ def list_equal(l1, l2):
     else:
         return False
 
-
-
-
 def hex_to_bytes(s):
     return bytes.fromhex(s)
 
