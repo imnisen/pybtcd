@@ -78,3 +78,4 @@
 * Refactor whole logger things
 * Rethink when methods return [], return None instead? How to choose?
 * Refactor blockchain/script_val with aiochan
+* TODO implement mining/priorityQueue and cpuminer.waitgroup

@@ -83,7 +83,8 @@ class TxSource:
 # transaction to be prioritized and track dependencies on other transactions
 # which have not been mined into a block yet.
 class TxPrioItem:
-    def __init__(self, tx: btcutil.Tx, fee: int, priority: float, fee_per_kb: int, depends_on: set):
+    def __init__(self, tx: btcutil.Tx = None, fee: int = 0, priority: float = 0.0,
+                 fee_per_kb: int = 0, depends_on: set = None):
         """
 
         :param btcutil.Tx *btcutil.Tx tx:
@@ -97,7 +98,7 @@ class TxPrioItem:
         self.fee = fee
         self.priority = priority
         self.fee_per_kb = fee_per_kb
-        self.depends_on = depends_on
+        self.depends_on = depends_on or set()
 
 
 # BlockTemplate houses a block that has yet to be solved along with additional
