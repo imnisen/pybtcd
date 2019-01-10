@@ -4,14 +4,23 @@ import btcutil
 import wire
 import chainhash
 import pyutil
+import blockchain
 from typing import Callable
 import aiochan as ac
 import asyncio
 import random
+from multiprocessing import cpu_count
 import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# maxNonce is the maximum value a nonce can be in a block header.
+maxNonce = (1 << 32) - 1  # 2^32 - 1
+
+# maxExtraNonce is the maximum value an extra nonce used in a coinbase
+# transaction can be.
+maxExtraNonce = (1 << 64) - 1  # 2^64 - 1
 
 # hpsUpdateSecs is the number of seconds to wait in between each
 # update to the hashes per second monitor.
@@ -23,6 +32,11 @@ hpsUpdateSecs = 10
 # reduce the amount of syncs between the workers that must be done to
 # keep track of the hashes per second.
 hashUpdateSecs = 15
+
+# defaultNumWorkers is the default number of workers to use for mining
+# and is based on the number of processor cores.  This helps ensure the
+# system stays reasonably responsive under heavy load.
+defaultNumWorkers = cpu_count()
 
 
 # Config is a descriptor containing the cpu miner configuration.
@@ -109,6 +123,19 @@ class CPUMiner:
     def unlock(self):
         self._lock.release()
 
+    # New returns a new instance of a CPU miner for the provided configuration.
+    # Use Start to begin the mining process.  See the documentation for CPUMiner
+    # type for more details.
+    @classmethod
+    def new_from_config(cls, config: Config):
+        return cls(
+            g=config.block_template_generator,
+            cfg=config,
+            update_num_workers=ac.Chan(),
+            query_hashes_per_sec=ac.Chan(),
+            update_hashes=ac.Chan()
+        )
+
     # speedMonitor handles tracking the number of hashes per second the mining
     # process is performing.  It must be run as a goroutine.
     async def _speed_monitor(self):
@@ -158,7 +185,39 @@ class CPUMiner:
     # submitBlock submits the passed block to network after ensuring it passes all
     # of the consensus validation rules.
     def _submit_block(self, block: btcutil.Block):
-        pass  # TODO
+        with self.submit_block_lock:
+            # Ensure the block is not stale since a new block could have shown up
+            # while the solution was being found.  Typically that condition is
+            # detected and all work on the stale block is halted to start work on
+            # a new block, but the check only happens periodically, so it is
+            # possible a block was found and submitted in between.
+            msg_blok = block.get_msg_block()
+            if msg_blok.header.prev_block != self.g.best_snapshot().hash:
+                logger.info(
+                    "Block submitted via CPU miner with previous block %s is stale" % msg_blok.header.prev_block)
+                return False
+
+            # Process this block using the same rules as blocks coming from other
+            # nodes.  This will in turn relay it to the network like normal.
+            try:
+                is_orphan = self.cfg.process_block(block, blockchain.BFNone)
+            except blockchain.RuleError as e1:
+                logger.warning("Block submitted via CPU miner rejected: %s" % e1)
+                return False
+            except Exception as e2:
+                logger.warning("Unexpected error while processing block submitted via CPU miner: %s" % e2)
+                return False
+
+            if is_orphan:
+                logger.info("Block submitted via CPU miner is an orphan")
+                return False
+
+            # The block was accepted.
+            coinbase_tx = block.get_msg_block().transactions[0].tx_outs[0]
+            logger.info("Block submitted via CPU miner accepted (hash %s, amount %v)" % (
+                block.hash(), btcutil.Amount(coinbase_tx.value)
+            ))
+            return True
 
     # solveBlock attempts to find some combination of a nonce, extra nonce, and
     # current timestamp which makes the passed block hash to a value less than the
@@ -169,8 +228,76 @@ class CPUMiner:
     # This function will return early with false when conditions that trigger a
     # stale block such as a new block showing up or periodically when there are
     # new transactions and enough time has elapsed without finding a solution.
-    def _solve_block(self, msg_block: wire.MsgBlock, block_height: int, ticker, quit):
-        pass  # TODO
+    async def _solve_block(self, msg_block: wire.MsgBlock, block_height: int, ticker, quit):
+
+        # Choose a random extra nonce offset for this block template and
+        # worker.
+        en_offset = wire.random_uint64()
+
+        # Create some convenience variables.
+        header = msg_block.header
+        target_difficulty = blockchain.compact_to_big(header.bits)
+
+        # Initial state.
+        last_genearted = int(time.time())
+        last_tx_update = self.g.get_tx_source().last_updated()
+        hashes_completed = 0
+
+        # Note that the entire extra nonce range is iterated and the offset is
+        # added relying on the fact that overflow will wrap around 0 as
+        # provided by the Go spec.
+        for extra_nonce in range(0, maxExtraNonce):
+            # Update the extra nonce in the block template with the
+            # new value by regenerating the coinbase script and
+            # setting the merkle root to the new value.
+            nonce = extra_nonce + en_offset  # TODO this could overflow
+            self.g.update_extra_nonce(msg_block, block_height, nonce)
+
+            # Search through the entire nonce range for a solution while
+            # periodically checking for early quit and stale block
+            # conditions along with updates to the speed monitor.
+            for i in range(0, maxNonce):
+                result, c = await ac.select(quit, ticker, default="giveup")
+                if c is quit:
+                    return False
+                elif c is ticker:
+                    await self.update_hashes.put(hashes_completed)
+
+                    hashes_completed = 0
+
+                    # The current block is stale if the best block
+                    # has changed.
+                    best = self.g.best_snapshot()
+                    if header.prev_block != best.hash:
+                        return False
+
+                    # The current block is stale if the memory pool
+                    # has been updated since the block template was
+                    # generated and it has been at least one
+                    # minute.
+                    if last_tx_update != self.g.get_tx_source().last_updated() and \
+                            last_genearted + 60 < int(time.time()):
+                        return False
+
+                    self.g.update_block_time(msg_block)
+                else:
+                    # Non-blocking select to fall through
+                    pass
+
+                # Update the nonce and hash the block header.  Each
+                # hash is actually a double sha256 (two hashes), so
+                # increment the number of hashes completed for each
+                # attempt accordingly.
+                header.nonce = i
+                hash = header.block_hash()
+                hashes_completed += 2
+
+                # The block is solved when the new block hash is less
+                # than the target difficulty.  Yay!
+                if blockchain.hash_to_big(hash) <= target_difficulty:
+                    await self.update_hashes.put(hashes_completed)
+                    return True
+        return False
 
     # generateBlocks is a worker that is controlled by the miningWorkerController.
     # It is self contained in that it creates block templates and attempts to solve
@@ -233,7 +360,7 @@ class CPUMiner:
                 # with false when conditions that trigger a stale block, so
                 # a new block template can be generated.  When the return is
                 # true a solution was found, so submit the solved block.
-                if self._solve_block(template.block, cur_height + 1, ticker, quit):
+                if await self._solve_block(template.block, cur_height + 1, ticker, quit):
                     block = btcutil.Block.from_msg_block(template.block)
                     self._submit_block(block)
 
@@ -370,8 +497,22 @@ class CPUMiner:
     # cause all CPU mining to be stopped.
     #
     # This function is safe for concurrent access.
-    def set_num_workers(self, num_workers: int):
-        pass
+    async def set_num_workers(self, num_workers: int):
+        if num_workers == 0:
+            self.stop()
+
+        # Don't lock until after the first check since Stop does its own
+        # locking.
+        with self._lock:
+            if num_workers < 0:
+                self.num_workers = defaultNumWorkers
+            else:
+                self.num_workers = num_workers
+
+            # When the miner is already running, notify the controller about the
+            # the change.
+            if self.started:
+                await self.update_num_workers.put(True)
 
     # NumWorkers returns the number of workers which are running to solve blocks.
     #
@@ -385,5 +526,82 @@ class CPUMiner:
     # detecting when it is performing stale work and reacting accordingly by
     # generating a new block template.  When a block is solved, it is submitted.
     # The function returns a list of the hashes of generated blocks.
-    def generate_n_blocks(self, n: int) -> [chainhash.Hash]:
-        pass
+    async def generate_n_blocks(self, n: int) -> [chainhash.Hash]:
+        self.lock()
+
+        # Respond with an error if server is already mining.
+        if self.started or self.discrete_mining:
+            self.unlock()
+            raise Exception(
+                "Server is already CPU mining. Please call `setgenerate 0` before calling discrete `generate` commands.")
+
+        self.started = True
+        self.discrete_mining = True
+
+        self.speed_monitor_quit = ac.Chan()
+
+        # m.wg.Add(1)
+
+        ac.go(self._speed_monitor())
+
+        logger.info("Generating %d blocks" % n)
+
+        i = 0
+        block_hashes = []
+
+        ticker = ac.tick_tock(hpsUpdateSecs)
+
+        try:
+            while True:
+                # Read updateNumWorkers in case someone tries a `setgenerate` while
+                # we're generating. We can ignore it as the `generate` RPC call only
+                # uses 1 worker.
+                _, _ = await ac.select(self.update_num_workers, default="giveup")
+
+                # Grab the lock used for block submission, since the current block will
+                # be changing and this would otherwise end up building a new block
+                # template on a block that is in the process of becoming stale.
+                self.submit_block_lock.lock()
+                cur_height = self.g.best_snapshot().height
+
+                # Choose a payment address at random.
+                pay_to_addr = random.choices(self.cfg.mining_addrs)
+
+                # Create a new block template using the available transactions
+                # in the memory pool as a source of transactions to potentially
+                # include in the block.
+                try:
+                    template = self.g.new_block_template(pay_to_addr)
+                except Exception as e:
+                    self.submit_block_lock.unlock()
+                    logger.warning("Failed to create new block template: %s", e)
+                    continue
+
+                self.submit_block_lock.unlock()
+
+                # Attempt to solve the block.  The function will exit early
+                # with false when conditions that trigger a stale block, so
+                # a new block template can be generated.  When the return is
+                # true a solution was found, so submit the solved block.
+                if await self._solve_block(template.block, cur_height + 1, ticker, quit=None):
+                    block = btcutil.Block(template.block)
+                    self._submit_block(block)
+
+                    block_hashes.append(block.hash())
+                    i += 1
+
+                    if i == n:
+                        logger.info("Generated %d blocks" % i)
+                        self.lock()
+                        self.speed_monitor_quit.close()
+                        # m.wg.Wait()
+                        self.started = False
+                        self.discrete_mining = False
+                        self.unlock()
+                        return block_hashes
+
+
+        finally:
+            ticker.close()
+
+        return

@@ -696,8 +696,8 @@ class BlkTmplGenerator:
     # TxSource returns the associated transaction source.
     #
     # This function is safe for concurrent access.
-    def tx_source(self) -> TxSource:
-        return self.tx_source()
+    def get_tx_source(self) -> TxSource:
+        return self.tx_source
 
 
 # TODO

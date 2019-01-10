@@ -1,0 +1,1 @@
+from .cpuminer import *
