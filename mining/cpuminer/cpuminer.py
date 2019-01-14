@@ -88,6 +88,27 @@ class Config:
         self.is_current = is_current
 
 
+# TODO: A wrong self-made golang like sync.WaitGroup
+class WaitGroup:
+    def __init__(self):
+        self._chan = ac.Chan()
+
+    def add(self, n: int):
+        for _ in range(n):
+            self._chan.put_nowait(True)
+
+    async def wait(self):
+        while True:
+            result, c = await ac.select(self._chan, default="giveup")
+            if c is self._chan:
+                await self._chan.put(result)
+            else:
+                break
+
+    def done(self):
+        self._chan.get_nowait()
+
+
 # CPUMiner provides facilities for solving blocks (mining) using the CPU in
 # a concurrency-safe manner.  It consists of two main goroutines -- a speed
 # monitor and a controller for worker goroutines which generate and solve
@@ -98,7 +119,8 @@ class CPUMiner:
     def __init__(self, lock=None, g: mining.BlkTmplGenerator = None, cfg: Config = None, num_workers=None, started=None,
                  discrete_mining=None,
                  submit_block_lock: pyutil.Lock = None, update_num_workers=None, query_hashes_per_sec=None,
-                 update_hashes=None, speed_monitor_quit=None, quit=None):
+                 update_hashes=None, speed_monitor_quit=None, quit=None,
+                 wg=None, worker_wg=None):
         self._lock = lock or pyutil.Lock()
         self.g = g
         self.cfg = cfg
@@ -113,15 +135,14 @@ class CPUMiner:
         self.speed_monitor_quit = speed_monitor_quit
         self.quit = quit
 
-        # # TODO  maybe invent a waitgroup here?
-        # wg                sync.WaitGroup
-        # workerWg          sync.WaitGroup
+        self.wg = wg or WaitGroup()
+        self.worker_wg = worker_wg or WaitGroup()
 
     def lock(self):
-        self._lock.acquire()
+        self._lock.lock()
 
     def unlock(self):
-        self._lock.release()
+        self._lock.unlock()
 
     # New returns a new instance of a CPU miner for the provided configuration.
     # Use Start to begin the mining process.  See the documentation for CPUMiner
@@ -175,7 +196,7 @@ class CPUMiner:
                 else:
                     break
 
-            # TODO m.wg.Done()
+            self.wg.done()
             logger.info("CPU miner speed monitor done")
             return
 
@@ -214,7 +235,7 @@ class CPUMiner:
 
             # The block was accepted.
             coinbase_tx = block.get_msg_block().transactions[0].tx_outs[0]
-            logger.info("Block submitted via CPU miner accepted (hash %s, amount %v)" % (
+            logger.info("Block submitted via CPU miner accepted (hash %s, amount %s)" % (
                 block.hash(), btcutil.Amount(coinbase_tx.value)
             ))
             return True
@@ -364,7 +385,7 @@ class CPUMiner:
                     block = btcutil.Block.from_msg_block(template.block)
                     self._submit_block(block)
 
-            # TODO m.workerWg.Done()
+            self.worker_wg.done()
             logger.info("Generate blocks worker done")
 
         finally:
@@ -385,7 +406,7 @@ class CPUMiner:
                 quit = ac.Chan()
                 running_workers.append(quit)
 
-                # m.workerWg.Add(1)
+                self.worker_wg.add(1)
 
                 ac.go(self._generate_blocks(quit))
 
@@ -418,9 +439,9 @@ class CPUMiner:
 
         # Wait until all workers shut down to stop the speed monitor since
         # they rely on being able to send updates to it.
-        # TODO m.workerWg.Wait()
+        await self.worker_wg.wait()
         self.speed_monitor_quit.close()
-        # TODO m.wg.Done()
+        self.wg.done()
         return
 
     # Start begins the CPU mining process as well as the speed monitor used to
@@ -438,7 +459,7 @@ class CPUMiner:
             self.quit = ac.Chan()
             self.speed_monitor_quit = ac.Chan()
 
-            # TODO m.wg.Add(2)
+            self.wg.add(2)
 
             ac.go(self._speed_monitor())
             ac.go(self._mining_worker_controller())
@@ -454,7 +475,7 @@ class CPUMiner:
     # already been started will have no effect.
     #
     # This function is safe for concurrent access.
-    def stop(self):
+    async def stop(self):
         with self._lock:
             # Nothing to do if the miner is not currently running or if running in
             # discrete mode (using GenerateNBlocks).
@@ -463,7 +484,7 @@ class CPUMiner:
 
             self.quit.close()
 
-            # TODO m.wg.Wait()
+            await self.wg.wait()
 
             self.started = False
 
@@ -499,7 +520,7 @@ class CPUMiner:
     # This function is safe for concurrent access.
     async def set_num_workers(self, num_workers: int):
         if num_workers == 0:
-            self.stop()
+            await self.stop()
 
         # Don't lock until after the first check since Stop does its own
         # locking.
@@ -540,7 +561,7 @@ class CPUMiner:
 
         self.speed_monitor_quit = ac.Chan()
 
-        # m.wg.Add(1)
+        self.wg.add(1)
 
         ac.go(self._speed_monitor())
 
@@ -594,14 +615,11 @@ class CPUMiner:
                         logger.info("Generated %d blocks" % i)
                         self.lock()
                         self.speed_monitor_quit.close()
-                        # m.wg.Wait()
+                        await self.wg.wait()
                         self.started = False
                         self.discrete_mining = False
                         self.unlock()
                         return block_hashes
 
-
         finally:
             ticker.close()
-
-        return
