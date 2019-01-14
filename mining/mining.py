@@ -6,6 +6,7 @@ import wire
 import blockchain
 import chaincfg
 import txscript
+import heapq
 from .policy import *
 
 # MinHighPriority is the minimum priority value that allows a
@@ -321,7 +322,7 @@ class BlkTmplGenerator:
                 # Setup dependencies for any transactions which reference
                 # other transactions in the mempool so they can be properly
                 # ordered below.
-                prio_item = TxPrioItem(tx=tx)  # TODO set default
+                prio_item = TxPrioItem(tx=tx)
                 for tx_in in tx.get_msg_tx().tx_ins:
                     origin_hash = tx_in.previous_out_point.hash
                     entry = utxos.lookup_entry(tx_in.previous_out_point)
@@ -362,7 +363,7 @@ class BlkTmplGenerator:
                 # Add the transaction to the priority queue to mark it ready
                 # for inclusion in the block unless it has dependencies.
                 if prio_item.depends_on is None:
-                    priority_queue.push(prio_item)  # TODO
+                    priority_queue.push(prio_item)
 
                 # Merge the referenced outputs from the input transactions to
                 # this transaction into the block utxo view.  This allows the
@@ -374,7 +375,7 @@ class BlkTmplGenerator:
                 # This try catch is just an workaround of continue the outer loop
                 continue
 
-        logger.info("Priority queue len %d, dependers len %d" % (priority_queue.len(), len(dependers)))  # TODO
+        logger.info("Priority queue len %d, dependers len %d" % (priority_queue.len(), len(dependers)))
 
         # The starting block size is the size of the block header plus the max
         # possible transaction count size, plus the size of the coinbase
@@ -395,10 +396,10 @@ class BlkTmplGenerator:
         witness_included = False
 
         # Choose which transactions make it into the block.
-        while priority_queue.len() > 0:  # TODO
+        while priority_queue.len() > 0:
             # Grab the highest priority (or highest fee per kilobyte
             # depending on the sort order) transaction.
-            prio_item = priority_queue.pop()  # TODO
+            prio_item = priority_queue.pop()
             tx = prio_item.tx
 
             # If segregated witness has not been activated yet, then we
@@ -487,7 +488,7 @@ class BlkTmplGenerator:
                             ))
 
                 sorted_by_fee = True
-                priority_queue.set_less_func(tx_pq_by_fee)  # TODO
+                priority_queue.set_compare_func(tx_pq_by_fee)
 
                 # Put the transaction back into the priority queue and
                 # skip it so it is re-priortized by fees if it won't
@@ -701,9 +702,67 @@ class BlkTmplGenerator:
         return self.tx_source
 
 
-# TODO
+# A customized Priority Queue, with two compare dimensions
+# TOCHANGE Now the two dimensions is hard coded, which can be change to customised.
 class TxPriorityQueue:
-    pass
+    def __init__(self, initial=None, compare_func=lambda x: (x, x)):
+        self.compare_func = compare_func
+        self.item_index = 0
+        if initial:
+            self.item_index += len(initial)
+            self._data = [(*(compare_func(item)), index, item) for index, item in enumerate(initial)]
+            heapq.heapify(self._data)
+        else:
+            self._data = []
+
+    def push(self, item):
+        heapq.heappush(self._data, (*(self.compare_func(item)), self.item_index, item))
+        self.item_index += 1
+
+    def pop(self):
+        if self._data:
+            return heapq.heappop(self._data)[3]
+        else:
+            return None
+
+    def len(self):
+        return len(self._data)
+
+    def __len__(self):
+        return len(self._data)
+
+    def set_compare_func(self, compare_func):
+        self.compare_func = compare_func
+        if self._data:
+            self._data = [(*(compare_func(item[1])), item[2], item[3]) for item in self._data]
+            heapq.heapify(self._data)
+
+
+# txPQByPriority sorts a txPriorityQueue by transaction priority and then fees
+# per kilobyte.
+def tx_pq_by_priority(item: TxPrioItem):
+    return item.priority, item.fee_per_kb
+
+
+# txPQByFee sorts a txPriorityQueue by fees per kilobyte and then transaction
+# priority.
+def tx_pq_by_fee(item: TxPrioItem):
+    return item.fee_per_kb, item.priority
+
+
+# newTxPriorityQueue returns a new transaction priority queue that reserves the
+# passed amount of space for the elements.  The new priority queue uses either
+# the txPQByPriority or the txPQByFee compare function depending on the
+# sortByFee parameter and is already initialized for use with heap.Push/Pop.
+# The priority queue can grow larger than the reserved space, but extra copies
+# of the underlying array can be avoided by reserving a sane value.
+def new_tx_priority_queue(reverse: int, sort_by_fee: bool) -> TxPriorityQueue:
+    if sort_by_fee:
+        compare_func = tx_pq_by_fee
+    else:
+        compare_func = tx_pq_by_priority
+
+    return TxPriorityQueue(compare_func=compare_func)
 
 
 # mergeUtxoView adds all of the entries in viewB to viewA.  The result is that
@@ -763,16 +822,6 @@ def create_coinbase_tx(params: chaincfg.Params, coinbase_script: bytes, next_blo
     ))
 
     return btcutil.Tx.from_msg_tx(tx)
-
-
-# newTxPriorityQueue returns a new transaction priority queue that reserves the
-# passed amount of space for the elements.  The new priority queue uses either
-# the txPQByPriority or the txPQByFee compare function depending on the
-# sortByFee parameter and is already initialized for use with heap.Push/Pop.
-# The priority queue can grow larger than the reserved space, but extra copies
-# of the underlying array can be avoided by reserving a sane value.
-def new_tx_priority_queue(reverse: int, sort_by_fee: bool) -> TxPriorityQueue:
-    pass  # TODO
 
 
 # logSkippedDeps logs any dependencies which are also skipped as a result of

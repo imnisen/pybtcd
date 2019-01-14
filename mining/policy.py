@@ -19,7 +19,7 @@ class Policy:
         :param uint32 block_min_size:
         :param uint32 block_max_size:
         :param uint32 block_priority_size:
-        :param btcutil.Amount tx_min_free_fee:  # TODO btcutil.Amount
+        :param btcutil.Amount tx_min_free_fee:
         """
         # BlockMinWeight is the minimum block weight to be used when
         # generating a block template.
