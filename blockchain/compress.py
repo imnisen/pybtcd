@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 #      2^64-1 -> [0x80 0xfe 0xfe 0xfe 0xfe 0xfe 0xfe 0xfe 0xfe 0x7f]
 #
 # References:
-#   https:#en.wikipedia.org/wiki/Variable-length_quantity
-#   http:#www.codecodex.com/wiki/Variable-Length_Integers
+#   https://en.wikipedia.org/wiki/Variable-length_quantity
+#   http://www.codecodex.com/wiki/Variable-Length_Integers
 # -----------------------------------------------------------------------------
 
 # serializeSizeVLQ returns the number of bytes it would take to serialize the
