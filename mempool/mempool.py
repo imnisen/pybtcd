@@ -4,6 +4,13 @@ import txscript
 import btcutil
 import mining
 import pyutil
+import logging
+
+_logger = logging.getLogger(__name__)
+
+# orphanExpireScanInterval is the minimum amount of time in between
+# scans of the orphan pool to evict expired transactions.
+orphanExpireScanInterval = pyutil.Minute * 5
 
 
 # Tag represents an identifier to use for tagging orphan transactions.  The
@@ -15,7 +22,7 @@ class Tag(int):
 
 # Config is a descriptor containing the memory pool configuration.
 class Config:
-    def __init__(self, policy=None,  # TODO
+    def __init__(self, policy: 'Policy' = None,
                  chain_params: chaincfg.Params = None,
                  fetch_utxo_view: typing.Callable = None,
                  best_height: typing.Callable = None,
@@ -181,3 +188,70 @@ class TxPool:
         # the scan will only run when an orphan is added to the pool as opposed
         # to on an unconditional timer.
         self.next_expire_scan = next_expire_scan
+
+    # RemoveOrphan removes the passed orphan transaction from the orphan pool and
+    # previous orphan index.
+    #
+    # This function is safe for concurrent access.
+    def remove_orphans(self, tx: btcutil.Tx):
+        self.mtx.lock()
+        self._remove_orphan(tx, remove_redeemers=False)
+        self.mtx.unlock()
+
+    # TODO
+    # removeOrphan is the internal function which implements the public
+    # RemoveOrphan.  See the comment for RemoveOrphan for more details.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _remove_orphan(self, tx: btcutil.Tx, remove_redeemers: bool):
+        pass
+
+    # limitNumOrphans limits the number of orphan transactions by evicting a random
+    # orphan if adding a new one would cause it to overflow the max allowed.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def limit_num_orphans(self):
+
+        # Scan through the orphan pool and remove any expired orphans when it's
+        # time.  This is done for efficiency so the scan only happens
+        # periodically instead of on every orphan added to the pool.
+        now = pyutil.now()
+        if now > self.next_expire_scan:
+            origin_num_orphans = len(self.orphans)
+
+            for otx in self.orphans.values():
+                if now > otx.expiration:
+                    # Remove redeemers too because the missing
+                    # parents are very unlikely to ever materialize
+                    # since the orphan has already been around more
+                    # than long enough for them to be delivered.
+                    self._remove_orphan(otx.tx, remove_redeemers=True)
+
+            # Set next expiration scan to occur after the scan interval.
+            self.next_expire_scan = now + orphanExpireScanInterval
+
+            num_orphans = len(self.orphans)
+            num_expired = num_orphans - origin_num_orphans
+            if num_expired > 0:
+                _logger.info("Expired %d orphan(s) (remaining: %d)" % (num_expired, num_orphans))
+
+        # Nothing to do if adding another orphan will not cause the pool to
+        # exceed the limit.
+        if len(self.orphans) + 1 <= self.cfg.policy.max_orphan_txs:
+            return
+
+        # TOCHANGE the comment
+        # Remove a random entry from the map.  For most compilers, Go's
+        # range statement iterates starting at a random item although
+        # that is not 100% guaranteed by the spec.  The iteration order
+        # is not important here because an adversary would have to be
+        # able to pull off preimage attacks on the hashing function in
+        # order to target eviction of specific entries anyways.
+        for otx in self.orphans.values():
+            # TODCHECK can we delete items the orphans in loop?
+            # Don't remove redeemers in the case of a random eviction since
+            # it is quite possible it might be needed again shortly.
+            self._remove_orphan(otx.tx, remove_redeemers=False)
+            break
+
+        return
