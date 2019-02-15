@@ -17,8 +17,8 @@ Now this project is for self-education purpose, under active development.
 -   blockchain: Done(need more test case)
 -   btcec: Finish needed
 -   btcutil: Finish needed
--   mining: Doing(stuck, need easy python concurrent programming methods)
--   mempool: Todo
+-   mining: Hold(stuck, need easy python concurrent programming methods)
+-   mempool: Doing
 -   peer, netsync, connmgr, addrmgr: Todo
 -   rpclient, cmd: Todo
 -   btcjson: Todo
