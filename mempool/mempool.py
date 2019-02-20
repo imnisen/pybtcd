@@ -3,6 +3,7 @@ import typing
 import txscript
 import btcutil
 import mining
+import wire
 import pyutil
 import logging
 
@@ -198,13 +199,40 @@ class TxPool:
         self._remove_orphan(tx, remove_redeemers=False)
         self.mtx.unlock()
 
-    # TODO
+    # TOCHECK
     # removeOrphan is the internal function which implements the public
     # RemoveOrphan.  See the comment for RemoveOrphan for more details.
     #
     # This function MUST be called with the mempool lock held (for writes).
     def _remove_orphan(self, tx: btcutil.Tx, remove_redeemers: bool):
-        pass
+        # Nothing to do if passed tx is not an orphan.
+        tx_hash = tx.hash()
+        if tx_hash not in self.orphans:
+            return
+        otx = self.orphans[tx_hash]
+
+        # Remove the reference from the previous orphan index.
+        for tx_in in otx.tx.get_msg_tx().tx_ins:
+            if tx_in.previous_out_point in self.orphans_by_prev:
+                orphans = self.orphans_by_prev[tx_in.previous_out_point]
+                del orphans[tx_hash]
+
+                # Remove the map entry altogether if there are no
+                # longer any orphans which depend on it.
+                if len(orphans) == 0:
+                    del self.orphans_by_prev[tx_in.previous_out_point]
+
+        # Remove any orphans that redeem outputs from this one if requested.
+        if remove_redeemers:
+            for tx_out_idx in range(len(tx.get_msg_tx().tx_outs)):
+                prev_out = wire.OutPoint(index=tx_out_idx, hash=tx_hash)
+                for orphan in self.orphans_by_prev[prev_out].values():
+                    self._remove_orphan(orphan, remove_redeemers=True)
+
+        # Remove the transaction from the orphan pool.
+        del self.orphans[tx_hash]
+
+        return
 
     # limitNumOrphans limits the number of orphan transactions by evicting a random
     # orphan if adding a new one would cause it to overflow the max allowed.
