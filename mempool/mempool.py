@@ -4,14 +4,22 @@ import txscript
 import btcutil
 import mining
 import wire
+import blockchain
+import chainhash
 import pyutil
 import logging
+from .error import *
 
 _logger = logging.getLogger(__name__)
 
 # orphanExpireScanInterval is the minimum amount of time in between
 # scans of the orphan pool to evict expired transactions.
 orphanExpireScanInterval = pyutil.Minute * 5
+
+# orphanTTL is the maximum amount of time an orphan is allowed to
+# stay in the orphan pool before it expires and is evicted during the
+# next scan.
+orphanTTL = pyutil.Minute * 15
 
 
 # Tag represents an identifier to use for tagging orphan transactions.  The
@@ -172,7 +180,7 @@ class TxPool:
 
         # last time pool was updated
         self.last_updated = last_updated
-        self.mtx = mtx
+        self.mtx = mtx or pyutil.RWLock()
         self.cfg = cfg
         self.pool = pool
         self.orphans = orphans
@@ -238,7 +246,7 @@ class TxPool:
     # orphan if adding a new one would cause it to overflow the max allowed.
     #
     # This function MUST be called with the mempool lock held (for writes).
-    def limit_num_orphans(self):
+    def _limit_num_orphans(self):
 
         # Scan through the orphan pool and remove any expired orphans when it's
         # time.  This is done for efficiency so the scan only happens
@@ -283,3 +291,195 @@ class TxPool:
             break
 
         return
+
+    # addOrphan adds an orphan transaction to the orphan pool.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _add_orphan(self, tx: btcutil.Tx, tag: Tag):
+        # Nothing to do if no orphans are allowed.
+        if self.cfg.policy.max_orphan_txs <= 0:
+            return
+
+        # Limit the number orphan transactions to prevent memory exhaustion.
+        # This will periodically remove any expired orphans and evict a random
+        # orphan if space is still needed.
+        self._limit_num_orphans()
+
+        self.orphans[tx.hash()] = OrphanTx(
+            tx=tx,
+            tag=tag,
+            expiration=pyutil.now() + orphanTTL
+        )
+        for tx_in in tx.get_msg_tx().tx_ins:
+            if tx_in.previous_out_point not in self.orphans_by_prev:
+                self.orphans_by_prev[tx_in.previous_out_point] = {}
+            self.orphans_by_prev[tx_in.previous_out_point][tx.hash()] = tx
+
+            _logger.debug("Stored orphan transaction %s (total: %d)", tx.hash(), len(self.orphans))
+        return
+
+    # maybeAddOrphan potentially adds an orphan to the orphan pool.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _maybe_add_orphan(self, tx: btcutil.Tx, tag: Tag):
+        # Ignore orphan transactions that are too large.  This helps avoid
+        # a memory exhaustion attack based on sending a lot of really large
+        # orphans.  In the case there is a valid transaction larger than this,
+        # it will ultimtely be rebroadcast after the parent transactions
+        # have been mined or otherwise received.
+        #
+        # Note that the number of orphan transactions in the orphan pool is
+        # also limited, so this equates to a maximum memory used of
+        # mp.cfg.Policy.MaxOrphanTxSize * mp.cfg.Policy.MaxOrphanTxs (which is ~5MB
+        # using the default values at the time this comment was written).
+        serialized_len = tx.get_msg_tx().serialize_size()
+        if serialized_len > self.cfg.policy.max_orphan_tx_size:
+            msg = "orphan transaction size of %d bytes is larger than max allowed size of %d bytes" % \
+                  (serialized_len, self.cfg.policy.max_orphan_tx_size)
+            raise tx_rule_error(wire.RejectCode.RejectNonstandard, msg)
+
+        # Add the orphan if the none of the above disqualified it.
+        self._add_orphan(tx, tag)
+        return
+
+    # removeOrphanDoubleSpends removes all orphans which spend outputs spent by the
+    # passed transaction from the orphan pool.  Removing those orphans then leads
+    # to removing all orphans which rely on them, recursively.  This is necessary
+    # when a transaction is added to the main pool because it may spend outputs
+    # that orphans also spend.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _remove_orphan_double_spends(self, tx: btcutil.Tx):
+        msg_tx = tx.get_msg_tx()
+        for tx_in in msg_tx.tx_ins:
+            for orphan in self.orphans_by_prev[tx_in.previous_out_point].values:
+                self._remove_orphan(orphan, remove_redeemers=True)
+        return
+
+    # isTransactionInPool returns whether or not the passed transaction already
+    # exists in the main pool.
+    #
+    # This function MUST be called with the mempool lock held (for reads).
+    def _is_transaction_in_pool(self, hash: chainhash.Hash) -> bool:
+        return hash in self.pool
+
+    # IsTransactionInPool returns whether or not the passed transaction already
+    # exists in the main pool.
+    #
+    # This function is safe for concurrent access.
+    def is_transaction_in_pool(self, hash: chainhash.Hash) -> bool:
+        # Protect concurrent access
+        self.mtx.r_lock()
+        in_pool = self._is_transaction_in_pool(hash)
+        self.mtx.r_unlock()
+        return in_pool
+
+    # isOrphanInPool returns whether or not the passed transaction already exists
+    # in the orphan pool.
+    #
+    # This function MUST be called with the mempool lock held (for reads).
+    def _is_orphan_in_pool(self, hash: chainhash.Hash) -> bool:
+        return hash in self.orphans
+
+    # IsOrphanInPool returns whether or not the passed transaction already exists
+    # in the orphan pool.
+    #
+    # This function is safe for concurrent access.
+    def is_orphan_in_pool(self, hash: chainhash.Hash) -> bool:
+        # Protect concurrent access
+        self.mtx.r_lock()
+        in_pool = self._is_orphan_in_pool(hash)
+        self.mtx.r_unlock()
+        return in_pool
+
+    # haveTransaction returns whether or not the passed transaction already exists
+    # in the main pool or in the orphan pool.
+    #
+    # This function MUST be called with the mempool lock held (for reads).
+    def _have_transaction(self, hash: chainhash.hash) -> bool:
+        return self._is_transaction_in_pool(hash) or self._is_orphan_in_pool(hash)
+
+    # HaveTransaction returns whether or not the passed transaction already exists
+    # in the main pool or in the orphan pool.
+    #
+    # This function is safe for concurrent access.
+    def have_transaction(self, hash: chainhash.hash) -> bool:
+        # Protect concurrent access
+        self.mtx.r_lock()
+        have_tx = self._have_transaction(hash)
+        self.mtx.r_unlock()
+        return have_tx
+
+    # removeTransaction is the internal function which implements the public
+    # RemoveTransaction.  See the comment for RemoveTransaction for more details.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _remove_transaction(self, tx: btcutil.Tx, remove_redeemers: bool):
+        tx_hash = tx.hash()
+
+        if remove_redeemers:
+            for i in range(len(tx.get_msg_tx().tx_outs)):
+                prev_out = wire.OutPoint(hash=tx_hash, index=i)
+                if prev_out in self.outpoints:
+                    tx_redeemer = self.outpoints[prev_out]
+                    self._remove_transaction(tx_redeemer, remove_redeemers=True)
+
+        # Remove the transaction if needed
+        if tx_hash in self.pool:
+            tx_desc = self.pool[tx_hash]
+
+            # Remove unconfirmed address index entries associated with the
+            # transaction if enabled.
+            if self.cfg.addr_index is not None:
+                self.cfg.addr_index.remove_unconfirmed_tx(tx_hash)  # TODO
+
+            # Mark the referenced outpoints as unspent by the pool.
+            for tx_in in tx_desc.tx.get_msg_tx().tx_ins:
+                del self.outpoints[tx_in.previous_out_point]
+
+            del self.pool[tx_hash]
+
+            # TOADD TOCHECK
+            # need atomic.StoreInt64?
+            self.last_updated = pyutil.now()
+
+        return
+
+    # RemoveTransaction removes the passed transaction from the mempool. When the
+    # removeRedeemers flag is set, any transactions that redeem outputs from the
+    # removed transaction will also be removed recursively from the mempool, as
+    # they would otherwise become orphans.
+    #
+    # This function is safe for concurrent access.
+    def remove_transaction(self, tx: btcutil.Tx, remove_redeemers: bool):
+        # Protect concurrent access
+        self.mtx.lock()
+        self._remove_transaction(tx, remove_redeemers)
+        self.mtx.unlock()
+
+    # RemoveDoubleSpends removes all transactions which spend outputs spent by the
+    # passed transaction from the memory pool.  Removing those transactions then
+    # leads to removing all transactions which rely on them, recursively.  This is
+    # necessary when a block is connected to the main chain because the block may
+    # contain transactions which were previously unknown to the memory pool.
+    #
+    # This function is safe for concurrent access.
+    def remove_double_spends(self, tx: btcutil.Tx):
+        # Protect concurrent access.
+        self.mtx.lock()
+        for tx_in in tx.get_msg_tx().tx_ins:
+            if tx_in.previous_out_point in self.outpoints:
+                tx_redeemer = self.outpoints[tx_in.previous_out_point]
+                if tx_redeemer.hash() != tx.hash():
+                    self._remove_transaction(tx_redeemer, remove_redeemers=True)
+        self.mtx.unlock()
+        
+    # # addTransaction adds the passed transaction to the memory pool.  It should
+    # # not be called directly as it doesn't perform any validation.  This is a
+    # # helper for maybeAcceptTransaction.
+    # #
+    # # This function MUST be called with the mempool lock held (for writes).
+    # def _add_transaction(self, utxo_view: blockchain.UtxoViewpoint, tx: btcutil.Tx,
+    #                      height: int, fee:int) -> TxDesc:
+    #     # TODO
+
