@@ -1,3 +1,4 @@
+import pyutil
 from .netaddress import *
 
 # MaxUserAgentLen is the maximum allowed length for the user agent field in a
@@ -7,10 +8,6 @@ MaxUserAgentLen = 256
 # DefaultUserAgent for wire in the stack
 DefaultUserAgent = "/btcwire:0.5.0/"
 
-TimeNow = int(time.time())
-
-
-
 
 class MsgVersion(Message):
     def __init__(self,
@@ -19,7 +16,7 @@ class MsgVersion(Message):
                  nonce=0,
                  last_block=0,
                  services=None,
-                 timestamp: int = TimeNow,
+                 timestamp: int = pyutil.now(),
                  protocol_version: int = ProtocolVersion,
                  user_agent: str = DefaultUserAgent,
                  disable_relay_tx: bool = False):

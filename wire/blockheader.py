@@ -1,5 +1,6 @@
 import io
 import time
+import pyutil
 from chainhash.hashfuncs import *
 from .common import *
 
@@ -38,7 +39,7 @@ class BlockHeader:
 
         # Time the block was created.  This is, unfortunately, encoded as a
         # uint32 on the wire and therefore is limited to 2106.
-        self.timestamp = timestamp or int(time.time())
+        self.timestamp = timestamp or pyutil.now()
 
         # Difficulty target for the block.
         self.bits = bits or 0
