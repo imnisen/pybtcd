@@ -43,3 +43,8 @@ def tx_rule_error(c: wire.RejectCode, desc: str) -> RuleError:
 # blockchain.RuleError.
 def chain_rule_error(chain_err: blockchain.RuleError) -> RuleError:
     return RuleError(err=chain_err)
+
+
+# TODO
+def extract_reject_code(err: Exception) -> (wire.RejectCode, bool):
+    pass

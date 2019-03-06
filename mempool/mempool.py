@@ -9,6 +9,7 @@ import chainhash
 import pyutil
 import logging
 from .error import *
+from .policy import *
 
 _logger = logging.getLogger(__name__)
 
@@ -20,6 +21,12 @@ orphanExpireScanInterval = pyutil.Minute * 5
 # stay in the orphan pool before it expires and is evicted during the
 # next scan.
 orphanTTL = pyutil.Minute * 15
+
+# DefaultBlockPrioritySize is the default size in bytes for high-
+# priority / low-fee transactions.  It is used to help determine which
+# are allowed into the mempool and consequently affects their relay and
+# inclusion when generating block templates.
+DefaultBlockPrioritySize = 50000
 
 
 # Tag represents an identifier to use for tagging orphan transactions.  The
@@ -36,7 +43,7 @@ class Config:
                  fetch_utxo_view: typing.Callable = None,
                  best_height: typing.Callable = None,
                  median_time_past: typing.Callable = None,
-                 cacl_sequence_lock: typing.Callable = None,
+                 calc_sequence_lock: typing.Callable = None,
                  is_deployment_active: typing.Callable = None,
                  sig_cache: txscript.SigCache = None,
                  hash_cache: txscript.HashCache = None,
@@ -67,7 +74,7 @@ class Config:
         # CalcSequenceLock defines the function to use in order to generate
         # the current sequence lock for the given transaction using the passed
         # utxo view.
-        self.cacl_sequence_lock = cacl_sequence_lock
+        self.calc_sequence_lock = calc_sequence_lock
 
         # IsDeploymentActive returns true if the target deploymentID is
         # active, and false otherwise. The mempool uses this function to gauge
@@ -144,7 +151,15 @@ class Policy:
 # TxDesc is a descriptor containing a transaction in the mempool along with
 # additional metadata.
 class TxDesc(mining.TxDesc):
-    def __init__(self, starting_priority: float = None):
+    def __init__(self,
+                 tx: btcutil.Tx,
+                 added: int,
+                 height: int,
+                 fee: int,
+                 fee_per_kb: int,
+                 starting_priority: float = None):
+        super().__init__(tx, added, height, fee, fee_per_kb)
+
         # StartingPriority is the priority of the transaction when it was added
         # to the pool.
         self.starting_priority = starting_priority or 0.0
@@ -473,13 +488,377 @@ class TxPool:
                 if tx_redeemer.hash() != tx.hash():
                     self._remove_transaction(tx_redeemer, remove_redeemers=True)
         self.mtx.unlock()
-        
-    # # addTransaction adds the passed transaction to the memory pool.  It should
-    # # not be called directly as it doesn't perform any validation.  This is a
-    # # helper for maybeAcceptTransaction.
-    # #
-    # # This function MUST be called with the mempool lock held (for writes).
-    # def _add_transaction(self, utxo_view: blockchain.UtxoViewpoint, tx: btcutil.Tx,
-    #                      height: int, fee:int) -> TxDesc:
-    #     # TODO
 
+    # addTransaction adds the passed transaction to the memory pool.  It should
+    # not be called directly as it doesn't perform any validation.  This is a
+    # helper for maybeAcceptTransaction.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _add_transaction(self, utxo_view: blockchain.UtxoViewpoint, tx: btcutil.Tx,
+                         height: int, fee: int) -> TxDesc:
+
+        # Add the transaction to the pool and mark the referenced outpoints
+        # as spent by the pool.
+        tx_d = TxDesc(
+            tx=tx,
+            added=pyutil.now(),
+            height=height,
+            fee=fee,
+            fee_per_kb=int(fee * 1000 / get_tx_virtual_size(tx)),
+            starting_priority=mining.calc_priority(tx.get_msg_tx(), utxo_view, height)
+        )
+
+        self.pool[tx.hash()] = tx_d
+
+        for tx_in in tx.get_msg_tx().tx_ins:
+            self.outpoints[tx_in.previous_out_point] = tx
+
+        self.last_updated = pyutil.now()  # TODO TOCHECK  atomic.StoreInt64(&mp.lastUpdated, time.Now().Unix())
+
+        # Add unconfirmed address index entries associated with the transaction
+        # if enabled.
+        if self.cfg.addr_index is not None:
+            self.cfg.addr_index.add_unconfirmed_tx(tx, utxo_view)  # TODO TOADD
+
+        # Record this tx for fee estimation if enabled.
+        if self.cfg.fee_estimator is not None:
+            self.cfg.fee_estimator.observe_transaction(tx_d)  # TODO TOADD
+
+        return tx_d
+
+    # checkPoolDoubleSpend checks whether or not the passed transaction is
+    # attempting to spend coins already spent by other transactions in the pool.
+    # Note it does not check for double spends against transactions already in the
+    # main chain.
+    #
+    # This function MUST be called with the mempool lock held (for reads).
+    def _check_pool_double_spend(self, tx: btcutil.Tx):
+        for tx_in in tx.get_msg_tx().tx_ins:
+            if tx_in.previous_out_point in self.outpoints:
+                tx_r = self.outpoints[tx_in.previous_out_point]
+                msg = "output %s already spent by transaction %s in the memory pool" % (
+                    tx_in.previous_out_point, tx_r.hash()
+                )
+                raise tx_rule_error(wire.RejectCode.RejectDuplicate, msg)
+
+        return
+
+    # CheckSpend checks whether the passed outpoint is already spent by a
+    # transaction in the mempool. If that's the case the spending transaction will
+    # be returned, if not nil will be returned.
+    def check_spend(self, op: wire.OutPoint) -> btcutil.Tx or None:
+        self.mtx.r_lock()
+        tx_r = self.outpoints.get(op, None)
+        self.mtx.r_unlock()
+        return tx_r
+
+    # fetchInputUtxos loads utxo details about the input transactions referenced by
+    # the passed transaction.  First, it loads the details form the viewpoint of
+    # the main chain, then it adjusts them based upon the contents of the
+    # transaction pool.
+    #
+    # This function MUST be called with the mempool lock held (for reads).
+    def _fetch_input_utxos(self, tx: btcutil.Tx) -> blockchain.UtxoViewpoint:
+
+        utxo_view = self.cfg.fetch_utxo_view(tx)
+
+        # Attempt to populate any missing inputs from the transaction pool.
+        for tx_in in tx.get_msg_tx().tx_ins:
+
+            prev_out = tx_in.previous_out_point
+            entry = utxo_view.lookup_entry(prev_out)
+
+            # we find utxo entry and it is not marked spent
+            if entry is not None and not entry.is_spent():
+                continue
+
+            # if prev_out_point refer to tx in mempool
+            if prev_out.hash in self.pool:
+                pool_tx_desc = self.pool[prev_out.hash]
+                # AddTxOut ignores out of range index values, so it is
+                # safe to call without bounds checking here.
+                utxo_view.add_tx_out(pool_tx_desc.tx, prev_out.index, mining.UnminedHeight)
+
+        return utxo_view
+
+    # FetchTransaction returns the requested transaction from the transaction pool.
+    # This only fetches from the main transaction pool and does not include
+    # orphans.
+    #
+    # This function is safe for concurrent access.
+    def fetch_transaction(self, tx_hash: chainhash.Hash) -> btcutil.Tx:
+        self.mtx.r_lock()
+        try:
+            if tx_hash in self.pool:
+                return self.pool[tx_hash].tx
+            else:
+                raise Exception("transaction is not in the pool")
+        finally:
+            self.mtx.r_unlock()
+
+    # maybeAcceptTransaction is the internal function which implements the public
+    # MaybeAcceptTransaction.  See the comment for MaybeAcceptTransaction for
+    # more details.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _maybe_accept_transaction(self,
+                                  tx: btcutil.Tx,
+                                  is_new: bool,
+                                  rate_limit: bool,
+                                  reject_dup_orphans: bool) -> ([chainhash.Hash], TxDesc):
+        tx_hash = tx.hash()
+
+        # 1. check segwit active
+        # If a transaction has witness data, and segwit isn't active yet, If
+        # segwit isn't active yet, then we won't accept it into the mempool as
+        # it can't be mined yet.
+        if tx.get_msg_tx().has_witness():
+            segwit_active = self.cfg.is_deployment_active(chaincfg.DeploymentSegwit)
+
+            if not segwit_active:
+                msg = "transaction %s has witness data, but segwit isn't active yet" % tx_hash
+                raise tx_rule_error(wire.RejectCode.RejectNonstandard, msg)
+
+        # 2. check tx duplicate
+        # Don't accept the transaction if it already exists in the pool.  This
+        # applies to orphan transactions as well when the reject duplicate
+        # orphans flag is set.  This check is intended to be a quick check to
+        # weed out duplicates.
+        if self._is_transaction_in_pool(tx_hash) or \
+                (reject_dup_orphans and self._is_orphan_in_pool(tx_hash)):
+            msg = "already have transaction %s" % tx_hash
+            raise tx_rule_error(wire.RejectCode.RejectDuplicate, msg)
+
+        # 3. check tx sanity
+        # Perform preliminary sanity checks on the transaction.  This makes
+        # use of blockchain which contains the invariant rules for what
+        # transactions are allowed into blocks.
+        try:
+            blockchain.check_transaction_sanity(tx)
+        except blockchain.RuleError as e:
+            raise chain_rule_error(e)
+
+        # 4. check not coinbase
+        # A standalone transaction must not be a coinbase transaction.
+        if tx.is_coin_base():
+            msg = "transaction %s is an individual coinbase" % tx_hash
+            raise tx_rule_error(wire.RejectCode.RejectInvalid, msg)
+
+        # Get the current height of the main chain.  A standalone transaction
+        # will be mined into the next block at best, so its height is at least
+        # one more than the current height.
+        best_height = self.cfg.best_height()
+        next_block_height = best_height + 1
+
+        median_time_past = self.cfg.median_time_past()
+
+        # 5. check tx standard
+        # Don't allow non-standard transactions if the network parameters
+        # forbid their acceptance.
+        if not self.cfg.policy.accept_non_std:
+
+            try:
+                check_transaction_standard(tx, next_block_height, median_time_past,
+                                           self.cfg.policy.min_relay_tx_fee, self.cfg.policy.max_tx_version)
+            except Exception as e:
+                reject_code, found = extract_reject_code(e)
+                if not found:
+                    reject_code = wire.RejectCode.RejectNonstandard
+                msg = "transaction %s is not standard: %s" % (tx_hash, e)
+                raise tx_rule_error(reject_code, msg)
+
+        # 6. check tx double spend in pool
+        # The transaction may not use any of the same outputs as other
+        # transactions already in the pool as that would ultimately result in a
+        # double spend.  This check is intended to be quick and therefore only
+        # detects double spends within the transaction pool itself.  The
+        # transaction could still be double spending coins from the main chain
+        # at this point.  There is a more in-depth check that happens later
+        # after fetching the referenced transaction inputs from the main chain
+        # which examines the actual spend data and prevents double spends.
+        self._check_pool_double_spend(tx)
+
+        # 7. fetch utxos of tx spend
+        # Fetch all of the unspent transaction outputs referenced by the inputs
+        # to this transaction.  This function also attempts to fetch the
+        # transaction itself to be used for detecting a duplicate transaction
+        # without needing to do a separate lookup.
+        try:
+            utxo_view = self._fetch_input_utxos(tx)
+        except blockchain.RuleError as e:
+            raise chain_rule_error(e)
+
+        # 8. check no exist utxo same hash and index as this tx
+        # Don't allow the transaction if it exists in the main chain and is not
+        # not already fully spent.
+        for tx_out_idx in range(len(tx.get_msg_tx().tx_outs)):
+            prev_out = wire.OutPoint(
+                hash=tx_hash,
+                index=tx_out_idx
+            )
+            entry = utxo_view.lookup_entry(prev_out)
+            if entry is not None and not entry.is_spent():
+                msg = "transaction already exists"
+                raise tx_rule_error(wire.RejectCode.RejectDuplicate, msg)
+            utxo_view.remove_entry(prev_out)
+
+        # 9. check referenced utxos is not null and not spend, return missing ones.
+        # Transaction is an orphan if any of the referenced transaction outputs
+        # don't exist or are already spent.  Adding orphans to the orphan pool
+        # is not handled by this function, and the caller should use
+        # maybeAddOrphan if this behavior is desired.
+        missing_parents = []
+        for outpoin, entry in utxo_view.get_entries().items():
+            if entry is None or entry.is_spent():
+                # Must make a copy of the hash here since the iterator
+                # is replaced and taking its address directly would
+                # result in all of the entries pointing to the same
+                # memory location and thus all be the final hash.
+                hash_copy = outpoin.hash.copy()
+                missing_parents.append(hash_copy)
+
+        if len(missing_parents) > 0:
+            return missing_parents, None
+
+        # 10. check tx sequence_lock
+        # Don't allow the transaction into the mempool unless its sequence
+        # lock is active, meaning that it'll be allowed into the next block
+        # with respect to its defined relative lock times.
+        try:
+            sequence_lock = self.cfg.calc_sequence_lock(tx, utxo_view)
+        except blockchain.RuleError as e:
+            return chain_rule_error(e)
+
+        if not blockchain.sequence_lock_active(sequence_lock, next_block_height, median_time_past):
+            msg = "transaction's sequence locks on inputs not met"
+            raise tx_rule_error(wire.RejectCode.RejectNonstandard, msg)
+
+        # 11. check tx inputs
+        # Perform several checks on the transaction inputs using the invariant
+        # rules in blockchain for what transactions are allowed into blocks.
+        # Also returns the fees associated with the transaction which will be
+        # used later.
+        try:
+            tx_fee = blockchain.check_transaction_inputs(tx, next_block_height, utxo_view, self.cfg.chain_params)
+        except blockchain.RuleError as e:
+            raise chain_rule_error(e)
+
+        # 12. check tx input standard according to config
+        # Don't allow transactions with non-standard inputs if the network
+        # parameters forbid their acceptance.
+        if not self.cfg.policy.accept_non_std:
+            try:
+                check_inputs_stand(tx, utxo_view)
+            except Exception as e:
+                reject_code, found = extract_reject_code(e)
+                if not found:
+                    reject_code = wire.RejectCode.RejectNonstandard
+                msg = "transaction %s has a non-standard input: %s" % (tx_hash, e)
+                raise tx_rule_error(reject_code, msg)
+
+        # 13. check tx sig_op_cost below max allowed per tx
+        # Don't allow transactions with an excessive number of signature
+        # operations which would result in making it impossible to mine.  Since
+        # the coinbase address itself can contain signature operations, the
+        # maximum allowed signature operations per transaction is less than
+        # the maximum allowed signature operations per block.
+        # TODO(roasbeef): last bool should be conditional on segwit activation
+        try:
+            sig_op_cost = blockchain.get_sig_op_cost(tx, is_coin_base_p=False, utxo_view=utxo_view, bip16_p=True,
+                                                     seg_wit_p=True)
+        except blockchain.RuleError as e:
+            raise chain_rule_error(e)
+        if sig_op_cost > self.cfg.policy.max_sig_op_cost_per_tx:
+            msg = "transaction %s sigop cost is too high: %d > %d" % (
+                tx_hash, sig_op_cost, self.cfg.policy.max_sig_op_cost_per_tx)
+            raise tx_rule_error(wire.RejectCode.RejectNonstandard, msg)
+
+        # 14. Reject tx that has a large size but small fee
+        # Don't allow transactions with fees too low to get into a mined block.
+        #
+        # Most miners allow a free transaction area in blocks they mine to go
+        # alongside the area used for high-priority transactions as well as
+        # transactions with fees.  A transaction size of up to 1000 bytes is
+        # considered safe to go into this section.  Further, the minimum fee
+        # calculated below on its own would encourage several small
+        # transactions to avoid fees rather than one single larger transaction
+        # which is more desirable.  Therefore, as long as the size of the
+        # transaction does not exceeed 1000 less than the reserved space for
+        # high-priority transactions, don't require a fee for it.
+        serialized_size = get_tx_virtual_size(tx)
+        min_fee = calc_min_required_tx_relay_fee(serialized_size, self.cfg.policy.min_relay_tx_fee)
+        if serialized_size >= DefaultBlockPrioritySize - 1000 and tx_fee < min_fee:
+            msg = "transaction %s has %d fees which is under the required amount of %d" % (
+                tx_hash, tx_fee, min_fee
+            )
+            raise tx_rule_error(wire.RejectCode.RejectInsufficientFee, msg)
+
+        # 15. Reject tx with small fee and low priority
+        # Require that free transactions have sufficient priority to be mined
+        # in the next block.  Transactions which are being added back to the
+        # memory pool from blocks that have been disconnected during a reorg
+        # are exempted.
+        if is_new and not self.cfg.policy.disable_relay_priority and tx_fee < min_fee:
+            current_priority = mining.calc_priority(tx.get_msg_tx(), utxo_view, next_block_height)
+            if current_priority <= mining.MinHighPriority:
+                msg = "transaction %s has insufficient priority (%s <= %s)" % (
+                    tx_hash, current_priority, mining.MinHighPriority
+                )
+                raise tx_rule_error(wire.RejectCode.RejectInsufficientFee, msg)
+
+        # 16. Reject some small fee tx according to `penny_total mechanism`
+        # Free-to-relay transactions are rate limited here to prevent
+        # penny-flooding with tiny transactions as a form of attack.
+        if rate_limit and tx_fee < min_fee:
+            now_unix = pyutil.now()
+            # Decay passed data with an exponentially decaying ~10 minute
+            # window - matches bitcoind handling.
+            self.penny_total *= pow(1.0 - 1.0 / 600.0, now_unix - self.last_penny_unix)
+            self.last_penny_unix = now_unix
+
+            # Are we still over the limit?
+            if self.penny_total >= self.cfg.policy.free_tx_relay_limit * 10 * 1000:
+                msg = "transaction %s has been rejected by the rate limiter due to low fees" % tx_hash
+                raise tx_rule_error(wire.RejectCode.RejectInsufficientFee, msg)
+            old_total = self.penny_total
+
+            self.penny_total += serialized_size
+            _logger.info("rate limit: curTotal %s, nextTotal: %s, limit %s" % (
+                old_total, self.penny_total, self.cfg.policy.free_tx_relay_limit * 10 * 1000
+            ))
+
+        # 17. check tx input signature correct
+        # Verify crypto signatures for each input and reject the transaction if
+        # any don't verify.
+        try:
+            blockchain.validate_transaction_scripts(tx, utxo_view, txscript.StandardVerifyFlags,
+                                                    self.cfg.sig_cache, self.cfg.hash_cache)
+        except blockchain.RuleError as e:
+            raise chain_rule_error(e)
+
+        # Add to transaction pool.
+        tx_d = self._add_transaction(utxo_view, tx, best_height, tx_fee)
+
+        _logger.debug("Accepted transaction %s (pool size: %s)" % (tx_hash, len(self.pool)))
+        return None, tx_d
+
+    # MaybeAcceptTransaction is the main workhorse for handling insertion of new
+    # free-standing transactions into a memory pool.  It includes functionality
+    # such as rejecting duplicate transactions, ensuring transactions follow all
+    # rules, detecting orphan transactions, and insertion into the memory pool.
+    #
+    # If the transaction is an orphan (missing parent transactions), the
+    # transaction is NOT added to the orphan pool, but each unknown referenced
+    # parent is returned.  Use ProcessTransaction instead if new orphans should
+    # be added to the orphan pool.
+    #
+    # This function is safe for concurrent access.
+    def maybe_accept_transaction(self,
+                                 tx: btcutil.Tx,
+                                 is_new: bool,
+                                 rate_limit: bool) -> ([chainhash.Hash], TxDesc):
+        self.mtx.lock()
+        try:
+            return self._maybe_accept_transaction(tx, is_new, rate_limit, reject_dup_orphans=True)
+        finally:
+            self.mtx.unlock()
