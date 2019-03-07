@@ -194,24 +194,24 @@ class TxPool:
         # The following variables must only be used atomically.
 
         # last time pool was updated
-        self.last_updated = last_updated
+        self.last_updated = last_updated or None
         self.mtx = mtx or pyutil.RWLock()
-        self.cfg = cfg
-        self.pool = pool
-        self.orphans = orphans
-        self.orphans_by_prev = orphans_by_prev
-        self.outpoints = outpoints
+        self.cfg = cfg or None
+        self.pool = pool or {}
+        self.orphans = orphans or {}
+        self.orphans_by_prev = orphans_by_prev or {}
+        self.outpoints = outpoints or {}
 
         # exponentially decaying total for penny spends.
-        self.penny_total = penny_total
+        self.penny_total = penny_total or 0.0
         # unix time of last ``penny spend''
-        self.last_penny_unix = last_penny_unix
+        self.last_penny_unix = last_penny_unix or 0
 
         # nextExpireScan is the time after which the orphan pool will be
         # scanned in order to evict orphans.  This is NOT a hard deadline as
         # the scan will only run when an orphan is added to the pool as opposed
         # to on an unconditional timer.
-        self.next_expire_scan = next_expire_scan
+        self.next_expire_scan = next_expire_scan or (pyutil.now() + orphanExpireScanInterval)
 
     # RemoveOrphan removes the passed orphan transaction from the orphan pool and
     # previous orphan index.
@@ -862,3 +862,150 @@ class TxPool:
             return self._maybe_accept_transaction(tx, is_new, rate_limit, reject_dup_orphans=True)
         finally:
             self.mtx.unlock()
+
+    # processOrphans is the internal function which implements the public
+    # ProcessOrphans.  See the comment for ProcessOrphans for more details.
+    #
+    # This function MUST be called with the mempool lock held (for writes).
+    def _process_orphans(self, accepted_tx: btcutil.Tx) -> [TxDesc]:
+        accepted_txns = []
+
+        process_list = [accepted_tx]
+        while process_list:
+            process_item = process_list.pop(0)
+
+            for tx_out_idx in range(len(process_item.get_msg_tx().tx_outs)):
+                # Look up all orphans that redeem the output that is
+                # now available.  This will typically only be one, but
+                # it could be multiple if the orphan pool contains
+                # double spends.  While it may seem odd that the orphan
+                # pool would allow this since there can only possibly
+                # ultimately be a single redeemer, it's important to
+                # track it this way to prevent malicious actors from
+                # being able to purposely constructing orphans that
+                # would otherwise make outputs unspendable.
+                #
+                # Skip to the next available output if there are none.
+                prev_out = wire.OutPoint(hash=process_item.hash(), index=tx_out_idx)
+                if prev_out not in self.orphans_by_prev:
+                    continue
+
+                orphans = self.orphans_by_prev[prev_out]
+                for tx in orphans.values():
+                    try:
+                        missing, tx_d = self._maybe_accept_transaction(tx, is_new=True, rate_limit=True,
+                                                                       reject_dup_orphans=False)
+                    except Exception:
+                        # The orphan is now invalid, so there
+                        # is no way any other orphans which
+                        # redeem any of its outputs can be
+                        # accepted.  Remove them.
+                        self._remove_orphan(tx, remove_redeemers=True)
+                        break
+
+                    # Transaction is still an orphan.  Try the next
+                    # orphan which redeems this output.
+                    if len(missing) > 0:
+                        continue
+
+                    # Transaction was accepted into the main pool.
+                    #
+                    # Add it to the list of accepted transactions
+                    # that are no longer orphans, remove it from
+                    # the orphan pool, and add it to the list of
+                    # transactions to process so any orphans that
+                    # depend on it are handled too.
+                    accepted_txns.append(tx_d)
+                    self._remove_orphan(tx, remove_redeemers=False)
+                    process_list.append(tx)
+
+                    # Only one transaction for this outpoint can be
+                    # accepted, so the rest are now double spends
+                    # and are removed later.
+                    break
+
+        # Recursively remove any orphans that also redeem any outputs redeemed
+        # by the accepted transactions since those are now definitive double
+        # spends.
+        self._remove_orphan_double_spends(accepted_tx)
+        for tx_d in accepted_txns:
+            self._remove_orphan_double_spends(tx_d.tx)
+
+        return accepted_txns
+
+    # ProcessOrphans determines if there are any orphans which depend on the passed
+    # transaction hash (it is possible that they are no longer orphans) and
+    # potentially accepts them to the memory pool.  It repeats the process for the
+    # newly accepted transactions (to detect further orphans which may no longer be
+    # orphans) until there are no more.
+    #
+    # It returns a slice of transactions added to the mempool.  A nil slice means
+    # no transactions were moved from the orphan pool to the mempool.
+    #
+    # This function is safe for concurrent access.
+    def process_orphans(self, accepted_tx: btcutil.Tx) -> [TxDesc]:
+        self.mtx.lock()
+        accepted_txns = self._process_orphans(accepted_tx)
+        self.mtx.unlock()
+        return accepted_txns
+
+    # Count returns the number of transactions in the main pool.  It does not
+    # include the orphan pool.
+    #
+    # This function is safe for concurrent access.
+    def count(self) -> int:
+        self.mtx.r_lock()
+        count = len(self.pool)
+        self.mtx.r_unlock()
+        return count
+
+    # TxHashes returns a slice of hashes for all of the transactions in the memory
+    # pool.
+    #
+    # This function is safe for concurrent access.
+    def tx_hashes(self) -> [chainhash.Hash]:
+        self.mtx.r_lock()
+        hashes = []
+        for hash in self.pool.keys():
+            hashes.append(hash.copy())
+        self.mtx.r_unlock()
+
+        return hashes
+
+    # TxDescs returns a slice of descriptors for all the transactions in the pool.
+    # The descriptors are to be treated as read only.
+    #
+    # This function is safe for concurrent access.
+    def tx_descs(self) -> [TxDesc]:
+        self.mtx.r_lock()
+        descs = []
+        for desc in self.pool.values():
+            descs.append(desc)
+        self.mtx.r_unlock()
+
+        return descs
+
+    # MiningDescs returns a slice of mining descriptors for all the transactions
+    # in the pool.
+    #
+    # This is part of the mining.TxSource interface implementation and is safe for
+    # concurrent access as required by the interface contract.
+    def mining_descs(self) -> [mining.TxDesc]:
+        self.mtx.r_lock()
+        descs = []
+        for desc in self.pool.values():
+            descs.append(desc.tx_desc)
+        self.mtx.r_unlock()
+
+        return descs
+
+    # TODO TOADD latter
+    def raw_mempool_verbose(self):
+        pass
+
+    # LastUpdated returns the last time a transaction was added to or removed from
+    # the main pool.  It does not include the orphan pool.
+    #
+    # This function is safe for concurrent access.
+    def get_last_updated(self) -> int:
+        return self.last_updated  # TODO this is not concurrent safe now, change latter
