@@ -116,6 +116,34 @@ class AddrIndex(Indexer, NeedsInputser):
 
         return
 
+    # indexBlock extract all of the standard addresses from all of the transactions
+    # in the passed block and maps each of them to the associated transaction using
+    # the passed map.
+    def index_block(self, data: WriteIndexData, block: btcutil.Block, stxos: [blockchain.SpentTxOut]):
+
+        stox_index = 0
+        for tx_idx, tx in enumerate(block.get_transactions()):
+            # Coinbases do not reference any inputs.  Since the block is
+            # required to have already gone through full validation, it has
+            # already been proven on the first transaction in the block is
+            # a coinbase.
+            if tx_idx != 0:
+                for _ in tx.get_msg_tx().tx_ins:
+                    # We'll access the slice of all the
+                    # transactions spent in this block properly
+                    # ordered to fetch the previous input script.
+                    pk_script = stxos[stox_index].pk_script
+                    self.index_pk_script(data, pk_script, tx_idx)
+
+                    # With an input indexed, we'll advance the
+                    # stxo coutner.
+                    stox_index += 1
+
+            for tx_out in tx.get_msg_tx().tx_outs:
+                self.index_pk_script(data, tx_out.pk_script, tx_idx)
+
+        return
+
 
 # TODO
 def addr_to_key(addr: btcutil.Address) -> bytes:
