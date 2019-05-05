@@ -2,7 +2,11 @@ import database
 import chaincfg
 import pyutil
 import txscript
+import wire
 from .common import *
+from .tx_index import *
+import copy
+import typing
 
 # addrIndexName is the human-readable name for the index.
 addrIndexName = "address index"
@@ -64,7 +68,7 @@ class AddrIndex(Indexer, NeedsInputser):
     #
     # This is part of the Indexer interface.
     def key(self) -> bytes:
-        raise addrIndexKey
+        return addrIndexKey
 
     # Name returns the human-readable name of the index.
     #
@@ -81,6 +85,7 @@ class AddrIndex(Indexer, NeedsInputser):
         db_tx.metadata().create_bucket(addrIndexKey)
         return
 
+    # TOCHECK, the modify of data work?
     # indexPkScript extracts all standard addresses from the passed public key
     # script and maps each of them to the associated transaction using the passed
     # map.
@@ -95,6 +100,7 @@ class AddrIndex(Indexer, NeedsInputser):
         if len(addrs) == 0:
             return
 
+        ret_data = copy.deepcopy(data)
         for addr in addrs:
             try:
                 addr_key = addr_to_key(addr)
@@ -106,15 +112,17 @@ class AddrIndex(Indexer, NeedsInputser):
             # transactions are indexed serially any duplicates will be
             # indexed in a row, so checking the most recent entry for the
             # address is enough to detect duplicates.
-            indexed_txns = data[addr_key]
+            indexed_txns = ret_data[addr_key]
             num_txns = len(indexed_txns)
             if num_txns > 0 and indexed_txns[-1] == tx_idx:
                 continue
 
             indexed_txns.append(tx_idx)
-            data[addr_key] = indexed_txns
+            ret_data[addr_key] = indexed_txns
 
-        return
+        return ret_data
+
+        # TOCHECK, the modify of data work?
 
     # indexBlock extract all of the standard addresses from all of the transactions
     # in the passed block and maps each of them to the associated transaction using
@@ -144,7 +152,77 @@ class AddrIndex(Indexer, NeedsInputser):
 
         return
 
+    # ConnectBlock is invoked by the index manager when a new block has been
+    # connected to the main chain.  This indexer adds a mapping for each address
+    # the transactions in the block involve.
+    #
+    # This is part of the Indexer interface.
+    def connect_block(self, db_tx: database.Tx, block: btcutil.Block, stxos: [blockchain.SpentTxOut]):
+
+        # The offset and length of the transactions within the serialized
+        # block.
+        tx_locs = block.tx_loc()
+
+        # Get the internal block ID associated with the block.
+        block_id = db_fetch_block_id_by_hash(db_tx, block.hash())
+
+        # Build all of the address to transaction mappings in a local map.
+        addrs_to_txns = WriteIndexData()
+        self.index_block(addrs_to_txns, block, stxos)
+
+        # Add all of the index entries for each address.
+        addr_idx_bucket = db_tx.metadata().bucket(addrIndexKey)
+        for addr_key, tx_idxs in addrs_to_txns.items():
+            for tx_idx in tx_idxs:
+                db_put_addr_index_entry(addr_idx_bucket, addr_key, block_id, tx_locs[tx_idx])
+        return
+
+    # DisconnectBlock is invoked by the index manager when a block has been
+    # disconnected from the main chain.  This indexer removes the address mappings
+    # each transaction in the block involve.
+    #
+    # This is part of the Indexer interface.
+    def disconnect_block(self, db_tx: database.Tx, block: btcutil.Block, stxos: [blockchain.SpentTxOut]):
+        # Build all of the address to transaction mappings in a local map.
+        addrs_to_txns = WriteIndexData()
+        self.index_block(addrs_to_txns, block, stxos)
+
+        # Remove all of the index entries for each address.
+        addr_idx_bucket = db_tx.metadata().bucket(addrIndexKey)
+        for addr_key, tx_idxs in addrs_to_txns.items():
+            db_remove_addr_index_entries(addr_idx_bucket, addr_key, len(tx_idxs))
+        return
+
+    # TODO
+    def tx_regions_for_addresses(self):
+        pass
+
+    def index_unconfirmed_addresses(self):
+        pass
+
+    def add_unconfirmed_tx(self):
+        pass
+
+    def remove_unconfirmed_tx(self):
+        pass
+
+    def unconfirmed_txns_for_addresses(self):
+        pass
+
 
 # TODO
 def addr_to_key(addr: btcutil.Address) -> bytes:
+    pass
+
+
+def db_put_addr_index_entry(bucket: InternalBucket, addr_key: bytes, block_id: int, tx_loc: wire.TxLoc):
+    pass
+
+
+def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count: int):
+    pass
+
+
+def db_fetch_addr_index_entries(bucket: InternalBucket, addr_key: bytes, num_to_skip: int, num_requested: int,
+                                reverse: bool, fetch_block_hash: typing.Callable) -> ([database.BlockRegion], int):
     pass

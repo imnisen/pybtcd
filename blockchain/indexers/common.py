@@ -36,12 +36,23 @@ class Indexer:
     # main chain. The set of output spent within a block is also passed in
     # so indexers can access the pevious output scripts input spent if
     # required.
-    def connect_block(self, tx: database.Tx, block: btcutil.Block, spent_tx_outs: [blockchain.SpentTxOut]):
+    def connect_block(self, db_tx: database.Tx, block: btcutil.Block, stxos: [blockchain.SpentTxOut]):
         raise NotImplementedError
 
     # DisconnectBlock is invoked when a block has been disconnected from
     # the main chain. The set of outputs scripts that were spent within
     # this block is also returned so indexers can clean up the prior index
     # state for this block
-    def disconnect_block(self, tx: database.Tx, block: btcutil.Block, spent_tx_outs: [blockchain.SpentTxOut]):
+    def disconnect_block(self, db_tx: database.Tx, block: btcutil.Block, stxos: [blockchain.SpentTxOut]):
+        raise NotImplementedError
+
+
+class InternalBucket:
+    def get(self, key: bytes) -> bytes:
+        raise NotImplementedError
+
+    def put(self, key: bytes, value: bytes):
+        raise NotImplementedError
+
+    def delete(self, key: bytes):
         raise NotImplementedError

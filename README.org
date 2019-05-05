@@ -21,6 +21,8 @@ Now this project is for self-education purpose, under active development.
 - rpclient, cmd: Todo
 - btcjson: Todo
 
+* TODOS
+- [ ] blockchain/indexder addrindex
 
 * Technical debts
 
