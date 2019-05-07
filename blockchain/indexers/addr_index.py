@@ -1,4 +1,6 @@
 import database
+import btcutil
+import chainhash
 import chaincfg
 import pyutil
 import txscript
@@ -46,7 +48,7 @@ class AddrIndex(Indexer, NeedsInputser):
         # keep an index of all addresses which a given transaction involves.
         # This allows fairly efficient updates when transactions are removed
         # once they are included into a block.
-        self.unconfirmed_lock = unconfirmed_lock
+        self.unconfirmed_lock = unconfirmed_lock or pyutil.RWLock()
         self.txns_by_addr = txns_by_addr
         self.addrs_by_tx = addrs_by_tx
 
@@ -193,21 +195,122 @@ class AddrIndex(Indexer, NeedsInputser):
             db_remove_addr_index_entries(addr_idx_bucket, addr_key, len(tx_idxs))
         return
 
-    # TODO
-    def tx_regions_for_addresses(self):
-        pass
+    # TxRegionsForAddress returns a slice of block regions which identify each
+    # transaction that involves the passed address according to the specified
+    # number to skip, number requested, and whether or not the results should be
+    # reversed.  It also returns the number actually skipped since it could be less
+    # in the case where there are not enough entries.
+    #
+    # NOTE: These results only include transactions confirmed in blocks.  See the
+    # UnconfirmedTxnsForAddress method for obtaining unconfirmed transactions
+    # that involve a given address.
+    #
+    # This function is safe for concurrent access.
+    def tx_regions_for_address(self, db_tx: database.Tx, addr: btcutil.Address,
+                               num_to_skip: int, num_requested: int, reverse: bool) -> ([database.BlockRegion], int):
+        addr_key = addr_to_key(addr)
 
-    def index_unconfirmed_addresses(self):
-        pass
+        regions = []
+        skipped = 0
 
-    def add_unconfirmed_tx(self):
-        pass
+        # TOCHANGE here the api is fucking messy.
+        def fn(db_tx: database.Tx):
+            # Create closure to lookup the block hash given the ID using
+            # the database transaction.
+            def fetch_block_hash(id: bytes) -> chainhash.Hash:
+                return db_fetch_block_hash_by_serialized_id(db_tx, id)
+
+            addr_index_bucket = db_tx.metadata().bucket(addr_key)
+
+            nonlocal regions, skipped
+            regions, skipped = db_fetch_addr_index_entries(addr_index_bucket, addr_key, num_to_skip,
+                                                           num_requested, reverse, fetch_block_hash)
+
+        self.db.view(fn)
+
+        return regions, skipped
+
+    # indexUnconfirmedAddresses modifies the unconfirmed (memory-only) address
+    # index to include mappings for the addresses encoded by the passed public key
+    # script to the transaction.
+    #
+    # This function is safe for concurrent access.
+    def index_unconfirmed_addresses(self, pk_script: bytes, tx: btcutil.Tx):
+        # The error is ignored here since the only reason it can fail is if the
+        # script fails to parse and it was already validated before being
+        # admitted to the mempool.
+        _, addrs, _ = txscript.extract_pk_script_addrs(pk_script, self.chain_params)
+
+        for addr in addrs:
+
+            addr_key = addr_to_key(addr)
+
+            self.unconfirmed_lock.lock()
+
+            # Add a mapping from the address to the transaction.
+            if addr_key not in self.txns_by_addr:
+                self.txns_by_addr[addr_key] = {}
+            self.txns_by_addr[addr_key][tx.hash()] = tx
+
+            # Add a mapping from the transaction to the address.
+            if tx.hash() not in self.addrs_by_tx:
+                self.addrs_by_tx[tx.hash()] = {}
+            self.addrs_by_tx[tx.hash()][addr_key] = {}  # TOCHANGE should use set, not map like golang
+
+            self.unconfirmed_lock.unlock()
+
+        return
+
+    # AddUnconfirmedTx adds all addresses related to the transaction to the
+    # unconfirmed (memory-only) address index.
+    #
+    # NOTE: This transaction MUST have already been validated by the memory pool
+    # before calling this function with it and have all of the inputs available in
+    # the provided utxo view.  Failure to do so could result in some or all
+    # addresses not being indexed.
+    #
+    # This function is safe for concurrent access.
+    def add_unconfirmed_tx(self, tx: btcutil.Tx, utxo_view: blockchain.UtxoViewpoint):
+        # Index addresses of all referenced previous transaction outputs.
+        #
+        # The existence checks are elided since this is only called after the
+        # transaction has already been validated and thus all inputs are
+        # already known to exist.
+        for tx_in in tx.get_msg_tx().tx_ins:
+            entry = utxo_view.lookup_entry(tx_in.previous_out_point)
+            if not entry:
+                # Ignore missing entries.  This should never happen
+                # in practice since the function comments specifically
+                # call out all inputs must be available.
+                continue
+            self.index_unconfirmed_addresses(entry.get_pk_script(), tx)
+
+        # Index addresses of all created outputs.
+        for tx_out in tx.get_msg_tx().tx_outs:
+            self.index_unconfirmed_addresses(tx_out.pk_script, tx)
+
+        return
 
     def remove_unconfirmed_tx(self):
         pass
 
-    def unconfirmed_txns_for_addresses(self):
-        pass
+    # UnconfirmedTxnsForAddress returns all transactions currently in the
+    # unconfirmed (memory-only) address index that involve the passed address.
+    # Unsupported address types are ignored and will result in no results.
+    #
+    # This function is safe for concurrent access.
+    def unconfirmed_txns_for_address(self, addr: btcutil.Address) -> [btcutil.Tx] or None:
+        addr_key = addr_to_key(addr)
+
+        self.unconfirmed_lock.r_lock()
+        try:
+
+            if addr_key in self.txns_by_addr:
+                txns = self.txns_by_addr[addr_key]
+                return copy.deepcopy(txns)
+            return None
+        finally:
+            self.unconfirmed_lock.r_unlock()
 
 
 # TODO
