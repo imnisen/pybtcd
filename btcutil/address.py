@@ -55,7 +55,7 @@ class Address:
 
     # IsForNet returns whether or not the address is associated with the
     # passed bitcoin network.
-    def is_for_net(self):
+    def is_for_net(self, net: chaincfg.Params):
         pass
 
         # @classmethod
@@ -63,6 +63,8 @@ class Address:
         #     pass
 
 
+# AddressPubKeyHash is an Address for a pay-to-pubkey-hash (P2PKH)
+# transaction.
 class AddressPubKeyHash(Address):
     def __init__(self, hash, net_id):
         # TOCHECK here hash use []byte or Hash() type
@@ -72,6 +74,30 @@ class AddressPubKeyHash(Address):
     def __eq__(self, other):
         return self.hash == other.hash and \
                self.net_id == other.net_id
+
+    # EncodeAddress returns the string encoding of a pay-to-pubkey-hash
+    # address.  Part of the Address interface.
+    def encode_address(self):
+        return encode_address(self.hash, self.net_id)
+
+    # ScriptAddress returns the bytes to be included in a txout script to pay
+    # to a pubkey hash.  Part of the Address interface.
+    def script_address(self):
+        return self.hash
+
+    # IsForNet returns whether or not the pay-to-pubkey-hash address is associated
+    # with the passed bitcoin network.
+    def is_for_net(self, net: chaincfg.Params):
+        return self.net_id == net.pub_key_hash_addr_id
+
+    def __str__(self):
+        return self.encode_address()
+
+    # Hash160 returns the underlying array of the pubkey hash.  This can be useful
+    # when an array is more appropiate than a slice (for example, when used as map
+    # keys).
+    def hash160(self):
+        return self.hash
 
 
 def new_address_pub_key_hash(pk_hash, net):
@@ -86,6 +112,8 @@ def new_address_pub_key_hash(pk_hash, net):
     return AddressPubKeyHash(hash=copy.deepcopy(pk_hash), net_id=net.pub_key_hash_addr_id)
 
 
+# AddressScriptHash is an Address for a pay-to-script-hash (P2SH)
+# transaction.
 class AddressScriptHash(Address):
     def __init__(self, hash, net_id):
         self.hash = hash
@@ -93,6 +121,30 @@ class AddressScriptHash(Address):
 
     def __eq__(self, other):
         return self.hash == other.hash and self.net_id == other.net_id
+
+    # EncodeAddress returns the string encoding of a pay-to-script-hash
+    # address.  Part of the Address interface.
+    def encode_address(self):
+        return encode_address(self.hash, self.net_id)
+
+    # ScriptAddress returns the bytes to be included in a txout script to pay
+    # to a script hash.  Part of the Address interface.
+    def script_address(self):
+        return self.hash
+
+    # IsForNet returns whether or not the pay-to-script-hash address is associated
+    # with the passed bitcoin network.
+    def is_for_net(self, net: chaincfg.Params):
+        return self.net_id == net.script_hash_addr_id
+
+    def __str__(self):
+        return self.encode_address()
+
+    # Hash160 returns the underlying array of the script hash.  This can be useful
+    # when an array is more appropiate than a slice (for example, when used as map
+    # keys).
+    def hash160(self):
+        return self.hash
 
 
 def new_address_script_hash_from_hash(script_hash, net):
@@ -128,7 +180,7 @@ class AddressPubKey(Address):
         """
 
         :param PubKeyFormat pub_key_format:
-        :param TODO pub_key:
+        :param PublicKey pub_key:
         :param byte pub_key_hash_id:
         """
         self.pub_key_format = pub_key_format
@@ -139,6 +191,71 @@ class AddressPubKey(Address):
         return self.pub_key_format == other.pub_key_format and \
                self.pub_key == other.pub_key and \
                self.pub_key_hash_id == other.pub_key_hash_id
+
+    # serialize returns the serialization of the public key according to the
+    # format associated with the address.
+    def serialize(self):
+        if self.pub_key_format == PubKeyFormat.PKFUncompressed:
+            return self.pub_key.serialize_uncompressed()
+        elif self.pub_key_format == PubKeyFormat.PKFCompressed:
+            return self.pub_key.serialize_compressed()
+        elif self.pub_key_format == PubKeyFormat.PKFHybrid:
+            return self.pub_key.serialize_hybrid()
+        else:
+            # should not go here
+            return
+
+    # EncodeAddress returns the string encoding of the public key as a
+    # pay-to-pubkey-hash.  Note that the public key format (uncompressed,
+    # compressed, etc) will change the resulting address.  This is expected since
+    # pay-to-pubkey-hash is a hash of the serialized public key which obviously
+    # differs with the format.  At the time of this writing, most Bitcoin addresses
+    # are pay-to-pubkey-hash constructed from the uncompressed public key.
+    #
+    # Part of the Address interface.
+    def encode_address(self):
+        return encode_address(btcec.hash160(self.serialize()), self.pub_key_hash_id)
+
+    # ScriptAddress returns the bytes to be included in a txout script to pay
+    # to a public key.  Setting the public key format will affect the output of
+    # this function accordingly.  Part of the Address interface.
+    def script_address(self):
+        return self.serialize()
+
+    # IsForNet returns whether or not the pay-to-pubkey address is associated
+    # with the passed bitcoin network.
+    def is_for_net(self, net: chaincfg.Params):
+        return self.pub_key_hash_id == net.pub_key_hash_addr_id
+
+    # String returns the hex-encoded human-readable string for the pay-to-pubkey
+    # address.  This is not the same as calling EncodeAddress.
+    def __str__(self):
+        return btcec.bytes_to_hex(self.serialize())
+
+    # Format returns the format (uncompressed, compressed, etc) of the
+    # pay-to-pubkey address.
+    def get_format(self):
+        return self.pub_key_format
+
+    # SetFormat sets the format (uncompressed, compressed, etc) of the
+    # pay-to-pubkey address.
+    def set_format(self, pk_format: PubKeyFormat):
+        self.pub_key_format = pk_format
+        return
+
+    # AddressPubKeyHash returns the pay-to-pubkey address converted to a
+    # pay-to-pubkey-hash address.  Note that the public key format (uncompressed,
+    # compressed, etc) will change the resulting address.  This is expected since
+    # pay-to-pubkey-hash is a hash of the serialized public key which obviously
+    # differs with the format.  At the time of this writing, most Bitcoin addresses
+    # are pay-to-pubkey-hash constructed from the uncompressed public key.
+    def address_pub_key_hash(self):
+        return AddressPubKeyHash(hash=btcec.hash160(self.serialize()),
+                                 net_id=self.pub_key_hash_id)
+
+    # PubKey returns the underlying public key for the address.
+    def get_pub_key(self):
+        return self.pub_key
 
 
 # NewAddressPubKey returns a new AddressPubKey which represents a pay-to-pubkey
@@ -211,4 +328,9 @@ def new_address_witness_script_hash(witness_prog, net):
     :param net:
     :return:
     """
+    pass
+
+
+# TODO
+def encode_address(hash160: bytes, net_id: int):
     pass
