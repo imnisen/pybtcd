@@ -3,6 +3,7 @@ import btcec
 import chaincfg
 from .error import *
 import copy
+from btcutil import base58
 
 
 # UnsupportedWitnessVerError describes an error where a segwit address being
@@ -286,7 +287,7 @@ def new_address_pub_key(serialized_pub_key: bytes, net: chaincfg.Params):
 
 
 class AddressWitnessPubKeyHash(Address):
-    def __init__(self, hrp, witness_version, witness_program):
+    def __init__(self, hrp: str, witness_version: int, witness_program: bytes):
         """
 
         :param string hrp:
@@ -296,6 +297,48 @@ class AddressWitnessPubKeyHash(Address):
         self.hrp = hrp
         self.witness_version = witness_version
         self.witness_program = witness_program
+
+    # EncodeAddress returns the bech32 string encoding of an
+    # AddressWitnessPubKeyHash.
+    # Part of the Address interface.
+    def encode_address(self):
+        try:
+            st = encode_segwit_address(self.hrp, self.witness_version, self.witness_program)
+        except Exception:
+            st = ""
+        return st
+
+    # ScriptAddress returns the witness program for this address.
+    # Part of the Address interface.
+    def script_address(self):
+        return self.witness_program
+
+    # IsForNet returns whether or not the AddressWitnessPubKeyHash is associated
+    # with the passed bitcoin network.
+    # Part of the Address interface.
+    def is_for_net(self, net: chaincfg.Params) -> bool:
+        return self.hrp == net.bech32_hrp_segwit
+
+    def __str__(self):
+        return self.encode_address()
+
+    # Hrp returns the human-readable part of the bech32 encoded
+    # AddressWitnessPubKeyHash.
+    def get_hrp(self):
+        return self.hrp
+
+    # WitnessVersion returns the witness version of the AddressWitnessPubKeyHash.
+    def get_witness_version(self):
+        return self.witness_version
+
+    # WitnessProgram returns the witness program of the AddressWitnessPubKeyHash.
+    def get_witness_program(self):
+        return self.witness_program
+
+    # Hash160 returns the witness program of the AddressWitnessPubKeyHash as a
+    # byte array.
+    def hash160(self):
+        return self.witness_program
 
 
 def new_address_witness_pub_key_hash(witness_prog, net):
@@ -320,6 +363,46 @@ class AddressWitnessScriptHash(Address):
         self.witness_version = witness_version
         self.witness_program = witness_program
 
+        # EncodeAddress returns the bech32 string encoding of an
+
+    # AddressWitnessScriptHash.
+    # Part of the Address interface.
+    def encode_address(self):
+        try:
+            st = encode_segwit_address(self.hrp, self.witness_version, self.witness_program)
+        except Exception:
+            st = ""
+        return st
+
+        # ScriptAddress returns the witness program for this address.
+
+    # Part of the Address interface.
+    def script_address(self):
+        return self.witness_program
+
+        # IsForNet returns whether or not the AddressWitnessScriptHash is associated
+
+    # with the passed bitcoin network.
+    # Part of the Address interface.
+    def is_for_net(self, net: chaincfg.Params) -> bool:
+        return self.hrp == net.bech32_hrp_segwit
+
+    def __str__(self):
+        return self.encode_address()
+
+    # Hrp returns the human-readable part of the bech32 encoded
+    # AddressWitnessScriptHash.
+    def get_hrp(self):
+        return self.hrp
+
+    # WitnessVersion returns the witness version of the AddressWitnessScriptHash.
+    def get_witness_version(self):
+        return self.witness_version
+
+    # WitnessProgram returns the witness program of the AddressWitnessScriptHash.
+    def get_witness_program(self):
+        return self.witness_program
+
 
 def new_address_witness_script_hash(witness_prog, net):
     """
@@ -331,6 +414,22 @@ def new_address_witness_script_hash(witness_prog, net):
     pass
 
 
-# TODO
+# encodeAddress returns a human-readable payment address given a ripemd160 hash
+# and netID which encodes the bitcoin network and address type.  It is used
+# in both pay-to-pubkey-hash (P2PKH) and pay-to-script-hash (P2SH) address
+# encoding.
 def encode_address(hash160: bytes, net_id: int):
+    # Format is 1 byte for a network and address class (i.e. P2PKH vs
+    # P2SH), 20 bytes for a RIPEMD160 hash, and 4 bytes of checksum.
+    return base58.check_encode(hash160[:20], net_id)  # ripemd160.Size = 20
+
+
+# TODO
+# encodeSegWitAddress creates a bech32 encoded address string representation
+# from witness version and witness program.
+def encode_segwit_address(hrp: str, witness_version: int, witnesee_program: bytes) -> str:
+    pass
+
+# TODO
+def decode_segwit_address(address: str) -> (int, bytes)
     pass

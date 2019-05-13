@@ -8,6 +8,7 @@ import binascii
 def binary_to_number(string):
     return int(binascii.hexlify(string), 16)
 
+
 class Signature(BaseSignature):
     def __init__(self, r, s):
         super(Signature, self).__init__(r=r, s=s)
