@@ -431,5 +431,5 @@ def encode_segwit_address(hrp: str, witness_version: int, witnesee_program: byte
     pass
 
 # TODO
-def decode_segwit_address(address: str) -> (int, bytes)
+def decode_segwit_address(address: str) -> (int, bytes):
     pass
