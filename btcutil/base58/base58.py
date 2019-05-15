@@ -23,17 +23,17 @@ def encode(b: bytes) -> str:
 # Decode decodes a base58 encode string to bytes
 def decode(s: str) -> bytes:
     index_1 = 0
-    while s[index_1] == '1':
+    while index_1 < len(s) and s[index_1] == '1':
         index_1 += 1
 
     value = 0
-    for ch in s[index_1::-1]:
+    for ch in s[index_1:]:
         v = ALPHABET_R.get(ch)
         if v is None:
             return bytes()
 
         value = value * 58 + v
 
-    length = max(1, (value.bit_length() + 7) // 8)
+    length = max(0, (value.bit_length() + 7) // 8)
     b = int.to_bytes(value, length, 'big')
     return bytes([0x0] * index_1) + b

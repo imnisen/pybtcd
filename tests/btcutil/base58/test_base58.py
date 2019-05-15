@@ -47,14 +47,22 @@ hex_tests = [
 ]
 
 
+def str_to_bytes(s):
+    return str.encode(s, 'utf-8')
+
+
+def bytes_to_str(b):
+    return b.decode('utf-8')
+
+
 class TestBase58(unittest.TestCase):
     def test_encode(self):
         for test in string_tests:
-            self.assertEqual(encode(test['in']), test['out'])
+            self.assertEqual(encode(str_to_bytes(test['in'])), test['out'])
 
     def test_decode(self):
         for test in hex_tests:
             self.assertEqual(decode(test['out']), hex_to_bytes(test['in']))
 
         for test in invalid_string_tests:
-            self.assertEqual(decode(test['in']), test['out'])
+            self.assertEqual(bytes_to_str(decode(test['in'])), test['out'])
