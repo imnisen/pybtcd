@@ -1,7 +1,7 @@
 import unittest
 
-from btcutil.base58 import *
-from tests.utils import hex_to_bytes
+from btcutil.base58.base58 import *
+from tests.utils import *
 
 string_tests = [
     {"in": "", "out": ""},
@@ -45,14 +45,6 @@ hex_tests = [
     {"in": "10c8511e", "out": "Rt5zm"},
     {"in": "00000000000000000000", "out": "1111111111"},
 ]
-
-
-def str_to_bytes(s):
-    return str.encode(s, 'utf-8')
-
-
-def bytes_to_str(b):
-    return b.decode('utf-8')
 
 
 class TestBase58(unittest.TestCase):

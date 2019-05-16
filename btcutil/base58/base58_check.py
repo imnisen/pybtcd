@@ -32,7 +32,8 @@ def check_encode(b: bytes, version: int) -> str:
     :param version: version is one byte
     :return:
     """
-    version_byte = version.to_bytes(1, IGNORE_ORDER)
+    # version_byte = version.to_bytes(1, IGNORE_ORDER)
+    version_byte = bytes([version])
     checksum_bytes = checksum(version_byte + b)
     return encode(version_byte + b + checksum_bytes)
 
@@ -43,7 +44,8 @@ def check_decode(s: str) -> (bytes, int):
     if len(decoded) < 5:
         raise ErrInvalidFormat
 
-    version = int.from_bytes(decoded[0], IGNORE_ORDER)
+    # version = int.from_bytes(decoded[0], IGNORE_ORDER)
+    version = decoded[0]
     cksum = decoded[-4:]
     if checksum(decoded[:-4]) != cksum:
         raise ErrChecksum
