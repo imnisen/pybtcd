@@ -4,6 +4,8 @@ import chaincfg
 from .error import *
 import copy
 from btcutil import base58
+from .bech32 import *
+from .base58 import *
 
 
 # UnsupportedWitnessVerError describes an error where a segwit address being
@@ -424,12 +426,53 @@ def encode_address(hash160: bytes, net_id: int):
     return base58.check_encode(hash160[:20], net_id)  # ripemd160.Size = 20
 
 
-# TODO
 # encodeSegWitAddress creates a bech32 encoded address string representation
 # from witness version and witness program.
 def encode_segwit_address(hrp: str, witness_version: int, witnesee_program: bytes) -> str:
-    pass
+    # Group the address bytes into 5 bit groups, as this is what is used to
+    # encode each character in the address string.
+    converted = bech32.convert_bits(witnesee_program, from_bits=8, to_bits=5, pad=True)
 
-# TODO
+    # Concatenate the witness version and program, and encode the resulting
+    # bytes using bech32 encoding.
+    bech = bech32.encode(hrp, bytes([witness_version]) + converted)
+
+    # Check validity by decoding the created address.
+    version, program = decode_segwit_address(bech)
+
+    if version != witness_version or program != witnesee_program:
+        raise EncodeSegwitAddressError("invalid segwit address")
+
+    return bech
+
+
+# decodeSegWitAddress parses a bech32 encoded segwit address string and
+# returns the witness version and witness program byte representation.
 def decode_segwit_address(address: str) -> (int, bytes):
-    pass
+    # Decode the bech32 encoded address.
+    data = bech32.decode(address)
+
+    # The first byte of the decoded address is the witness version, it must
+    # exist.
+    if len(data) < 1:
+        raise DecodeSegwitAddressError("no witness version")
+
+    # witness version <= 16
+    version = data[0]
+    if version > 16:
+        raise DecodeSegwitAddressError("invalid witness version: %s" % version)
+
+    # The remaining characters of the address returned are grouped into
+    # words of 5 bits. In order to restore the original witness program
+    # bytes, we'll need to regroup into 8 bit words.
+    regrouped = bech32.convert_bits(data[1:], from_bits=5, to_bits=8, pad=False)
+
+    # The regrouped data must be between 2 and 40 bytes.
+    if len(regrouped) < 2 or len(regrouped) > 40:
+        raise DecodeSegwitAddressError("invalid data length")
+
+    # For witness version 0, address MUST be exactly 20 or 32 bytes.
+    if version == 0 and len(regrouped) != 20 and len(regrouped) != 32:
+        raise DecodeSegwitAddressError("invalid data length for witness version 0: %s" % len(regrouped))
+
+    return version, regrouped
