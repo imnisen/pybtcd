@@ -17,12 +17,46 @@ addrIndexName = "address index"
 # to house it.
 addrIndexKey = b"txbyaddridx"
 
+# addrKeySize is the number of bytes an address key consumes in the
+# index.  It consists of 1 byte address type + 20 bytes hash160.
+addrKeySize = 1 + 20
+
+# addrKeyTypePubKeyHash is the address type in an address key which
+# represents both a pay-to-pubkey-hash and a pay-to-pubkey address.
+# This is done because both are identical for the purposes of the
+# address index.
+addrKeyTypePubKeyHash = 0
+
+# addrKeyTypeScriptHash is the address type in an address key which
+# represents a pay-to-script-hash address.  This is necessary because
+# the hash of a pubkey address might be the same as that of a script
+# hash.
+addrKeyTypeScriptHash = 1
+
+# addrKeyTypePubKeyHash is the address type in an address key which
+# represents a pay-to-witness-pubkey-hash address. This is required
+# as the 20-byte data push of a p2wkh witness program may be the same
+# data push used a p2pkh address.
+addrKeyTypeWitnessPubKeyHash = 2
+
+# addrKeyTypeScriptHash is the address type in an address key which
+# represents a pay-to-witness-script-hash address. This is required,
+# as p2wsh are distinct from p2sh addresses since they use a new
+# script template, as well as a 32-byte data push.
+addrKeyTypeWitnessScriptHash = 3
+
 
 # writeIndexData represents the address index data to be written for one block.
 # It consists of the address mapped to an ordered list of the transactions
 # that involve the address in block.  It is ordered so the transactions can be
 # stored in the order they appear in the block.
 class WriteIndexData(dict):
+    pass
+
+
+# errUnsupportedAddressType is an error that is used to signal an
+# unsupported address type has been used.
+class UnsupportedAddressType(Exception):
     pass
 
 
@@ -313,9 +347,26 @@ class AddrIndex(Indexer, NeedsInputser):
             self.unconfirmed_lock.r_unlock()
 
 
-# TODO
+# addrToKey converts known address types to an addrindex key.  An error is
+# returned for unsupported types.
 def addr_to_key(addr: btcutil.Address) -> bytes:
-    pass
+    if isinstance(addr, btcutil.AddressPubKeyHash):
+        return bytes([addrKeyTypePubKeyHash]) + addr.hash160()
+    elif isinstance(addr, btcutil.AddressScriptHash):
+        return bytes([addrKeyTypeScriptHash]) + addr.hash160()
+    elif isinstance(addr, btcutil.AddressPubKey):
+        return bytes([addrKeyTypePubKeyHash]) + addr.address_pub_key_hash().hash160()
+    elif isinstance(addr, btcutil.AddressWitnessScriptHash):
+        # P2WSH outputs utilize a 32-byte data push created by hashing
+        # the script with sha256 instead of hash160. In order to keep
+        # all address entries within the database uniform and compact,
+        # we use a hash160 here to reduce the size of the salient data
+        # push to 20-bytes.
+        return bytes([addrKeyTypeWitnessScriptHash]) + pyutil.hash160(addr.script_address())
+    elif isinstance(addr, btcutil.AddressWitnessPubKeyHash):
+        return bytes([addrKeyTypeWitnessPubKeyHash]) + addr.hash160()
+    else:
+        raise UnsupportedAddressType("address type is not supported by the address index")
 
 
 def db_put_addr_index_entry(bucket: InternalBucket, addr_key: bytes, block_id: int, tx_loc: wire.TxLoc):

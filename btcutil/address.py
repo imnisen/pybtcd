@@ -376,14 +376,12 @@ class AddressWitnessScriptHash(Address):
             st = ""
         return st
 
-        # ScriptAddress returns the witness program for this address.
-
+    # ScriptAddress returns the witness program for this address.
     # Part of the Address interface.
     def script_address(self):
         return self.witness_program
 
-        # IsForNet returns whether or not the AddressWitnessScriptHash is associated
-
+    # IsForNet returns whether or not the AddressWitnessScriptHash is associated
     # with the passed bitcoin network.
     # Part of the Address interface.
     def is_for_net(self, net: chaincfg.Params) -> bool:

@@ -12,5 +12,6 @@ def sha256(x):
 def ripemd160(x):
     return hashlib.new('ripemd160', x).digest()
 
+
 def hash160(x):
     return ripemd160(sha256(x))
