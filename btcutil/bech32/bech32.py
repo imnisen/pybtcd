@@ -89,7 +89,7 @@ def decode(bech: str) -> (str, bytes):
 
     # The human-readable part is everything before the last '1'.
     hrp = bech[:one]
-    data = bech[one + 1]
+    data = bech[one + 1:]
 
     # Each character corresponds to the byte with value of the index in
     # 'charset'.
@@ -101,7 +101,7 @@ def decode(bech: str) -> (str, bytes):
         checksum = bech[-6:]
         try:
             expected = to_chars(bech32_checksum(hrp, decoded[:-6]))
-            more_info = "Expected: %s, got %s" % (expected, checksum)
+            more_info = " Expected: %s, got %s" % (expected, checksum)
         except:
             pass
         raise Bech32DecodeError("checksum failed." + more_info)
@@ -113,14 +113,15 @@ def decode(bech: str) -> (str, bytes):
 # LastIndexByte returns the index of the last instance of c in s, or -1 if c is not present in s.
 def last_index_str(s, c):
     try:
-        return s[::-1].index(c)
+        reverse_index = s[::-1].index(c)
+        return len(s) - reverse_index - 1
     except ValueError:
         return -1
 
 
 def index_str(s, c):
     try:
-        return s[::-1].index(c)
+        return s.index(c)
     except ValueError:
         return -1
 
@@ -129,9 +130,10 @@ def index_str(s, c):
 # These method is copy from BIP 173
 # For more details on the checksum calculation, please refer to BIP 173.
 def bech32_checksum(hrp: str, data: bytes) -> bytes:
+    data = [b for b in data]
     values = bech32_hrp_expand(hrp) + data
     polymod = bech32_polymod(values + [0, 0, 0, 0, 0, 0]) ^ 1
-    return [(polymod >> 5 * (5 - i)) & 31 for i in range(6)]
+    return bytes([(polymod >> 5 * (5 - i)) & 31 for i in range(6)])
 
 
 def bech32_polymod(values):
@@ -150,6 +152,7 @@ def bech32_hrp_expand(s):
 
 
 def bech32_verify_checksum(hrp, data):
+    data = [b for b in data]
     return bech32_polymod(bech32_hrp_expand(hrp) + data) == 1
 
 ############################################################################
