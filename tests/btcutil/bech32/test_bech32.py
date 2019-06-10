@@ -40,3 +40,9 @@ class TestBech32(unittest.TestCase):
             else:
                 with self.assertRaises(Bech32DecodeError):
                     decode(test['str'])
+
+    def test_convert_bits(self):
+        data = b"Test data"
+        conv = convert_bits(data, from_bits=8, to_bits=5, pad=True)
+        encoded = encode("customHrp!11111q", conv)
+        self.assertEqual(encoded, "customHrp!11111q123jhxapqv3shgcgumastr")

@@ -9,6 +9,10 @@ class Bech32DecodeError(Exception):
     pass
 
 
+class Bech32ConvertBitError(Exception):
+    pass
+
+
 # TOCHECK 这里要求每一个byte值的大小在32以内，但实际上data有这个限制吗？
 # 注意到，segwit address生成的时候，每5个bit组成一组，所以大小是在32以内的
 # 所以bech32编码不适用在一般的bytes加密吗？
@@ -35,9 +39,68 @@ def to_bytes(chars: str) -> bytes:
     return b
 
 
-# TODO
-def convert_bits():
-    pass
+def one_byte_left_shit(b, n):
+    return (b << n) % 256
+
+
+# TOCONSIDER This algorithm is directly copy from btcd. Need rethink latter. 2019-06-10
+# ConvertBits converts a byte slice where each byte is encoding fromBits bits,
+# to a byte slice where each byte is encoding toBits bits.
+def convert_bits(data: bytes, from_bits: int, to_bits: int, pad: bool) -> bytes:
+    if from_bits < 1 or from_bits > 8 or to_bits < 1 or to_bits > 8:
+        raise Bech32ConvertBitError("only bit groups between 1 and 8 allowed")
+
+    regrouped = bytes([])
+
+    next_byte = 0
+    filled_bits = 0
+
+    for b in data:
+
+        # Discard unused bits
+        b = one_byte_left_shit(b, (8 - from_bits))
+
+        # How many bits remaining to extract from the input data.
+        rem_from_bits = from_bits
+        while rem_from_bits > 0:
+
+            # How many bits remaining to be added to the next byte.
+            rem_to_bits = to_bits - filled_bits
+
+            # The number of bytes to next extract is the minimum of
+            # remFromBits and remToBits.
+            to_extract = min(rem_to_bits, rem_from_bits)
+
+            # Add the next bits to nextByte, shifting the already
+            # added bits to the left.
+            next_byte = (one_byte_left_shit(next_byte, to_extract)) | (b >> (8 - to_extract))
+
+            # Discard the bits we just extracted and get ready for
+            # next iteration.
+            b = one_byte_left_shit(b, to_extract)
+
+            rem_from_bits -= to_extract
+            filled_bits += to_extract
+
+            # If the nextByte is completely filled, we add it to
+            #  our regrouped bytes and start on the next byte.
+            if filled_bits == to_bits:
+                regrouped += bytes([next_byte])
+                filled_bits = 0
+                next_byte = 0
+
+    # We pad any unfinished group if specified.
+    if pad and filled_bits > 0:
+        next_byte = one_byte_left_shit(next_byte, (to_bits - filled_bits))
+        regrouped += bytes([next_byte])
+        filled_bits = 0
+        next_byte = 0
+
+    # Any incomplete group must be <= 4 bits, and all zeroes.
+    if filled_bits > 0 and (filled_bits > 4 or next_byte != 0):
+        raise Bech32ConvertBitError("invalid incomplete group")
+
+    return regrouped
 
 
 # Encode encodes a byte slice into a bech32 string with the
