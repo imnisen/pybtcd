@@ -138,16 +138,17 @@ def serialize_addr_index_entry(block_id: int, tx_loc: wire.TxLoc) -> bytes:
 # provided region struct according to the format described in detail above and
 # uses the passed block hash fetching function in order to conver the block ID
 # to the associated block hash.
-def deserialize_addr_index_entry(serialized: bytes, region: database.BlockRegion,
-                                 fetch_block_hash_func: typing.Callable[bytes, chainhash.Hash]):
+def deserialize_addr_index_entry(serialized: bytes,
+                                 fetch_block_hash_func: typing.Callable[bytes, chainhash.Hash]) -> database.BlockRegion:
     # Ensure there are enough bytes to decode.
     if len(serialized) < txEntrySize:
         return DeserializeError("unexpected end of data")
 
-    region.hash = fetch_block_hash_func(serialized[0:4])
-    region.offset = wire.read_element(serialized[4:8], "uint32")
-    region.len = wire.read_element(serialized[8:12], "uint32")
-    return
+    hash = fetch_block_hash_func(serialized[0:4])
+    offset = wire.read_element(serialized[4:8], "uint32")
+    l = wire.read_element(serialized[8:12], "uint32")
+
+    return database.BlockRegion(hash=hash, offset=offset, len=l)
 
 
 # keyForLevel returns the key for a specific address and level in the address
@@ -225,7 +226,9 @@ def min_entries_to_reach_level(level: int) -> int:
     return min_required
 
 
-# TOCONSIDER the delete logic here is confusing TODO
+# TOCONSIDER the delete logic here is not clear now
+# TOCONSIDER Here db_put_addr_index_entry,db_fetch_addr_index_entries,db_remove_addr_index_entries methods
+# use a structure which need to stduy latter
 # dbRemoveAddrIndexEntries removes the specified number of entries from from
 # the address index for the provided key.  An assertion error will be returned
 # if the count exceeds the total number of entries in the index.
@@ -249,6 +252,10 @@ def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count:
 
             bucket.put(cur_level_key, data)
         return
+
+    # Here we load all the data that we may need for num_remaining.
+    # It the data of level need to be remove, set to empty bytes
+    # else set to needed bytes.
 
     # Loop forwards through the levels while removing entries until the
     # specified number has been removed.  This will potentially result in
@@ -278,7 +285,7 @@ def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count:
 
         # Remove remaining entries to delete from the level.
         offset_end = len(cur_level_data) - (num_remaining * txEntrySize)
-        pending_updates = cur_level_data[:offset_end]
+        pending_updates[level] = cur_level_data[:offset_end]
         break
 
     # When all elements in level 0 were not removed there is nothing left to do other than updating the databse
@@ -302,7 +309,7 @@ def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count:
     # required.
     lowest_empty_level = 255
     cur_level_data = pending_updates[highest_loaded_level]
-    cur_level_max_entries = max_entries_for_level(highest_loaded_level)  # TODO
+    cur_level_max_entries = max_entries_for_level(highest_loaded_level)
     for level in range(highest_loaded_level, 0, -1):
         # When there are not enough entries left in the current level
         # for the number that would be required to reach it, clear the
@@ -313,7 +320,7 @@ def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count:
         # enough remaining entries required to reach the level.
         num_entries = len(cur_level_data) // txEntrySize
         prev_level_max_entries = cur_level_max_entries // 2
-        min_prev_required = min_entries_to_reach_level(level - 1)  # TODO
+        min_prev_required = min_entries_to_reach_level(level - 1)
         if num_entries < prev_level_max_entries + min_prev_required:
             lowest_empty_level = level
             pending_updates[level] = bytes()
@@ -383,9 +390,66 @@ def db_remove_addr_index_entries(bucket: InternalBucket, addr_key: bytes, count:
     return apply_pending()
 
 
+# dbFetchAddrIndexEntries returns block regions for transactions referenced by
+# the given address key and the number of entries skipped since it could have
+# been less in the case where there are less total entries than the requested
+# number of entries to skip.
 def db_fetch_addr_index_entries(bucket: InternalBucket, addr_key: bytes, num_to_skip: int, num_requested: int,
-                                reverse: bool, fetch_block_hash: typing.Callable) -> ([database.BlockRegion], int):
-    pass
+                                reverse: bool, fetch_block_hash_func: typing.Callable) -> ([database.BlockRegion], int):
+    # When the reverse flag is not set, all levels need to be fetched
+    # because numToSkip and numRequested are counted from the oldest
+    # transactions (highest level) and thus the total count is needed.
+    # However, when the reverse flag is set, only enough records to satisfy
+    # the requested amount are needed.
+    level = 0
+    serialized = bytes()
+    while not reverse or len(serialized) < (num_to_skip + num_requested) * txEntrySize:
+        cur_level_key = key_for_level(addr_key, level)
+        level_data = bucket.get(cur_level_key)
+        if len(level_data) == 0:
+            # Stop when there are no more levels
+            break
+
+        serialized = level_data + serialized
+        level += 1
+
+    # When the requested number of entries to skip is larger than the
+    # number available, skip them all and return now with the actual number
+    # skipped.
+    num_entries = len(serialized) // txEntrySize
+    if num_to_skip >= num_entries:
+        return None, num_entries
+
+    # Nothing more to do when there are no requested entries
+    if num_requested == 0:
+        return None, num_to_skip
+
+    # Limit the number to load based on the number of available entries,
+    # the number to skip, and the number requested.
+    num_to_load = num_entries - num_to_skip
+    if num_to_load > num_requested:
+        num_to_load = num_requested
+
+    # Start the offset after all skipped entries and load the calculated
+    # number.
+    results = []
+    for i in range(num_to_load):
+        if reverse:
+            offset = (num_entries - num_to_skip - i - 1) * txEntrySize
+        else:
+            offset = (num_to_skip + i) * txEntrySize
+
+        try:
+            # Deserialize and populate the result.
+            block_region = deserialize_addr_index_entry(serialized[offset:],
+                                                        fetch_block_hash_func=fetch_block_hash_func)
+            results.append(block_region)
+        except DeserializeError as e:
+            raise database.DBError(
+                c=database.ErrorCode.ErrCorruption,
+                desc="failed to deserialized address index for key %s:%s" % (addr_key, e)
+            )
+    return results, num_to_skip
 
 
 # writeIndexData represents the address index data to be written for one block.
