@@ -56,3 +56,9 @@ class InternalBucket:
 
     def delete(self, key: bytes):
         raise NotImplementedError
+
+
+class DeserializeError(Exception):
+    pass
+
+
