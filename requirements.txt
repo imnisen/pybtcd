@@ -1,4 +1,4 @@
 crcmod==1.7
-ecdsa==0.13
+ecdsa==0.13.3
 plyvel==1.0.5
 aiochan==0.2.6
