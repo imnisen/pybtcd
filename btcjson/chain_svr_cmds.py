@@ -1,5 +1,4 @@
 import collections
-from .register import *
 from .utils import *
 
 
@@ -22,9 +21,8 @@ ANOneTry = AddNodeSubCmd("onetry")
 
 
 # AddNodeCmd defines the addnode JSON-RPC command.
+@register_name("addnode")
 class AddNodeCmd:
-    name = "addnode"
-
     def __init__(self, addr: str, sub_cmd: AddNodeSubCmd):
         self.addr = addr
         self.sub_cmd = sub_cmd
@@ -33,7 +31,7 @@ class AddNodeCmd:
         return [self.addr, str(self.sub_cmd)]
 
     @classmethod
-    def unmarshal_json(cls, params):
+    def from_params(cls, params):
         # check length is 2
         require_length(params, 2, "addnode params length should be 2")
 
@@ -54,9 +52,6 @@ class AddNodeCmd:
         return False
 
 
-register_cmd_name(AddNodeCmd.name, AddNodeCmd)
-
-
 # TransactionInput represents the inputs to a transaction.  Specifically a
 # transaction hash and output number pair.
 class TransactionInput:
@@ -64,7 +59,7 @@ class TransactionInput:
         self.txid = txid
         self.vout = vout  # uint32
 
-    def marshal_json(self):
+    def to_params(self):
         return collections.OrderedDict(txid=self.txid, vout=self.vout)
 
     def __eq__(self, other):
@@ -74,7 +69,7 @@ class TransactionInput:
         return self.txid == other.txid and self.vout == other.vout
 
     @classmethod
-    def unmarshal_json(cls, params):
+    def from_params(cls, params):
         # check params is a dict
         require_type(params, dict, "transction input should be dict")
 
@@ -93,28 +88,27 @@ class TransactionInput:
 
 
 # CreateRawTransactionCmd defines the createrawtransaction JSON-RPC command.
+@register_name("createrawtransaction")
 class CreateRawTransactionCmd:
-    name = "createrawtransaction"
-
     def __init__(self, inputs: [TransactionInput], amounts: dict, lock_time: int or None = None):
         self.inputs = inputs
         self.amounts = amounts
         self.lock_time = lock_time
 
-    def marshal_json(self):
-        res = [[i.marshal_json() for i in self.inputs], self.amounts]
+    def to_params(self):
+        res = [[i.to_params() for i in self.inputs], self.amounts]
         if self.lock_time is not None:
             res.append(self.lock_time)
         return res
 
     @classmethod
-    def unmarshal_json(cls, params):
+    def from_params(cls, params):
         # length >=2
         require_length(params, [2, 3], "createrawtransaction params length should be [2,3]")
 
         # first is a list
         require_type(params[0], list, "transaction inputs should be list")
-        inputs = [TransactionInput.unmarshal_json(each) for each in params[0]]
+        inputs = [TransactionInput.from_params(each) for each in params[0]]
 
         # second is a dict
         require_type(params[1], dict, "amounts should be dict")
@@ -137,21 +131,17 @@ class CreateRawTransactionCmd:
         return False
 
 
-register_cmd_name(CreateRawTransactionCmd.name, CreateRawTransactionCmd)
-
-
 # DecodeRawTransactionCmd defines the decoderawtransaction JSON-RPC command.
+@register_name("decoderawtransaction")
 class DecodeRawTransactionCmd:
-    name = "decoderawtransaction"
-
     def __init__(self, hex_tx: str):
         self.hex_tx = hex_tx
 
-    def marshal_json(self):
+    def to_params(self):
         return [self.hex_tx]
 
     @classmethod
-    def unmarshal_json(cls, params):
+    def from_params(cls, params):
         require_length(params, 1, "decoderawtransaction should have 1 param")
         require_type(params[0], str, "hex tx should be str")
         hex_tx = params[0]
@@ -164,4 +154,76 @@ class DecodeRawTransactionCmd:
         return False
 
 
-register_cmd_name(DecodeRawTransactionCmd.name, DecodeRawTransactionCmd)
+# DecodeScriptCmd defines the decodescript JSON-RPC command.
+@register_name("decodescript")
+class DecodeScriptCmd:
+    def __init__(self, hex_script: str):
+        self.hex_script = hex_script
+
+    def to_params(self):
+        return [self.hex_script]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 1, "decodescript should have 1 param")
+        require_type(params[0], str, "hex tx should be str")
+        hex_script = params[0]
+        return cls(hex_script=hex_script)
+
+    def __eq__(self, other):
+        if isinstance(other, DecodeRawTransactionCmd):
+            return self.hex_script == other.hex_script
+
+        return False
+
+
+# GetAddedNodeInfoCmd defines the getaddednodeinfo JSON-RPC command.
+@register_name("getaddednodeinfo")
+class GetAddedNodeInfoCmd:
+    def __init__(self, dns: bool, node: str or None = None):
+        self.dns = dns
+        self.node = node
+
+    def to_params(self):
+        return [self.dns, self.node]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, [1, 2], "getaddednodeinfo should have [1,2] params")
+        require_type(params[0], bool, "dns should be str")
+        dns = params[0]
+
+        node = None
+        if len(params) > 1:
+            require_type(params[1], str, "node should be str")
+            node = params[1]
+
+        return cls(dns=dns, node=node)
+
+    def __eq__(self, other):
+        if isinstance(other, GetAddedNodeInfoCmd):
+            return self.dns == other.dns and \
+                   self.node == other.node
+
+        return False
+
+
+# GetBestBlockHashCmd defines the getbestblockhash JSON-RPC command.
+@register_name("getbestblockhash")
+class GetBestBlockHashCmd:
+    def __init__(self):
+        pass
+
+    def to_params(self):
+        return []
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 0, "getbestblockhash should have 0 params")
+        return cls()
+
+    def __eq__(self, other):
+        return isinstance(other, GetBestBlockHashCmd)
+
+
+

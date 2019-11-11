@@ -22,9 +22,9 @@ Now this project is for self-education purpose, under active development.
 - btcjson: Todo
 
 * TODOS
-- [ ] blockchain/indexder addrindex
 
-* Technical debts
+
+* Technical debts                                                               :noexport:
 
 - Move const in test case out in one file
 - change: ~read_variable_bytes~ and ~read_var_bytes~ are too similar
@@ -47,10 +47,28 @@ Now this project is for self-education purpose, under active development.
 - Refactor ~blockchain/script_val~ with aiochan
 - Finish and finish cpuminer.waitgroup
 
-* Others
+* Others                                                                        :noexport:
 ** Tags used
 - #TOCHANGE
 - #TOCHECK
 - #TOCLEAN
 - #TOADD
 - #TOCONSIDER
+** run unittest
+#+BEGIN_SRC
+
+CASE: a single test.
+
+in pybtcd dir
+
+python -m  unittest tests.btcjson.test_chain_svr_cmds
+or
+python -m  unittest tests/btcjson/test_chain_svr_cmds.py
+
+
+CASE: whole package tests
+
+in pybtcd dir
+python -m unittest discover
+
+#+END_SRC

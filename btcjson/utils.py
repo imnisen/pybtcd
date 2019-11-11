@@ -1,16 +1,5 @@
 # TODO the error message is a mess
 
-#
-# def require_length(cmd_name, params, n):
-#     if len(params) != n:
-#         raise Exception("%s unmarshal_json error: length is not %s" % (cmd_name, n))
-#
-#
-# def require_length_range(cmd_name, params, m, n):
-#     if not m <= len(params) <= n:
-#         raise Exception("%s unmarshal_json error: length is not in range [%s,%s]" % (cmd_name, m, n))
-#
-
 def require_length(params, ran, err_msg):
     if type(ran) is list:
         if not ran[0] <= len(params) <= ran[1]:
@@ -22,11 +11,6 @@ def require_length(params, ran, err_msg):
 
     else:
         raise Exception("should not happen")
-
-
-# def require_type(cmd_name, param_name, param, typ):
-#     if type(param) is not typ:
-#         raise Exception("%s unmarshal_json error: %s should be %s" % (cmd_name, param_name, typ))
 
 
 def require_type(param, typ, err_msg):
@@ -57,3 +41,13 @@ def dict_equal(d1: dict, d2: dict):
             return False
 
     return True
+
+
+from .register import register_cmd_name
+
+
+def register_name(name):
+    def inner_fn(cls):
+        register_cmd_name(name, cls)
+        cls.name = name  # need or not here?
+        return cls
