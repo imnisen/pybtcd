@@ -67,6 +67,27 @@ class TestChainSvrCmds(unittest.TestCase):
                 "unmarshalled": GetBestBlockHashCmd(),
             },
 
+            {
+                "name": "getblock",
+                "static_cmd": GetBlockCmd("123", None, None),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblock","params":["123"],"id":1}',
+                "unmarshalled": GetBlockCmd("123", True, False),
+            },
+
+            {
+                "name": "getblock required optional1",
+                "static_cmd": GetBlockCmd("123", True, None),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblock","params":["123",true],"id":1}',
+                "unmarshalled": GetBlockCmd("123", True, False),
+            },
+
+            {
+                "name": "getblock required optional2",
+                "static_cmd": GetBlockCmd("123", True, True),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblock","params":["123",true,true],"id":1}',
+                "unmarshalled": GetBlockCmd("123", True, True),
+            },
+
         ]
 
         for test in tests:

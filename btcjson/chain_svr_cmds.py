@@ -226,3 +226,61 @@ class GetBestBlockHashCmd:
 
     def __eq__(self, other):
         return isinstance(other, GetBestBlockHashCmd)
+
+
+###
+# some notes of class definition
+# 1. default value  =  None in `def __init__` is used when `GetBlockCmd()` can leave the param empty.
+# if leave empty, set the default value. which should not be set like `self.verbose = verbose or None`,
+# because `or` is not correct.
+#
+# 2.the jsonrpc default value should be set in the `to_params` and `from_params` methods.
+# Because these two handles jsonserialize format and default. which should not be set in `__init__`.
+#
+###
+
+# GetBlockCmd defines the getblock JSON-RPC command.
+@register_name("getblock")
+class GetBlockCmd:
+    def __init__(self, hash: str, verbose: bool or None = None,
+                 verbose_tx: bool or None = None):  # default value to None make the
+        self.hash = hash
+        self.verbose = verbose
+        self.verbose_tx = verbose_tx
+
+    def to_params(self):
+        res = [self.hash]
+        if self.verbose is not None:
+            res.append(self.verbose)
+        if self.verbose_tx is not None:
+            res.append(self.verbose_tx)
+        return res
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, [1, 3], "getblock should have [1,3] params")
+
+        require_type(params[0], str, "hash should be str")
+        hash = params[0]
+
+        if len(params) > 1:
+            require_type(params[1], bool, "verbose should be boolean")
+            verbose = params[1]
+        else:
+            verbose = True
+
+        if len(params) > 2:
+            require_type(params[2], bool, "verbose_tx should be boolean")
+            verbose_tx = params[2]
+        else:
+            verbose_tx = False
+
+        return cls(hash, verbose, verbose_tx)
+
+    def __eq__(self, other):
+        if not isinstance(other, GetBlockCmd):
+            return False
+
+        return self.hash == other.hash and \
+               self.verbose == other.verbose and \
+               self.verbose_tx == other.verbose_tx
