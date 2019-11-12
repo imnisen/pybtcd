@@ -88,6 +88,20 @@ class TestChainSvrCmds(unittest.TestCase):
                 "unmarshalled": GetBlockCmd("123", True, True),
             },
 
+            {
+                "name": "getblockchaininfo",
+                "static_cmd": GetBlockChainInfoCmd(),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblockchaininfo","params":[],"id":1}',
+                "unmarshalled": GetBlockChainInfoCmd(),
+            },
+
+            {
+                "name": "getblockcount",
+                "static_cmd": GetBlockCountCmd(),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblockcount","params":[],"id":1}',
+                "unmarshalled": GetBlockCountCmd(),
+            },
+
         ]
 
         for test in tests:

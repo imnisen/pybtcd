@@ -284,3 +284,39 @@ class GetBlockCmd:
         return self.hash == other.hash and \
                self.verbose == other.verbose and \
                self.verbose_tx == other.verbose_tx
+
+
+# GetBlockChainInfoCmd defines the getblockchaininfo JSON-RPC command.
+@register_name("getblockchaininfo")
+class GetBlockChainInfoCmd:
+    def __init__(self):
+        pass
+
+    def to_params(self):
+        return []
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 0, "getblockchaininfo should have 0 params")
+        return cls()
+
+    def __eq__(self, other):
+        return isinstance(other, GetBlockChainInfoCmd)
+
+
+# GetBlockCountCmd defines the getblockcount JSON-RPC command.
+@register_name("getblockcount")
+class GetBlockCountCmd:
+    def __init__(self):
+        pass
+
+    def to_params(self):
+        return []
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 0, "getblockcount should have 0 params")
+        return cls()
+
+    def __eq__(self, other):
+        return isinstance(other, GetBlockCountCmd)
