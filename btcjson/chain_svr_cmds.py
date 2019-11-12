@@ -2,6 +2,14 @@ import collections
 from .utils import *
 
 
+###
+# These class should be generate by code, not by hand.
+# However, I have tried to write the dsl before, to define the struct and handle the default case, which no success.
+# when write in the class form, it becomes clear in semantic while verbose in syntax.
+# The origin go struct work with some filed tag is a great demo of dsl.
+# let's write these class first, then optimise them latter.
+###
+
 # AddNodeSubCmd defines the type used in the addnode JSON-RPC command for the
 # sub command field.
 class AddNodeSubCmd(str):
@@ -171,10 +179,9 @@ class DecodeScriptCmd:
         return cls(hex_script=hex_script)
 
     def __eq__(self, other):
-        if isinstance(other, DecodeScriptCmd):
-            return self.hex_script == other.hex_script
-
-        return False
+        if not isinstance(other, DecodeScriptCmd):
+            return False
+        return self.hex_script == other.hex_script
 
 
 # GetAddedNodeInfoCmd defines the getaddednodeinfo JSON-RPC command.
@@ -320,3 +327,26 @@ class GetBlockCountCmd:
 
     def __eq__(self, other):
         return isinstance(other, GetBlockCountCmd)
+
+
+# GetBlockHashCmd defines the getblockhash JSON-RPC command.
+@register_name("getblockhash")
+class GetBlockHashCmd:
+    def __init__(self, index: int):
+        self.index = index
+
+    def to_params(self):
+        return [self.index]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 1, "getblockhash should have 1 param")
+        require_type(params[0], int, "index tx should be str")
+        index = params[0]
+        return cls(index=index)
+
+    def __eq__(self, other):
+        if not isinstance(other, GetBlockHashCmd):
+            return False
+
+        return self.index == other.index

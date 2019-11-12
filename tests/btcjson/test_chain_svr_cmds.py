@@ -102,6 +102,13 @@ class TestChainSvrCmds(unittest.TestCase):
                 "unmarshalled": GetBlockCountCmd(),
             },
 
+            {
+                "name": "getblockhash",
+                "static_cmd": GetBlockHashCmd(123),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblockhash","params":[123],"id":1}',
+                "unmarshalled": GetBlockHashCmd(123),
+            },
+
         ]
 
         for test in tests:
