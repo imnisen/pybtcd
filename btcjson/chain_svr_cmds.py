@@ -27,7 +27,7 @@ class AddNodeCmd:
         self.addr = addr
         self.sub_cmd = sub_cmd
 
-    def marshal_json(self):
+    def to_params(self):
         return [self.addr, str(self.sub_cmd)]
 
     @classmethod
@@ -171,7 +171,7 @@ class DecodeScriptCmd:
         return cls(hex_script=hex_script)
 
     def __eq__(self, other):
-        if isinstance(other, DecodeRawTransactionCmd):
+        if isinstance(other, DecodeScriptCmd):
             return self.hex_script == other.hex_script
 
         return False
@@ -185,7 +185,9 @@ class GetAddedNodeInfoCmd:
         self.node = node
 
     def to_params(self):
-        return [self.dns, self.node]
+        if self.node:
+            return [self.dns, self.node]
+        return [self.dns]
 
     @classmethod
     def from_params(cls, params):
@@ -224,6 +226,3 @@ class GetBestBlockHashCmd:
 
     def __eq__(self, other):
         return isinstance(other, GetBestBlockHashCmd)
-
-
-

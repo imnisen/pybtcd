@@ -1,4 +1,5 @@
-# TODO the error message is a mess
+from .register import register_cmd_name
+
 
 def require_length(params, ran, err_msg):
     if type(ran) is list:
@@ -43,11 +44,10 @@ def dict_equal(d1: dict, d2: dict):
     return True
 
 
-from .register import register_cmd_name
-
-
 def register_name(name):
     def inner_fn(cls):
         register_cmd_name(name, cls)
         cls.name = name  # need or not here?
         return cls
+
+    return inner_fn
