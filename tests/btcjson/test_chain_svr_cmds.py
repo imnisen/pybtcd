@@ -109,6 +109,83 @@ class TestChainSvrCmds(unittest.TestCase):
                 "unmarshalled": GetBlockHashCmd(123),
             },
 
+            {
+                "name": "getblockheader",
+                "static_cmd": GetBlockHeaderCmd("123", None),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblockheader","params":["123"],"id":1}',
+                "unmarshalled": GetBlockHeaderCmd("123", True),
+            },
+
+            {
+                "name": "getblocktemplate",
+                "static_cmd": GetBlockTemplateCmd(request=None),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblocktemplate","params":[],"id":1}',
+                "unmarshalled": GetBlockTemplateCmd(request=None),
+            },
+
+            {
+                "name": "getblocktemplate optional - template request",
+                "static_cmd": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                    )
+                ),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblocktemplate","params":[{"mode":"template","capabilities":["longpoll","coinbasetxn"]}],"id":1}',
+                "unmarshalled": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                    )
+                ),
+            },
+
+            {
+                "name": "getblocktemplate optional - template request with tweaks",
+                "static_cmd": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                        sig_op_limit=500,
+                        size_limit=100000000,
+                        max_version=2,
+                    )
+                ),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblocktemplate","params":[{"mode":"template","capabilities":["longpoll","coinbasetxn"],"sigoplimit":500,"sizelimit":100000000,"maxversion":2}],"id":1}',
+                "unmarshalled": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                        sig_op_limit=500,
+                        size_limit=100000000,
+                        max_version=2,
+                    )
+                ),
+            },
+
+            {
+                "name": "getblocktemplate optional - template request with tweaks 2",
+                "static_cmd": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                        sig_op_limit=True,
+                        size_limit=100000000,
+                        max_version=2,
+                    )
+                ),
+                "marshalled": '{"jsonrpc":"1.0","method":"getblocktemplate","params":[{"mode":"template","capabilities":["longpoll","coinbasetxn"],"sigoplimit":true,"sizelimit":100000000,"maxversion":2}],"id":1}',
+                "unmarshalled": GetBlockTemplateCmd(
+                    request=TemplateRequest(
+                        mode="template",
+                        capabilities=["longpoll", "coinbasetxn"],
+                        sig_op_limit=True,
+                        size_limit=100000000,
+                        max_version=2,
+                    )
+                ),
+            },
+
         ]
 
         for test in tests:

@@ -10,6 +10,12 @@ from .utils import *
 # let's write these class first, then optimise them latter.
 ###
 
+###
+# TODO to_params and from_params methods are too similar. Let's try remove the duplicate code
+# when we finish this file, let's do it
+# Also it seems also need some customization mechanism.
+###
+
 # AddNodeSubCmd defines the type used in the addnode JSON-RPC command for the
 # sub command field.
 class AddNodeSubCmd(str):
@@ -341,7 +347,7 @@ class GetBlockHashCmd:
     @classmethod
     def from_params(cls, params):
         require_length(params, 1, "getblockhash should have 1 param")
-        require_type(params[0], int, "index tx should be str")
+        require_type(params[0], int, "index should be str")
         index = params[0]
         return cls(index=index)
 
@@ -350,3 +356,181 @@ class GetBlockHashCmd:
             return False
 
         return self.index == other.index
+
+
+# GetBlockHeaderCmd defines the getblockheader JSON-RPC command.
+@register_name("getblockheader")
+class GetBlockHeaderCmd:
+    def __init__(self, hash: str, verbose: bool or None):
+        self.hash = hash
+        self.verbose = verbose
+
+    def to_params(self):
+        res = [self.hash]
+        if self.verbose is not None:
+            res.append(self.verbose)
+
+        return res
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, [1, 2], "getblockheader should have [1,2] param")
+
+        require_type(params[0], str, "hash should be str")
+        hash = params[0]
+
+        if len(params) > 1:
+            require_type(params[1], bool, "verbose should be bool")
+            verbose = params[1]
+        else:
+            verbose = True
+
+        return cls(hash=hash, verbose=verbose)
+
+    def __eq__(self, other):
+        if not isinstance(other, GetBlockHeaderCmd):
+            return False
+
+        return self.hash == other.hash and \
+               self.verbose == other.verbose
+
+
+# TemplateRequest is a request object as defined in BIP22
+# (https:#en.bitcoin.it/wiki/BIP_0022), it is optionally provided as an
+# pointer argument to GetBlockTemplateCmd.
+class TemplateRequest:
+    def __init__(self, mode: str or None = None,
+                 capabilities: [str] or None = None,
+                 long_pool_id: str or None = None,
+                 sig_op_limit: int or bool or None = None,
+                 size_limit: int or bool or None = None,
+                 max_version: int or None = None,
+                 target: str or None = None,
+                 data: str or None = None,
+                 work_id: str or None = None,
+                 ):
+        self.mode = mode
+        self.capabilities = capabilities
+
+        # Optional long polling.
+        self.long_pool_id = long_pool_id
+
+        # Optional template tweaking.  SigOpLimit and SizeLimit can be int64
+        # or bool.
+        self.sig_op_limit = sig_op_limit
+        self.size_limit = size_limit
+        self.max_version = max_version
+
+        # Basic pool extension from BIP 0023.
+        self.target = target
+
+        # Block proposal from BIP 0023.  Data is only provided when Mode is
+        # "proposal".
+        self.data = data
+        self.work_id = work_id
+
+    def to_params(self):
+        d = collections.OrderedDict()
+        if self.mode is not None:
+            d['mode'] = self.mode
+
+        if self.capabilities is not None:
+            d['capabilities'] = self.capabilities
+
+        if self.long_pool_id is not None:
+            d['longpollid'] = self.long_pool_id
+
+        if self.sig_op_limit is not None:
+            d['sigoplimit'] = self.sig_op_limit
+
+        if self.size_limit is not None:
+            d['sizelimit'] = self.size_limit
+
+        if self.max_version is not None:
+            d['maxversion'] = self.max_version
+
+        if self.target is not None:
+            d['target'] = self.target
+
+        if self.data is not None:
+            d['data'] = self.data
+
+        if self.work_id is not None:
+            d['workid'] = self.work_id
+
+        return d
+
+    def __eq__(self, other):
+        if not isinstance(other, TemplateRequest):
+            return False
+
+        return self.mode == other.mode and \
+               self.capabilities == other.capabilities and \
+               self.long_pool_id == other.long_pool_id and \
+               self.sig_op_limit == other.sig_op_limit and \
+               self.size_limit == other.size_limit and \
+               self.max_version == other.max_version and \
+               self.target == other.target and \
+               self.data == other.data and \
+               self.work_id == other.work_id
+
+    @classmethod
+    def from_params(cls, params):
+        require_type(params, dict, "template request should be dict")
+
+        request = cls()
+        if 'mode' in params:
+            request.mode = params['mode']
+
+        if 'capabilities' in params:
+            request.capabilities = params['capabilities']
+
+        if 'longpollid' in params:
+            request.long_pool_id = params['longpollid']
+
+        if 'sigoplimit' in params:
+            request.sig_op_limit = params['sigoplimit']
+
+        if 'sizelimit' in params:
+            request.size_limit = params['sizelimit']
+
+        if 'maxversion' in params:
+            request.max_version = params['maxversion']
+
+        if 'target' in params:
+            request.target = params['target']
+
+        if 'data' in params:
+            request.data = params['data']
+
+        if 'workid' in params:
+            request.work_id = params['workid']
+
+        return request
+
+
+# GetBlockTemplateCmd defines the getblocktemplate JSON-RPC command.
+@register_name("getblocktemplate")
+class GetBlockTemplateCmd:
+    def __init__(self, request: TemplateRequest or None = None):
+        self.request = request
+
+    def to_params(self):
+        if self.request is None:
+            return []
+
+        return [self.request.to_params()]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, [0, 1], "template request should have [0,1] params")
+
+        if len(params) == 0:
+            return cls()
+
+        return cls(request=TemplateRequest.from_params(params[0]))
+
+    def __eq__(self, other):
+        if not isinstance(other, GetBlockTemplateCmd):
+            return False
+        return self.request == other.request
