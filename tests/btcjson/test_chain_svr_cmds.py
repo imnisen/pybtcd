@@ -1,4 +1,5 @@
 import unittest
+import wire
 from btcjson.chain_svr_cmds import *
 from btcjson.marshal_json import *
 
@@ -184,6 +185,20 @@ class TestChainSvrCmds(unittest.TestCase):
                         max_version=2,
                     )
                 ),
+            },
+
+            {
+                "name": "getcfilter",
+                "static_cmd": GetCFilterCmd("123", wire.GCSFilterRegular),
+                "marshalled": '{"jsonrpc":"1.0","method":"getcfilter","params":["123",0],"id":1}',
+                "unmarshalled": GetCFilterCmd("123", wire.GCSFilterRegular),
+            },
+
+            {
+                "name": "getcfilterheader",
+                "static_cmd": GetCFilterHeaderCmd("123", wire.GCSFilterRegular),
+                "marshalled": '{"jsonrpc":"1.0","method":"getcfilterheader","params":["123",0],"id":1}',
+                "unmarshalled": GetCFilterHeaderCmd("123", wire.GCSFilterRegular),
             },
 
         ]

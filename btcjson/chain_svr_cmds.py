@@ -1,4 +1,5 @@
 import collections
+import wire
 from .utils import *
 
 
@@ -534,3 +535,53 @@ class GetBlockTemplateCmd:
         if not isinstance(other, GetBlockTemplateCmd):
             return False
         return self.request == other.request
+
+
+# GetCFilterCmd defines the getcfilter JSON-RPC command.
+@register_name("getcfilter")
+class GetCFilterCmd:
+    def __init__(self, hash: str, filter_type: wire.FilterType):
+        self.hash = hash
+        self.filter_type = filter_type
+
+    def to_params(self):
+        return [self.hash, int(self.filter_type)]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 2, "getcfilter should have 2 params")
+        require_type(params[0], str, "hash should be str")
+        hash = params[0]
+        require_type(params[1], int, "FilterType should be int")
+        filter_type = wire.FilterType(params[1])
+        return cls(hash=hash, filter_type=filter_type)
+
+    def __eq__(self, other):
+        if not isinstance(other, GetCFilterCmd):
+            return False
+        return self.hash == other.hash and self.filter_type == other.filter_type
+
+
+# GetCFilterHeaderCmd defines the getcfilterheader JSON-RPC command.
+@register_name("getcfilterheader")
+class GetCFilterHeaderCmd:
+    def __init__(self, hash: str, filter_type: wire.FilterType):
+        self.hash = hash
+        self.filter_type = filter_type
+
+    def to_params(self):
+        return [self.hash, int(self.filter_type)]
+
+    @classmethod
+    def from_params(cls, params):
+        require_length(params, 2, "getcfilter should have 2 params")
+        require_type(params[0], str, "hash should be str")
+        hash = params[0]
+        require_type(params[1], int, "FilterType should be int")
+        filter_type = wire.FilterType(params[1])
+        return cls(hash=hash, filter_type=filter_type)
+
+    def __eq__(self, other):
+        if not isinstance(other, GetCFilterHeaderCmd):
+            return False
+        return self.hash == other.hash and self.filter_type == other.filter_type
