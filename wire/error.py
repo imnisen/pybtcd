@@ -101,9 +101,13 @@ class MaxCountSetCancelMsgErr(MessageErr):
 class MaxCountSetSubVerlMsgErr(MessageErr):
     pass
 
+
 class BelowSendHeadersVersionMsgErr(MessageErr):
     pass
 
 
 class AlertSerializedPayloadEmptyMsgErr(MessageErr):
+    pass
+
+class CFilterSizeTooLargeMsgErr(MessageErr):
     pass

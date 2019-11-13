@@ -27,5 +27,6 @@ from .msg_tx import *
 from .msg_verack import *
 from .msg_version import *
 from .netaddress import *
+from .msg_cfilter import *
 from .protocol import *
 from .utils import *

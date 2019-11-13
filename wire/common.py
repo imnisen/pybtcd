@@ -11,7 +11,6 @@ MaxVarIntPayload = 9
 # TOADD add the fast dispatch. see origin binaryFreeList
 
 
-
 BigEndian = "big"
 LittleEndian = "little"
 
@@ -100,12 +99,12 @@ def read_element(s, element_type):
         return InvType.from_int(read_variable_bytes_as_integer(s, 4, LittleEndian))
     elif element_type == "BitcoinNet":
         return BitcoinNet.from_int(read_variable_bytes_as_integer(s, 4, LittleEndian))
-
     elif element_type == "BloomUpdateType":
         return BloomUpdateType(read_variable_bytes_as_integer(s, 1, LittleEndian))
-
     elif element_type == "RejectCode":
         return RejectCode.from_int(read_variable_bytes_as_integer(s, 1, LittleEndian))
+    elif element_type == "FilterType":
+        return read_variable_bytes_as_integer(s, 1)
     else:
         _logger.info("Notice,in read_element, I don't know what to do here.")
         return s.read()
@@ -135,7 +134,6 @@ def write_element(s, element_type, element):
     elif element_type == "int64Time":
         # Notice, here don't like origin, I just return the int, not the type timestamp
         return write_variable_bytes_from_integer(s, 8, element, LittleEndian)
-
     elif element_type == "[4]byte":  # TOCHANGE, this is a golang mark, maybe more common?
         s.write(element)
     elif element_type == "[CommandSize]uint8":  # TOCHANGE, this is a golang mark, maybe more common?
@@ -155,13 +153,12 @@ def write_element(s, element_type, element):
         write_variable_bytes_from_integer(s, 4, element.value[0], LittleEndian)
     elif element_type == "BitcoinNet":
         write_variable_bytes_from_integer(s, 4, element.value[0], LittleEndian)
-
     elif element_type == "BloomUpdateType":
         write_variable_bytes_from_integer(s, 1, element.value, LittleEndian)
-
     elif element_type == "RejectCode":
         write_variable_bytes_from_integer(s, 1, element.value[0], LittleEndian)
-
+    elif element_type == "FilterType":
+        write_variable_bytes_from_integer(s, 1, element, LittleEndian)
     else:
         _logger.info("Notice, in write_element I don't know what to do here.")
         return s.write(element)
